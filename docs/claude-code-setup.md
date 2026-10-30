@@ -1,7 +1,7 @@
 # Claude Code Setup
 
 Decided 2026-10-30. Describes the intended Claude Code configuration for this repository.
-Nothing here is implemented yet; it is the agreed shape to build once milestone one begins.
+Implemented in plan phase 0 on branch `chore/claude-setup` (2026-10-31): `CLAUDE.md`, `.claude/settings.json`, `.claude/hooks/`, `.claude/rules/`, `.claude/agents/bevy-api-check.md`, `.claude/skills/{spec,adr,playtest}`, `.githooks/pre-push`, `justfile` (`setup` recipe), `docs/specs/CURRENT`. The git guard has a test script at `.claude/hooks/test-git-guard.sh`; permission deny rules are a second layer under it.
 
 ## Working agreement
 

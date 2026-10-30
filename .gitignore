@@ -1,0 +1,5 @@
+# Rust
+/target/
+
+# Claude Code personal overrides
+.claude/settings.local.json
