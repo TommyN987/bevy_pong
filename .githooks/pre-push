@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Native git pre-push hook (enabled by `just setup`). Runs the non-mutating
+# quality gate before anything leaves the machine. Skips until a workspace exists.
+set -euo pipefail
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+if [ ! -f Cargo.toml ]; then
+  echo "pre-push: no Cargo.toml at repo root yet; skipping ci-check"
+  exit 0
+fi
+if ! just --list 2>/dev/null | grep -qE '^\s*ci-check\b'; then
+  echo "pre-push: no ci-check recipe yet; skipping"
+  exit 0
+fi
+echo "pre-push: just ci-check"
+just ci-check
