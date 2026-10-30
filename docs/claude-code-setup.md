@@ -20,7 +20,7 @@ The user's operating-mode framework (#Frame, #Research, #Design, #Record, #Spec,
 - what the project is, in two sentences
 - pointers to `docs/frame.md`, `docs/research.md`, `docs/design.md`, `docs/architecture.md`
 - the pinned Bevy version
-- commands for test, clippy, run
+- the `just` recipes: `dev-check`, `ci-check`, `test`, `run`
 - three non-negotiables: verify Bevy API against docs.rs for the pinned version before writing it; core never imports shell, render, window, audio, or UI; no new dependency without a treadmill justification
 - where specs and ADRs live
 
@@ -28,13 +28,13 @@ The user's operating-mode framework (#Frame, #Research, #Design, #Record, #Spec,
 - `pong_core.md` scoped to `pong_core/**`: forbidden imports; physics as pure functions; vocabulary floor stays tiny
 - `tests.md` scoped to `**/tests/**`: fixture conventions, soak test conventions, headless builder usage
 
-**Hooks**:
-- PostToolUse on Rust file edits: `cargo fmt`
-- PreToolUse on git commit: clippy with warnings denied and core tests; blocks on failure
+**Hooks** (amended 2026-10-30: all hooks call `just` recipes so hooks, CI, humans, and agents run identical commands):
+- PostToolUse on Rust file edits: `just fmt`
+- PreToolUse on git commit: `just ci-check` (non-mutating: fmt in check mode, clippy with warnings denied, nextest, doctests, cargo-deny); blocks on failure
 - SessionStart: print pinned Bevy version, current milestone, git status
 - PostToolUse on `Cargo.toml` edits: print the dependency policy as a non-blocking reminder
 
-Heavy checks run only at commit time; a Bevy workspace clippy is too slow for every edit.
+Heavy checks run only at commit time; a Bevy workspace clippy is too slow for every edit. `just dev-check` is the mutating variant for interactive use.
 
 **Skills**:
 - `/spec`: scaffold a milestone spec from a template mirroring the design invariants
