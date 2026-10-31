@@ -10,9 +10,10 @@ Pong in Rust + Bevy with escalating chaos twists, built for two kids (9 and 11) 
 - `docs/adr/`: decision records; `docs/claude-code-setup.md`: this tooling
 
 ## Toolchain
-- Bevy 0.20, exact patch pinned in `Cargo.toml` from plan phase 2. Verify every API on docs.rs for that version.
-- Commands are `just` recipes only: `just dev-check` (fmt, clippy -D warnings, nextest, doctests), `just ci-check` (same, fmt in check mode), `just test`, `just run`.
+- Bevy `=0.20.1`, pinned in the workspace `Cargo.toml`. Verify every API on docs.rs for that exact version.
+- Commands are `just` recipes only: `just dev-check` (fmt, clippy -D warnings, nextest, doctests), `just ci-check` (same, fmt in check mode, plus cargo-deny), `just test`, `just test-core`, `just run`, `just build-release`.
 - Workspace: `pong_core` (render-free simulation, headless-testable) and `pong` (shell: window, render, audio, UI).
+- Clippy pedantic with no upfront allows. Silence inline with `#[expect(clippy::x, reason = "...")]`; promote to a workspace allow only at ~5 expects across 2+ modules.
 
 ## Non-negotiables
 1. Verify every Bevy API against docs.rs for the pinned version before writing it. Use the `bevy-api-check` agent.

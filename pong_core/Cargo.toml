@@ -1,0 +1,17 @@
+[package]
+name = "pong_core"
+description = "Render-free simulation core for bevy_pong: kernel, vocabulary, features, persistence, tuning."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Render-free by construction (ADR 0001): no render, window, audio, or UI features here.
+bevy = { workspace = true, features = ["std", "async_executor", "bevy_asset", "bevy_state"] }
+serde.workspace = true
+ron.workspace = true
+
+[lints]
+workspace = true
