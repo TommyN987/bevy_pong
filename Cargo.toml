@@ -1,0 +1,31 @@
+[workspace]
+resolver = "3"
+members = ["pong_core", "pong"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+# Pinned exactly: Bevy breaks every ~4 months and third-party crates lag (docs/architecture.md).
+bevy = { version = "=0.20.1", default-features = false }
+serde = { version = "1", features = ["derive"] }
+ron = "0.12"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# No upfront allows. Silence a lint inline with `#[expect(clippy::..., reason = "...")]`;
+# promote it to an allow here, with the reason, once it carries ~5 expects across 2+ modules.
+
+# Fast iteration: optimize dependencies fully, workspace crates lightly.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

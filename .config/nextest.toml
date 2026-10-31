@@ -1,0 +1,8 @@
+# cargo-nextest configuration. The soak test (spec 1.5.2) must finish under 30s;
+# a test exceeding the slow timeout is terminated and fails the run.
+[profile.default]
+slow-timeout = { period = "30s", terminate-after = 1 }
+
+[profile.ci]
+fail-fast = false
+slow-timeout = { period = "30s", terminate-after = 1 }

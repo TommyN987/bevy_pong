@@ -1,0 +1,20 @@
+[package]
+name = "pong"
+description = "bevy_pong shell: window, rendering, audio, UI. Depends on pong_core."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+pong_core = { path = "../pong_core" }
+bevy = { workspace = true, features = ["2d", "2d_api", "ui", "audio"] }
+
+[features]
+# Development-only. Dynamic linking speeds iterative builds; a release build with this
+# feature is rejected at compile time (src/main.rs).
+dev = ["bevy/dynamic_linking"]
+
+[lints]
+workspace = true
