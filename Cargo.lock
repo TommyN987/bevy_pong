@@ -4378,6 +4378,7 @@ dependencies = [
  "bevy",
  "ron",
  "serde",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

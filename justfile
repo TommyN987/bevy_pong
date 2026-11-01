@@ -26,9 +26,8 @@ lint:
     cargo clippy --workspace --all-targets -- -D warnings
 
 # Full test suite: nextest for unit and integration tests, cargo for doctests.
-# `--no-tests=warn` is temporary until plan phase 3 adds the first tests; remove it then.
 test:
-    cargo nextest run --workspace --no-tests=warn
+    cargo nextest run --workspace
     cargo test --workspace --doc
 
 # Core crate tests only: the fast loop (ADR 0001).
@@ -37,7 +36,7 @@ test-core:
 
 # License, advisory, and source checks.
 deny:
-    cargo deny check
+    cargo deny --log-level error check
 
 # Interactive gate: formats in place, then lint, then tests.
 dev-check: fmt lint test
