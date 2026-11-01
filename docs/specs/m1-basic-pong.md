@@ -60,7 +60,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 
 ## 1.3 Core vocabulary
 
-- **1.3.1 MUST** `Seat { Left, Right }`, `Side`, `Controller { Human(Seat), Ai(Difficulty) }`. Done: each used by two or more features.
+- **1.3.1 MUST** `Seat { Left, Right }`, `Controller { Human(Seat), Ai(Difficulty) }`. Done: each used by two or more features.
 - **1.3.2 MUST** Events: `BallHitPaddle { seat }`, `BallHitWall`, `PointScored { side }`, `MatchEnded { winner }`, `Notice { text }`. Done: each emitted by exactly one feature, observed by the shell.
 - **1.3.3 MUST** Vocabulary under a dozen types. Done: counted at milestone close.
 - **1.3.4 WONT** `EffectId`, `BossId`, `ItemId`.
@@ -68,21 +68,26 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 ## 1.4 Core features
 
 ### 1.4.1 Seats and intents
+
 - **MUST** `PaddleIntent { Up, Down, None }` per seat; latched in `Update`, consumed and cleared in `FixedUpdate`. Done: a one-frame press spanning two fixed steps moves the paddle exactly once.
 - **MUST** Key bindings per seat in tuning. Done: changing the RON changes keys without recompiling in dev.
 - **MUST** Action and reserved keys exist in the binding schema. Done: present in the RON.
 
 ### 1.4.2 Ball
+
 - **MUST** `Position`, `Velocity`, `Ball`, `Snap` marker. Done: snap set on serve, cleared by the view after one frame.
 - **MUST** Serve: countdown, then launch toward the side that conceded at a random angle within a tunable cone from the seeded random resource. Done: fixed seed reproduces the angle.
 
 ### 1.4.3 Paddle
+
 - **MUST** `Paddle` with a size setter clamped to tuning bounds; speed from tuning; clamped to the arena. Done: clamp tests at both edges.
 
 ### 1.4.4 Physics
+
 - **MUST** Systems in phases `integrate` and `collide` wrapping 1.2. Done: a headless rally produces `BallHitPaddle` and `BallHitWall` in the expected sequence.
 
 ### 1.4.5 Rules
+
 - **MUST** `MatchConfig { left, right, points_to_win }`. Done: built by the menu, read by rules.
 - **MUST** Substates `Countdown`, `Playing`, `PointScored`, `Paused`, `MatchOver` under `InMatch`. Done: a headless test walks the cycle to `MatchOver`.
 - **MUST** Score per side; `MatchEnded` at target. Done: test.
@@ -92,22 +97,26 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 - **WONT** Deuce or best-of formats.
 
 ### 1.4.6 AI, mirror controller
+
 - **MUST** Reaction delay and prediction error from a difficulty entry; target from 1.2.6, recomputed when the ball turns toward the AI; error resampled per approach. Done: zero delay and zero error returns every ball; large error misses some over a seeded run.
 - **MUST** AI reads no future ball position beyond 1.2.6. Done: review item at milestone close.
 - **MUST** Three difficulty entries in tuning. Done: present.
 - **WONT** Adaptive difficulty.
 
 ### 1.4.7 Sanity and heal
+
 - **MUST** `sanity` phase checks finite velocity, ball within arena plus margin, paddles within arena. Done: injected NaN fires the fault.
 - **MUST** Dev panics; release emits `SimFault`, heal re-serves and logs at error. Done: both paths tested with the handler toggled.
 
 ### 1.4.8 Tuning
+
 - **MUST** One embedded RON deserialized at `Boot` into a validated `Tuning` resource. Done: CI parses the embedded file; validation rejects a crafted out-of-range value.
 - **MUST** Dev override from the source tree with hot reload; invalid override keeps last good values and logs. Done: manual check plus unit test of keep-last-good.
 - **MUST** Schema: arena size, paddle size bounds and speed, ball speed, cap, per-hit increase, maximum reflection angle, serve cone, countdown, points-to-win list and default, key bindings per seat, AI difficulties, color palette. Done: all present.
 - **MUST** Palette is a list; profiles store the color value. Done: a profile keeps its color after the palette is reordered, by test.
 
 ### 1.4.9 Persistence
+
 - **MUST** `SavePaths` resource injected by the shell; core reads and writes with `std::fs`, atomic via temp file and rename. Done: an injected failing writer leaves the original intact.
 - **MUST** Profiles file v1: id, display name, color value, records (wins, losses, longest rally). Done: round-trip test.
 - **MUST** Settings file v1: master volume, window mode. Done: round-trip test.
@@ -118,6 +127,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 - **SHOULD** Records written at `MatchEnded` only. Done: no write during play, by test.
 
 ### 1.4.10 App assembly
+
 - **MUST** `AppState { Boot, Menu, InMatch }`; `Boot` leaves only when tuning, settings, profiles are resolved. Done: a held load produces no transition.
 - **MUST** Fixed-step phase sets in order: intent, effects, integrate, collide, rules, sanity. Done: every core system declares a phase, checked by a schedule-walking test.
 - **MUST** One core plugin group used by both shell and testing module. Done: same group in both.
@@ -131,10 +141,12 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 ## 1.6 Shell
 
 ### 1.6.1 Ports
+
 - **MUST** Keyboard adapter maps physical keys from tuning to `PaddleIntent` per seat; `SavePaths` from XDG directories. Done: a held key maps to an intent by test.
 - **MUST** Focus loss clears intents and enters `Paused` only from `Playing`. Done: manual check plus a test sending the focus event.
 
 ### 1.6.2 Views
+
 - **MUST** Arena, paddles, ball as `Mesh2d` with HDR colors; `Transform` from `Position` with interpolation; snap honored. Done: no visible judder at a frame rate unequal to the fixed rate.
 - **MUST** Camera fits the arena with letterboxing; no pixel units in shell logic. Done: resizing keeps the aspect.
 - **MUST** Bloom with HDR, TonyMcMapface, deband dither. Done: glow visible.
@@ -142,6 +154,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 - **MAY** Screen shake on a point. Done: visible.
 
 ### 1.6.3 UI
+
 - **MUST** Screens: boot, main menu (play, settings, quit), mode select (vs human, vs computer, difficulty stars, points-to-win), profile select per seat with seat cue, match HUD with score, pause, match over with winner and records delta, notice line. Done: full flow playable keyboard-only.
 - **MUST** During a seat's turn only that seat's keys move the cursor; D/Right confirms; A/Left and Escape back out. Done: the other seat's keys do nothing, by test.
 - **MUST** Profile creation: typed name, color from the palette. Done: new profile appears in the file.
@@ -152,15 +165,18 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 - **MUST** Settings screen: volume, window mode only. Done: both change and persist.
 
 ### 1.6.4 Audio
+
 - **MUST** Audio plugin observes `BallHitPaddle`, `BallHitWall`, `PointScored`, `MatchEnded` and plays cues; volume from settings. Done: audible; a test asserts one play command per event with audio disabled.
 - **MUST** Sounds synthesized at startup into assets by a `SoundBank` builder behind a trait; the cue map depends only on cue names. Done: four distinct sounds; unit test asserts buffers finite, non-silent, in range.
 - **SHOULD** Builder swappable for an embedded-file builder without touching the cue map. Done: cue map has no import from the synth module.
 - **WONT** Music.
 
 ### 1.6.5 Overlay
+
 - **SHOULD** Function-key toggle: fixed-step rate, frame rate, ball speed, AI target and error, state and substate. Done: visible in a release build.
 
 ### 1.6.6 Window
+
 - **MUST** Title; default borderless fullscreen; mode from settings. Done: first start fullscreen; after toggling, windowed on next start.
 - **MAY** Alt+Enter toggles mode. Done: works.
 
