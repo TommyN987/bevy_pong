@@ -51,6 +51,74 @@ impl Radius {
     }
 }
 
+/// A closed interval of lengths a size may take, in arena units.
+/// Invariant: both ends positive and finite, `min <= max`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LengthBounds {
+    min: f32,
+    max: f32,
+}
+
+/// Why [`LengthBounds::new`] refused its ends.
+#[derive(Debug, Clone, Copy, PartialEq, thiserror::Error)]
+pub enum InvalidLengthBounds {
+    /// The lower end was not positive and finite.
+    #[error("minimum {0}")]
+    Min(OutOfRange),
+    /// The upper end was not positive and finite.
+    #[error("maximum {0}")]
+    Max(OutOfRange),
+    /// The ends were valid but reversed.
+    #[error("maximum {max} is below minimum {min}")]
+    MaxBelowMin {
+        /// The lower end given.
+        min: f32,
+        /// The upper end given.
+        max: f32,
+    },
+}
+
+impl LengthBounds {
+    /// # Errors
+    /// An end that is not positive and finite, or a maximum below the minimum.
+    pub fn new(min: f32, max: f32) -> Result<Self, InvalidLengthBounds> {
+        let min = Range::PositiveFinite
+            .check(min)
+            .map_err(InvalidLengthBounds::Min)?;
+        let max = Range::PositiveFinite
+            .check(max)
+            .map_err(InvalidLengthBounds::Max)?;
+        if max < min {
+            return Err(InvalidLengthBounds::MaxBelowMin { min, max });
+        }
+        Ok(Self { min, max })
+    }
+
+    /// The lower end.
+    #[must_use]
+    pub const fn min(self) -> f32 {
+        self.min
+    }
+
+    /// The upper end.
+    #[must_use]
+    pub const fn max(self) -> f32 {
+        self.max
+    }
+
+    /// Whether `length` lies within the bounds, ends included.
+    #[must_use]
+    pub fn contains(self, length: f32) -> bool {
+        (self.min..=self.max).contains(&length)
+    }
+
+    /// `length` pulled to the nearest end if it lies outside.
+    #[must_use]
+    pub fn clamp(self, length: f32) -> f32 {
+        length.clamp(self.min, self.max)
+    }
+}
+
 /// The playfield, centered on the origin with y up.
 ///
 /// Goal lines are the vertical edges at `±half_extents.x`; walls are the
@@ -132,7 +200,7 @@ impl Arena {
 mod tests {
     use bevy::math::Vec2;
 
-    use super::{Arena, InvalidArena, Radius, Side};
+    use super::{Arena, InvalidArena, InvalidLengthBounds, LengthBounds, Radius, Side};
     use crate::kernel::test_support::{assert_near, assert_vec_near, standard_arena};
     use crate::kernel::{OutOfRange, Range};
 
@@ -177,6 +245,34 @@ mod tests {
             panic!("valid radius rejected");
         };
         assert_near(radius.value(), 1.5, 1e-6);
+    }
+
+    #[test]
+    fn length_bounds_clamp_and_contain_between_valid_ends() {
+        let Ok(bounds) = LengthBounds::new(8.0, 30.0) else {
+            panic!("valid bounds rejected");
+        };
+        assert_near(bounds.clamp(100.0), 30.0, 1e-6);
+        assert_near(bounds.clamp(1.0), 8.0, 1e-6);
+        assert_near(bounds.clamp(14.0), 14.0, 1e-6);
+        assert!(bounds.contains(8.0) && bounds.contains(30.0) && !bounds.contains(30.5));
+        assert!(LengthBounds::new(8.0, 8.0).is_ok());
+    }
+
+    #[test]
+    fn length_bounds_reject_bad_ends_and_reversed_ends() {
+        assert!(matches!(
+            LengthBounds::new(0.0, 30.0),
+            Err(InvalidLengthBounds::Min(_))
+        ));
+        assert!(matches!(
+            LengthBounds::new(8.0, f32::NAN),
+            Err(InvalidLengthBounds::Max(_))
+        ));
+        assert_eq!(
+            LengthBounds::new(8.0, 4.0),
+            Err(InvalidLengthBounds::MaxBelowMin { min: 8.0, max: 4.0 })
+        );
     }
 
     #[test]

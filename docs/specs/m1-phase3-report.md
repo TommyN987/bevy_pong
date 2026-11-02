@@ -11,6 +11,9 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) per plan rule P.6, each wit
 | 1.3.2 | `BallHitPaddle { side }` instead of `{ seat }`. The AI's paddle has no seat (`Controller::Ai`), so a seat field could not be filled in a vs-computer match. | Spec 1.3.2 amended, 2026-11-02. |
 | 1.3.2 | `PointScored { scorer }` instead of `{ side }`. "Side" did not say whether it meant the scorer or the conceder. | Spec 1.3.2 amended, 2026-11-02. |
 | 1.2.6 | The done-condition says "equals simulation". No simulation exists before 3.6, so the 3.1 test compares `crossing_y` against an independent analytic zigzag within one unit. | Deferred: add the simulation-equality test in 3.6. |
+| 1.4.1 | The binding schema names the fourth key `back`, where the spec says "reserved". The key backs out of menus now and is reserved in play; the name follows its live role. | This report, 2026-11-02; spec 1.4.1 wording to amend at milestone close. |
+| 1.4.8 | Angles in the tuning file are degrees, converted to radians at validation. The spec names "maximum reflection angle" without a unit; degrees are what a person editing the file expects. | File comment and `TuningFile` doc, 2026-11-02. |
+| ADR 0001 | `pong_core` enables three more Bevy features: `bevy_color` (palette type), `keyboard` and `serialize` (`KeyCode` bindings as data). `cargo tree` confirmed the tree still holds no render, window, audio, or UI crate. | Comment on the dependency in `pong_core/Cargo.toml`, 2026-11-02; ADR 0001 consequence to amend at milestone close. |
 | 1.1 | `thiserror` 2 added to `pong_core`. Not listed in spec 1.1. Treadmill justification: proc-macro only, no Bevy types, the same major Bevy already compiles, so it cannot lag a Bevy upgrade. | Comment on the dependency in the workspace `Cargo.toml`, 2026-11-01. |
 
 ## Decisions taken in this phase
@@ -18,6 +21,10 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) per plan rule P.6, each wit
 - Kernel constructors are the single source of range truth. `kernel::Range` owns each predicate and its wording; tuning validation (3.3) calls the constructors and reports their errors rather than keeping its own range table.
 - Validation errors embed the inner `OutOfRange` in their message rather than exposing it as a `source`, so a report prints one sentence.
 - Swept collision treats rectangle corners as square. A corner clip is reported a hair early; paddles are struck on faces, and every contact maps to one of four `Face`s.
+- Tuning is a `Resource` and an `Asset` at once. The loader validates, so a file that fails validation never becomes an asset; on hot reload (3.9) the asset system keeps the previous good asset by itself.
+- Tuning errors name the file path of the refused value as a string (`ball.radius`) rather than one enum variant per field. Nothing branches on which field failed; the name exists to be printed.
+- `expect` is allowed in test code only (`clippy.toml`, `allow-expect-in-tests`); production core still denies `unwrap` and `expect`. A test whose fixture is invalid should stop with the reason, and `unwrap_or_else(|e| panic!(..))` was the same thing spelled longer.
+- `clippy::needless_pass_by_value` fires on every Bevy system parameter. It is silenced inline per system with a reason; promote to a workspace allow when it reaches about five across two modules.
 - Core events are Bevy 0.20.1 `Message` types (buffered), not observer `Event`s. Shell audio and views read them per frame; buffers written in `FixedUpdate` survive to `Update` readers in the same frame.
 
 ## Items
@@ -25,5 +32,6 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) per plan rule P.6, each wit
 | Item | Status |
 |---|---|
 | 3.1 Kernel | done, reviewed, committed |
-| 3.2 Vocabulary | done; nine of twelve vocabulary types |
-| 3.3 Tuning | next |
+| 3.2 Vocabulary | done, reviewed, committed; nine of twelve vocabulary types |
+| 3.3 Tuning | done; dev override deferred to 3.9 per plan |
+| 3.4 App assembly | next |
