@@ -18,12 +18,12 @@ Everything finer-grained belongs to the milestone specs.
 
 ## Candidates considered
 
-| Candidate | Shape | Outcome |
-|---|---|---|
-| Arch-1 lean idiomatic | single crate, `Transform` as state, fixed step without interpolation, effects as components | not chosen: no stable effect identity, visible judder |
-| Arch-2 core and shell | workspace, render-free core, logical position with interpolated view, effect descriptors, hand-rolled physics | **chosen, refined below** |
-| Arch-3 engine-leaning | avian2d, leafwing input, hanabi, thin game code | not chosen: AI cannot share avian's math (constraint 4); three crates on the upgrade treadmill |
-| Arch-4 plain-Rust simulation | simulation outside ECS, Bevy only renders | rejected: abandons the frame's ECS learning goal |
+| Candidate                    | Shape                                                                                                         | Outcome                                                                                        |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Arch-1 lean idiomatic        | single crate, `Transform` as state, fixed step without interpolation, effects as components                   | not chosen: no stable effect identity, visible judder                                          |
+| Arch-2 core and shell        | workspace, render-free core, logical position with interpolated view, effect descriptors, hand-rolled physics | **chosen, refined below**                                                                      |
+| Arch-3 engine-leaning        | avian2d, leafwing input, hanabi, thin game code                                                               | not chosen: AI cannot share avian's math (constraint 4); three crates on the upgrade treadmill |
+| Arch-4 plain-Rust simulation | simulation outside ECS, Bevy only renders                                                                     | rejected: abandons the frame's ECS learning goal                                               |
 
 Refinements applied to Arch-2 during review: depend on `bevy` with feature flags rather than sub-crates; the effect descriptor is a spawn table, not an interpreter; the upgrade-isolation argument for the split was withdrawn, the split is justified by test speed and by making render types unreachable from simulation code.
 
@@ -65,7 +65,7 @@ Orientational shape at the final milestone:
 ```
 pong_core/src/
   kernel/        geometry, integrate, collide, predict      (no ECS)
-  domain/        Seat, Side, EffectId, BossId, ItemId, events
+  domain/        Seat, EffectId, BossId, ItemId, events
   features/
     seats/       Seat, intent latch, controller kind
     ball/        Ball, Velocity, Position, snap marker
@@ -163,16 +163,16 @@ Principles:
 
 Mechanism: typed error enums only where a caller branches (persistence load and save, tuning validation, audio init). Interior systems return `Result<(), BevyError>` with context and go to Bevy's app-level error handler, set per build profile. Invariant checks panic in dev and emit a `SimFault` event in release, answered by a heal system that logs the state at error level. Tuning and save data use validated constructors, so invalid values cannot enter. A panic hook writes a crash file to the XDG state directory.
 
-| Class | Example | Detect | Dev | Release | Notice | Test |
-|---|---|---|---|---|---|---|
-| Programmer invariant | missing component, impossible transition | `?` in a `Result` system, invariant macro | panic | log error, skip system this step | none | headless App tests |
-| Simulation fault | NaN velocity, ball outside arena | sanity system each fixed step | panic | reset rally, log | none | seeded soak test with random intents |
-| Persistence read | corrupt, newer version, unreadable | `LoadError::{Corrupt, NewerVersion, Io}` | as release | back up, fresh model | one line | fixture per kind |
-| Persistence write | disk full, permission | `SaveError::Io` | as release | keep in memory, retry at next match end | once per session | unwritable injected path |
-| Data validation | tuning out of range, negative wins | validated constructor | CI test fails on embedded file; dev override keeps last good values, shows banner | cannot occur for embedded; save treated as Corrupt | none | CI range-checks embedded tuning |
-| Audio init | no device | `Result` at plugin startup | log, continue silent | silent mode | none | shell test with audio disabled |
-| Render or window loss | GPU lost, no window | Bevy render error handler | exit with log | exit with log and crash file | impossible | none, accepted |
-| Uncaught panic | anything missed above | panic hook | default | crash file, exit | none | none, accepted; data safe by principle 5 |
+| Class                 | Example                                  | Detect                                    | Dev                                                                               | Release                                            | Notice           | Test                                     |
+| --------------------- | ---------------------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------- | -------------------------------------------------- | ---------------- | ---------------------------------------- |
+| Programmer invariant  | missing component, impossible transition | `?` in a `Result` system, invariant macro | panic                                                                             | log error, skip system this step                   | none             | headless App tests                       |
+| Simulation fault      | NaN velocity, ball outside arena         | sanity system each fixed step             | panic                                                                             | reset rally, log                                   | none             | seeded soak test with random intents     |
+| Persistence read      | corrupt, newer version, unreadable       | `LoadError::{Corrupt, NewerVersion, Io}`  | as release                                                                        | back up, fresh model                               | one line         | fixture per kind                         |
+| Persistence write     | disk full, permission                    | `SaveError::Io`                           | as release                                                                        | keep in memory, retry at next match end            | once per session | unwritable injected path                 |
+| Data validation       | tuning out of range, negative wins       | validated constructor                     | CI test fails on embedded file; dev override keeps last good values, shows banner | cannot occur for embedded; save treated as Corrupt | none             | CI range-checks embedded tuning          |
+| Audio init            | no device                                | `Result` at plugin startup                | log, continue silent                                                              | silent mode                                        | none             | shell test with audio disabled           |
+| Render or window loss | GPU lost, no window                      | Bevy render error handler                 | exit with log                                                                     | exit with log and crash file                       | impossible       | none, accepted                           |
+| Uncaught panic        | anything missed above                    | panic hook                                | default                                                                           | crash file, exit                                   | none             | none, accepted; data safe by principle 5 |
 
 The soak test runs with panic enabled, so a fault that release would heal still fails CI.
 

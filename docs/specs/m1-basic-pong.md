@@ -61,7 +61,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 ## 1.3 Core vocabulary
 
 - **1.3.1 MUST** `Seat { Left, Right }`, `Controller { Human(Seat), Ai(Difficulty) }`. Done: each used by two or more features.
-- **1.3.2 MUST** Events: `BallHitPaddle { seat }`, `BallHitWall`, `PointScored { side }`, `MatchEnded { winner }`, `Notice { text }`. Done: each emitted by exactly one feature, observed by the shell.
+- **1.3.2 MUST** Events: `BallHitPaddle { side }`, `BallHitWall`, `PointScored { scorer }`, `MatchEnded { winner }`, `Notice { text }`. Done: each emitted by exactly one feature, observed by the shell. Amended 2026-11-02 (phase 3 report): `BallHitPaddle` names the paddle's side, since an AI paddle has no seat; `PointScored` names the scorer, since "side" did not say scorer or conceder.
 - **1.3.3 MUST** Vocabulary under a dozen types. Done: counted at milestone close.
 - **1.3.4 WONT** `EffectId`, `BossId`, `ItemId`.
 

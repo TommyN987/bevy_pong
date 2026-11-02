@@ -7,4 +7,5 @@
 // The error policy (docs/architecture.md) forbids bare panics in core.
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 
+pub mod domain;
 pub mod kernel;
