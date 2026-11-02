@@ -9,7 +9,17 @@ publish.workspace = true
 
 [dependencies]
 # Render-free by construction (ADR 0001): no render, window, audio, or UI features here.
-bevy = { workspace = true, features = ["std", "async_executor", "bevy_asset", "bevy_state"] }
+# `keyboard` and `serialize` let tuning carry `KeyCode` bindings as data; `bevy_color` is the
+# palette's color type. None pulls a render, window, audio, or UI crate (checked on docs.rs).
+bevy = { workspace = true, features = [
+  "std",
+  "async_executor",
+  "bevy_asset",
+  "bevy_state",
+  "bevy_color",
+  "keyboard",
+  "serialize",
+] }
 serde.workspace = true
 ron.workspace = true
 thiserror.workspace = true

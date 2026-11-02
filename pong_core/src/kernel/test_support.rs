@@ -7,7 +7,7 @@ use super::geometry::{Arena, Radius};
 
 /// The M1 arena, 160 by 90 arena units (spec decisions).
 pub(crate) fn standard_arena() -> Arena {
-    Arena::new(160.0, 90.0).unwrap_or_else(|err| panic!("standard arena rejected: {err}"))
+    Arena::new(160.0, 90.0).expect("160 by 90 is a valid arena")
 }
 
 /// Panics unless `actual` is within `tolerance` of `expected`.
@@ -30,5 +30,5 @@ pub(crate) fn assert_vec_near(actual: Vec2, expected: Vec2, tolerance: f32) {
 
 /// A ball one arena unit across its radius.
 pub(crate) fn unit_radius() -> Radius {
-    Radius::new(1.0).unwrap_or_else(|err| panic!("unit radius rejected: {err}"))
+    Radius::new(1.0).expect("1.0 is a valid radius")
 }

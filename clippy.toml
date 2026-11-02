@@ -1,0 +1,5 @@
+# Production core forbids `unwrap` and `expect` (pong_core/src/lib.rs, error policy in
+# docs/architecture.md). Tests are the one place a panic is the right answer: a test whose
+# fixture is invalid should stop with the reason. `unwrap` stays denied even there, so every
+# test panic carries a message.
+allow-expect-in-tests = true

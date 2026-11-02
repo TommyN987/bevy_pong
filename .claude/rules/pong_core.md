@@ -11,6 +11,6 @@ paths:
 - Components own their invariants (clamping setters). Any feature may mutate through that API. Cross-feature triggers are events, never direct calls.
 - Extension points are exhaustive enums (`EffectId`, `BossId`, `ItemId`). Match them exhaustively; no wildcard arms.
 - Core emits events and reads port resources (intents, beat clock, `SavePaths`). It never calls the shell.
-- Errors: typed enums only at boundaries (persistence, tuning validation); `Result<(), BevyError>` with context inside systems; invariants through the sanity machinery. No `unwrap` or `expect` in core (clippy denies `unwrap_used`).
+- Errors: typed enums only at boundaries (persistence, tuning validation); `Result<(), BevyError>` with context inside systems; invariants through the sanity machinery. No `unwrap` or `expect` in production core (clippy denies both). Test code may `expect` with a message that says what was expected (`clippy.toml`); `unwrap` stays denied everywhere.
 - Randomness comes from the seeded random resource only.
 - Before writing any Bevy API, verify it against docs.rs for the version pinned in `Cargo.toml` (use the `bevy-api-check` agent).

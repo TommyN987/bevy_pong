@@ -5,7 +5,9 @@
 //! Feature modules arrive with the milestones in docs/specs/.
 
 // The error policy (docs/architecture.md) forbids bare panics in core.
+// Test code may `expect` (see clippy.toml); `unwrap` is denied everywhere.
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 
 pub mod domain;
+pub mod features;
 pub mod kernel;

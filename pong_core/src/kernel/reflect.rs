@@ -138,7 +138,7 @@ mod tests {
     const SPEED: f32 = 100.0;
 
     fn max_angle() -> MaxDeflection {
-        MaxDeflection::new(FRAC_PI_3).unwrap_or_else(|err| panic!("sixty degrees rejected: {err}"))
+        MaxDeflection::new(FRAC_PI_3).expect("sixty degrees is below a right angle")
     }
 
     /// Offset of a ball at `ball_y` on a paddle centered at zero with half-height 6.
@@ -217,7 +217,7 @@ mod tests {
 
     fn speed_rule(per_hit_increase: f32) -> SpeedRule {
         SpeedRule::new(per_hit_increase, CAP)
-            .unwrap_or_else(|err| panic!("speed rule rejected: {err}"))
+            .expect("a non-negative increase and a positive cap form a valid rule")
     }
 
     #[test]
