@@ -26,14 +26,14 @@ thiserror.workspace = true
 
 [features]
 # The headless test harness (`src/testing`, spec 1.5.1). Shell tests and this crate's own
-# integration tests turn it on; a game build never compiles it.
-testing = []
+# integration tests turn it on; a game build never compiles it. Bevy's `debug` keeps system
+# names (the schedule walker names the system that forgot its phase) and carries the
+# schedule shuffle seed (spec 1.5.3).
+testing = ["bevy/debug"]
 
 [dev-dependencies]
-# Tests only: `debug` makes Bevy keep system names, so the schedule-walking test can say
-# which system forgot its phase. Resolver 3 keeps dev-dependency features out of normal builds.
-bevy = { workspace = true, features = ["debug"] }
-# A dev-dependency on itself turns `testing` on for this crate's integration tests.
+# A dev-dependency on itself turns `testing` on for every test build of this crate, the
+# unit tests included. Resolver 3 keeps it out of normal builds.
 pong_core = { path = ".", features = ["testing"] }
 
 [lints]
