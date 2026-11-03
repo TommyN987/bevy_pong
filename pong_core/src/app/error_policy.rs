@@ -35,13 +35,21 @@ impl ErrorPolicy {
     }
 }
 
-/// Installs the handler for this build. Contract: an app sets its error handler
-/// once, so the shell must not set its own.
-pub struct ErrorPolicyPlugin;
+/// Installs the handler for the given policy; the default is this build's.
+/// Contract: an app sets its error handler once, so the shell must not set
+/// its own. The test harness overrides the group's instance with `Dev`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ErrorPolicyPlugin(pub ErrorPolicy);
+
+impl Default for ErrorPolicyPlugin {
+    fn default() -> Self {
+        Self(ErrorPolicy::for_this_build())
+    }
+}
 
 impl Plugin for ErrorPolicyPlugin {
     fn build(&self, app: &mut App) {
-        app.set_error_handler(ErrorPolicy::for_this_build().handler());
+        app.set_error_handler(self.0.handler());
     }
 }
 
@@ -62,9 +70,8 @@ mod tests {
         Err(BevyError::from("deliberate test failure"))
     }
 
-    fn app_with_failing_system(policy: ErrorPolicy) -> App {
+    fn app_with_failing_system() -> App {
         let mut app = App::new();
-        app.set_error_handler(policy.handler());
         app.init_resource::<StepsAfterFailure>();
         app.add_systems(
             Update,
@@ -79,12 +86,15 @@ mod tests {
     #[test]
     #[should_panic(expected = "deliberate test failure")]
     fn under_the_dev_policy_a_failing_system_panics_the_app() {
-        app_with_failing_system(ErrorPolicy::Dev).update();
+        let mut app = app_with_failing_system();
+        app.set_error_handler(ErrorPolicy::Dev.handler());
+        app.update();
     }
 
     #[test]
     fn under_the_release_policy_a_failing_system_is_logged_and_the_app_goes_on() {
-        let mut app = app_with_failing_system(ErrorPolicy::Release);
+        let mut app = app_with_failing_system();
+        app.set_error_handler(ErrorPolicy::Release.handler());
         app.update();
         app.update();
         assert_eq!(app.world().resource::<StepsAfterFailure>().0, 2);
@@ -101,10 +111,18 @@ mod tests {
     }
 
     #[test]
+    fn the_plugin_installs_the_policy_it_is_given() {
+        let mut app = app_with_failing_system();
+        app.add_plugins(ErrorPolicyPlugin(ErrorPolicy::Release));
+        app.update();
+        assert_eq!(app.world().resource::<StepsAfterFailure>().0, 1);
+    }
+
+    #[test]
     fn the_plugin_installs_a_handler() {
         let mut app = App::new();
         assert!(app.get_error_handler().is_none());
-        app.add_plugins(ErrorPolicyPlugin);
+        app.add_plugins(ErrorPolicyPlugin::default());
         assert!(app.get_error_handler().is_some());
     }
 }

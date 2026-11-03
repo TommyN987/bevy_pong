@@ -24,7 +24,7 @@ pub struct CorePlugins;
 impl PluginGroup for CorePlugins {
     fn build(self) -> PluginGroupBuilder {
         PluginGroupBuilder::start::<Self>()
-            .add(error_policy::ErrorPolicyPlugin)
+            .add(error_policy::ErrorPolicyPlugin::default())
             .add(states::AppStatePlugin)
             .add(phases::PhasesPlugin)
             .add(TuningPlugin)
@@ -45,7 +45,7 @@ mod tests {
 
     use super::CorePlugins;
     use super::error_policy::ErrorPolicyPlugin;
-    use super::phases::{PhasesPlugin, unphased_fixed_step_systems};
+    use super::phases::PhasesPlugin;
     use super::states::{AppState, AppStatePlugin};
     use crate::features::ball::BallPlugin;
     use crate::features::paddle::PaddlePlugin;
@@ -53,6 +53,7 @@ mod tests {
     use crate::features::rules::RulesPlugin;
     use crate::features::seats::SeatsPlugin;
     use crate::features::tuning::TuningPlugin;
+    use crate::testing::unphased_fixed_step_systems;
 
     fn headless_core() -> App {
         let mut app = App::new();

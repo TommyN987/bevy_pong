@@ -20,10 +20,14 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) per plan rule P.6, each wit
 | 1.4.8 | The tuning schema gains `paddle.inset`, the distance from the goal line to the paddle's back face. The spec schema lists no such value, and a paddle sitting on the goal line makes "crossed the line" ambiguous. | `tuning.ron` and `PaddleTuning::inset`, 2026-11-03. |
 | 1.4.2 | `Position`, `Velocity`, and `Snap` are ball-feature components, not vocabulary. The paddle keeps its own `center_y`, and the shell's paddle view interpolates that (rule 8: one view per core feature). Vocabulary stays at eleven: `Random` and `Serve` joined it. | This report, 2026-11-03. |
 | 1.3 | `Serve { toward }` is an internal trigger from rules to ball, emitted by rules and read by the ball feature, not the shell. Rule 5 (cross-feature triggers are events) outweighed the "observed by the shell" wording of 1.3.2. | This report, 2026-11-03. Vocabulary count at close: eleven. |
-| 1.5.1 | The test harness exists early, in `src/testing/` under `#[cfg(test)]`: a headless app driven one fixed step per frame via `TimeUpdateStrategy::ManualDuration`, a seeded `Random`, and message recorders. 3.8 puts it behind the cargo feature and adds the fakes it still lacks. | This report, 2026-11-03. |
+| 1.5.1 | The test harness exists early, in `src/testing/` under `#[cfg(test)]`: a headless app driven one fixed step per frame via `TimeUpdateStrategy::ManualDuration`, a seeded `Random`, and message recorders. 3.8 puts it behind the cargo feature and adds the fakes it still lacks. | This report, 2026-11-03. Done in 3.8: `testing` feature, `report_intent`, `leave_match`, `app_state`. |
 | 1.4.8 | The tuning schema gains `match_flow.point_pause_seconds`: how long a scored point stays on screen before the next countdown. The spec gives `PointScored` no duration; a value found by playtesting belongs in tuning, not in code. | `tuning.ron` and `MatchFlowTuning::point_pause`, 2026-11-03. |
 | 1.4.5 | The substate type is `MatchState` and the first serve of a match goes toward a side drawn from the seeded random source; the spec names neither. | This report, 2026-11-03. |
-| 1.5.1 | The schedule-walking check lives in `app::phases` under `#[cfg(test)]` for now, not in the `testing` module, which does not exist until 3.8. | Move it in 3.8. |
+| 1.5.1 | The schedule-walking check lives in `app::phases` under `#[cfg(test)]` for now, not in the `testing` module, which does not exist until 3.8. | Moved in 3.8: `testing::unphased_fixed_step_systems`. |
+| 1.5.1 | No temp-dir `SavePaths` fake: the `SavePaths` resource does not exist until persistence (plan phase 7). | Deferred to phase 7, with the resource. This report, 2026-11-03. |
+| 1.5.1 | The harness builds the whole `CorePlugins` group, not "chosen core plugins". Every headless test so far wants the full slice; a subset builder arrives with the first test that needs one. | This report, 2026-11-03. |
+| 1.5.2 | The soak checks the ball's invariants itself after every step (finite, inside the walls, no farther past a goal than one step's travel), because the sanity phase arrives in plan 6.1. Plan 6.1 reruns the soak and may drop the test-side checks. | `pong_core/tests/soak.rs`, 2026-11-03. |
+| 1.7.1 | `ErrorPolicyPlugin` carries its policy (`ErrorPolicyPlugin(ErrorPolicy)`, default: this build's), so the harness can force `Dev` and the soak panics on a fault in a release test run too. | `app::error_policy`, 2026-11-03. |
 | ADR 0001 | `pong_core` enables Bevy's `debug` feature as a dev-dependency only, so the schedule walker can name a system that forgot its phase. Resolver 3 keeps it out of normal builds. | Comment in `pong_core/Cargo.toml`, 2026-11-03. |
 | 1.1 | `thiserror` 2 added to `pong_core`. Not listed in spec 1.1. Treadmill justification: proc-macro only, no Bevy types, the same major Bevy already compiles, so it cannot lag a Bevy upgrade. | Comment on the dependency in the workspace `Cargo.toml`, 2026-11-01. |
 
@@ -52,6 +56,11 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) per plan rule P.6, each wit
 - Phase order is declared once as `FixedStepPhase::IN_ORDER` and chained pairwise, because arrays of sets do not implement the schedule-config trait and a tuple would be a second listing.
 - After `Schedule::initialize`, systems move out of the schedule graph into the executable; the walker lists them through `Schedule::systems()` and asks the graph only for set membership.
 - Core events are Bevy 0.20.1 `Message` types (buffered), not observer `Event`s. Shell audio and views read them per frame; buffers written in `FixedUpdate` survive to `Update` readers in the same frame.
+- The `testing` module is compiled under `cfg(any(test, feature = "testing"))`. The crate's integration tests get the feature through a dev-dependency on the crate itself (`pong_core = { path = ".", features = ["testing"] }`); the shell's tests will enable it the same way. A game build never compiles the harness.
+- The harness is test code outside `#[cfg(test)]`, so clippy's test exception for `expect` does not reach it; the module carries one `#![expect(clippy::expect_used)]` with the reason. A harness helper whose precondition fails stops the test with the message.
+- The harness overrides the group's error-policy plugin with `CorePlugins.set(ErrorPolicyPlugin(ErrorPolicy::Dev))`. The red for that test is visible only in a release build; it was observed by running the test in release without the override (fails: no panic) and with it (passes).
+- The harness pins every schedule to Bevy's `SingleThreadedExecutor`. In the workspace build the unified `multi_threaded` feature made the soak take 19 s (dispatch overhead on a tiny world) against 3 s core-only; pinned, both take 3 s. `ExecutorKind` no longer exists in 0.20.1; `Schedule::set_executor` takes the executor value.
+- The soak restarts a match the way the shell will: `MatchOver` → `Menu` (`leave_match`) → `InMatch` (`enter_match`). A same-state transition would not re-enter `InMatch`, so the detour through `Menu` is required, not a convenience.
 
 ## Items
 
@@ -64,4 +73,5 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) per plan rule P.6, each wit
 | 3.5 Seats and intents | done |
 | 3.6 Ball, paddle, physics | done |
 | 3.7 Rules | done |
-| 3.8 Testing module and soak | next |
+| 3.8 Testing module and soak | done; soak 2.9 s locally for 100,000 steps, 47 matches to five points |
+| 3.9 Dev override | next |
