@@ -5,6 +5,7 @@
 mod file;
 
 use std::collections::HashSet;
+use std::num::NonZeroU8;
 use std::time::Duration;
 
 use bevy::app::{App, Plugin, Startup, Update};
@@ -168,8 +169,8 @@ pub struct SeatKeys {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MatchFlowTuning {
     countdown: Duration,
-    points_to_win_options: Vec<u8>,
-    points_to_win_default: u8,
+    points_to_win_options: Vec<NonZeroU8>,
+    points_to_win_default: NonZeroU8,
 }
 
 /// One entry per [`Difficulty`]; adding a level makes the compiler ask for its numbers.
@@ -240,14 +241,11 @@ pub enum TuningError {
     /// No points-to-win choices offered.
     #[error("tuning match_flow.points_to_win_options is empty")]
     PointsToWinOptionsEmpty,
-    /// A points-to-win choice of zero would end a match before it starts.
-    #[error("tuning match_flow.points_to_win_options contains 0")]
-    PointsToWinZero,
     /// The default points-to-win is not one of the offered choices.
     #[error("tuning match_flow.points_to_win_default {default} is not among the options")]
     PointsToWinDefaultNotOffered {
         /// The default given.
-        default: u8,
+        default: NonZeroU8,
     },
     /// The same key appears twice across both seats' bindings.
     #[error("tuning bindings bind {key:?} more than once")]
@@ -448,9 +446,6 @@ impl MatchFlowTuning {
         if file.points_to_win_options.is_empty() {
             return Err(TuningError::PointsToWinOptionsEmpty);
         }
-        if file.points_to_win_options.contains(&0) {
-            return Err(TuningError::PointsToWinZero);
-        }
         if !file
             .points_to_win_options
             .contains(&file.points_to_win_default)
@@ -472,15 +467,15 @@ impl MatchFlowTuning {
         self.countdown
     }
 
-    /// The points-to-win choices offered in the menu, non-empty, all above zero.
+    /// The points-to-win choices offered in the menu, non-empty.
     #[must_use]
-    pub fn points_to_win_options(&self) -> &[u8] {
+    pub fn points_to_win_options(&self) -> &[NonZeroU8] {
         &self.points_to_win_options
     }
 
     /// The preselected choice, always one of the options.
     #[must_use]
-    pub const fn points_to_win_default(&self) -> u8 {
+    pub const fn points_to_win_default(&self) -> NonZeroU8 {
         self.points_to_win_default
     }
 }
@@ -762,7 +757,7 @@ mod tests {
             Tuning::from_ron(EMBEDDED_RON).expect("the embedded tuning file passes validation");
         assert_near(tuning.arena().half_extents().x, 80.0, 1e-6);
         assert_eq!(tuning.palette().len(), 8);
-        assert_eq!(tuning.match_flow().points_to_win_default(), 10);
+        assert_eq!(tuning.match_flow().points_to_win_default().get(), 10);
     }
 
     #[test]
@@ -784,11 +779,14 @@ mod tests {
     fn match_flow_and_ai_sections_become_durations_and_per_difficulty_entries() {
         let tuning = valid();
         assert_duration_near(tuning.match_flow().countdown(), Duration::from_millis(3000));
-        assert_eq!(
-            tuning.match_flow().points_to_win_options(),
-            &[5, 10, 15, 21]
-        );
-        assert_eq!(tuning.match_flow().points_to_win_default(), 10);
+        let options: Vec<u8> = tuning
+            .match_flow()
+            .points_to_win_options()
+            .iter()
+            .map(|n| n.get())
+            .collect();
+        assert_eq!(options, [5, 10, 15, 21]);
+        assert_eq!(tuning.match_flow().points_to_win_default().get(), 10);
         let one = tuning.ai().level(Difficulty::OneStar);
         assert_duration_near(one.reaction_delay(), Duration::from_millis(350));
         assert_near(one.prediction_error(), 12.0, 1e-6);
@@ -798,18 +796,19 @@ mod tests {
     }
 
     #[test]
-    fn match_flow_rules_reject_empty_options_zero_points_and_an_unoffered_default() {
+    fn match_flow_rules_reject_empty_options_and_an_unoffered_default() {
         assert!(matches!(
             Tuning::from_ron(&with("points_to_win_options", "[]")),
             Err(TuningError::PointsToWinOptionsEmpty)
         ));
+        // Zero is unrepresentable in the schema itself, so it fails at parse time.
         assert!(matches!(
             Tuning::from_ron(&with("points_to_win_options", "[0, 10]")),
-            Err(TuningError::PointsToWinZero)
+            Err(TuningError::Parse(_))
         ));
         assert!(matches!(
             Tuning::from_ron(&with("points_to_win_default", "7")),
-            Err(TuningError::PointsToWinDefaultNotOffered { default: 7 })
+            Err(TuningError::PointsToWinDefaultNotOffered { default }) if default.get() == 7
         ));
         assert!(matches!(
             Tuning::from_ron(&with("countdown_seconds", "-1.0")),

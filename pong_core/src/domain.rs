@@ -49,9 +49,36 @@ pub enum Controller {
     Ai(Difficulty),
 }
 
+use std::num::NonZeroU8;
+
 use bevy::ecs::message::Message;
+use bevy::ecs::resource::Resource;
 
 use crate::kernel::geometry::Side;
+
+/// Who plays each side and how long the match runs. Built by the menu at match
+/// start; read by seats, rules, and the AI. Points-to-win comes from the tuning
+/// options, so zero is unrepresentable rather than checked.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MatchConfig {
+    /// Controller of the left paddle.
+    pub left: Controller,
+    /// Controller of the right paddle.
+    pub right: Controller,
+    /// First to this many points wins.
+    pub points_to_win: NonZeroU8,
+}
+
+impl MatchConfig {
+    /// The controller holding `side`.
+    #[must_use]
+    pub const fn controller(self, side: Side) -> Controller {
+        match side {
+            Side::Left => self.left,
+            Side::Right => self.right,
+        }
+    }
+}
 
 /// The ball bounced off the paddle standing on `side`. Emitted by physics.
 #[derive(Message, Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,6 +115,8 @@ pub struct Notice {
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroU8;
+
     use bevy::app::{App, Update};
     use bevy::ecs::message::{Message, MessageReader, MessageWriter};
     use bevy::ecs::resource::Resource;
@@ -95,7 +124,8 @@ mod tests {
     use bevy::ecs::system::ResMut;
 
     use super::{
-        BallHitPaddle, BallHitWall, Controller, Difficulty, MatchEnded, Notice, PointScored, Seat,
+        BallHitPaddle, BallHitWall, Controller, Difficulty, MatchConfig, MatchEnded, Notice,
+        PointScored, Seat,
     };
     use crate::kernel::geometry::Side;
 
@@ -158,6 +188,23 @@ mod tests {
         assert_eq!(Difficulty::OneStar.stars(), 1);
         assert_eq!(Difficulty::TwoStars.stars(), 2);
         assert_eq!(Difficulty::ThreeStars.stars(), 3);
+    }
+
+    #[test]
+    fn match_config_answers_which_controller_holds_each_side() {
+        let config = MatchConfig {
+            left: Controller::Human(Seat::Right),
+            right: Controller::Ai(Difficulty::OneStar),
+            points_to_win: NonZeroU8::new(10).expect("ten is non-zero"),
+        };
+        assert_eq!(
+            config.controller(Side::Left),
+            Controller::Human(Seat::Right)
+        );
+        assert_eq!(
+            config.controller(Side::Right),
+            Controller::Ai(Difficulty::OneStar)
+        );
     }
 
     #[test]

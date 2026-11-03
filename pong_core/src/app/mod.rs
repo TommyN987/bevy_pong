@@ -4,6 +4,7 @@
 
 use bevy::app::{PluginGroup, PluginGroupBuilder};
 
+use crate::features::seats::SeatsPlugin;
 use crate::features::tuning::TuningPlugin;
 
 pub mod error_policy;
@@ -23,6 +24,7 @@ impl PluginGroup for CorePlugins {
             .add(states::AppStatePlugin)
             .add(phases::PhasesPlugin)
             .add(TuningPlugin)
+            .add(SeatsPlugin)
     }
 }
 
@@ -37,6 +39,7 @@ mod tests {
     use super::error_policy::ErrorPolicyPlugin;
     use super::phases::{PhasesPlugin, unphased_fixed_step_systems};
     use super::states::{AppState, AppStatePlugin};
+    use crate::features::seats::SeatsPlugin;
     use crate::features::tuning::TuningPlugin;
 
     fn headless_core() -> App {
@@ -52,6 +55,7 @@ mod tests {
         assert!(app.is_plugin_added::<AppStatePlugin>());
         assert!(app.is_plugin_added::<PhasesPlugin>());
         assert!(app.is_plugin_added::<TuningPlugin>());
+        assert!(app.is_plugin_added::<SeatsPlugin>());
     }
 
     #[test]
