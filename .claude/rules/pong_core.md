@@ -13,4 +13,4 @@ paths:
 - Core emits events and reads port resources (intents, beat clock, `SavePaths`). It never calls the shell.
 - Errors: typed enums only at boundaries (persistence, tuning validation); `Result<(), BevyError>` with context inside systems; invariants through the sanity machinery. No `unwrap` or `expect` in production core (clippy denies both). Test code may `expect` with a message that says what was expected (`clippy.toml`); the `testing` harness carries one module-level `#![expect(clippy::expect_used)]` for the same reason; `unwrap` stays denied everywhere.
 - Randomness comes from the seeded random resource only.
-- Before writing any Bevy API, verify it against docs.rs for the version pinned in `Cargo.toml` (use the `bevy-api-check` agent).
+- Before writing any Bevy API, verify it against the version pinned in `Cargo.toml` through the `bevy-api-check` agent: pinned crate source in the local cargo registry first, docs.rs as fallback. Behavior questions (what a reload does on failure) go to the agent too; it quotes the source.
