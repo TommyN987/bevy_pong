@@ -25,6 +25,7 @@
 
     match_flow: (
         countdown_seconds: 3.0,
+        point_pause_seconds: 0.8,
         points_to_win_options: [5, 10, 15, 21],
         points_to_win_default: 10,
     ),

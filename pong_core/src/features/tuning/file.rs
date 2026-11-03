@@ -53,6 +53,8 @@ pub(super) struct BallFile {
 #[serde(deny_unknown_fields)]
 pub(super) struct MatchFlowFile {
     pub(super) countdown_seconds: f32,
+    /// How long the scored point stays on screen before the next countdown.
+    pub(super) point_pause_seconds: f32,
     /// Zero is unrepresentable: a match to zero points would end before it starts.
     pub(super) points_to_win_options: Vec<NonZeroU8>,
     pub(super) points_to_win_default: NonZeroU8,

@@ -161,6 +161,7 @@ pub struct SeatKeys {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MatchFlowTuning {
     countdown: Duration,
+    point_pause: Duration,
     points_to_win_options: Vec<NonZeroU8>,
     points_to_win_default: NonZeroU8,
 }
@@ -444,6 +445,7 @@ impl BallTuning {
 impl MatchFlowTuning {
     fn validate(file: file::MatchFlowFile) -> Result<Self, TuningError> {
         let countdown = seconds("match_flow.countdown_seconds", file.countdown_seconds)?;
+        let point_pause = seconds("match_flow.point_pause_seconds", file.point_pause_seconds)?;
         if file.points_to_win_options.is_empty() {
             return Err(TuningError::PointsToWinOptionsEmpty);
         }
@@ -457,6 +459,7 @@ impl MatchFlowTuning {
         }
         Ok(Self {
             countdown,
+            point_pause,
             points_to_win_options: file.points_to_win_options,
             points_to_win_default: file.points_to_win_default,
         })
@@ -466,6 +469,12 @@ impl MatchFlowTuning {
     #[must_use]
     pub const fn countdown(&self) -> Duration {
         self.countdown
+    }
+
+    /// How long a scored point is shown before the next countdown starts.
+    #[must_use]
+    pub const fn point_pause(&self) -> Duration {
+        self.point_pause
     }
 
     /// The points-to-win choices offered in the menu, non-empty.
@@ -673,7 +682,7 @@ mod tests {
             max_deflection_degrees: 60.0,
             serve_cone_degrees: 30.0,
         ),
-        match_flow: (countdown_seconds: 3.0, points_to_win_options: [5, 10, 15, 21], points_to_win_default: 10),
+        match_flow: (countdown_seconds: 3.0, point_pause_seconds: 0.8, points_to_win_options: [5, 10, 15, 21], points_to_win_default: 10),
         ai: (
             one_star: (reaction_delay_seconds: 0.35, prediction_error: 12.0),
             two_stars: (reaction_delay_seconds: 0.2, prediction_error: 6.0),
@@ -781,6 +790,10 @@ mod tests {
     fn match_flow_and_ai_sections_become_durations_and_per_difficulty_entries() {
         let tuning = valid();
         assert_duration_near(tuning.match_flow().countdown(), Duration::from_millis(3000));
+        assert_duration_near(
+            tuning.match_flow().point_pause(),
+            Duration::from_millis(800),
+        );
         let options: Vec<u8> = tuning
             .match_flow()
             .points_to_win_options()
@@ -816,6 +829,13 @@ mod tests {
             Tuning::from_ron(&with("countdown_seconds", "-1.0")),
             Err(TuningError::Field {
                 path: "match_flow.countdown_seconds",
+                ..
+            })
+        ));
+        assert!(matches!(
+            Tuning::from_ron(&with("point_pause_seconds", "-1.0")),
+            Err(TuningError::Field {
+                path: "match_flow.point_pause_seconds",
                 ..
             })
         ));

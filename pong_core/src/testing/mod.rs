@@ -18,6 +18,7 @@ use crate::app::CorePlugins;
 use crate::app::states::AppState;
 use crate::domain::{MatchConfig, Random};
 use crate::features::ball::{Ball, Position, Velocity};
+use crate::features::rules::MatchState;
 
 /// Fixed steps per second in every harness app.
 pub(crate) const STEP_HZ: f64 = 60.0;
@@ -46,9 +47,8 @@ pub(crate) fn boot(app: &mut App) {
     panic!("app never left Boot");
 }
 
-/// Installs `config`, enters `InMatch`, and runs the frames that apply the
-/// transition and its `OnEnter` systems.
-pub(crate) fn start_match(app: &mut App, config: MatchConfig) {
+/// Installs `config` and enters `InMatch`, which begins in `Countdown`.
+pub(crate) fn enter_match(app: &mut App, config: MatchConfig) {
     app.insert_resource(config);
     app.world_mut()
         .resource_mut::<NextState<AppState>>()
@@ -59,6 +59,37 @@ pub(crate) fn start_match(app: &mut App, config: MatchConfig) {
         AppState::InMatch,
         "match did not start"
     );
+}
+
+/// [`enter_match`], then frames until play begins: the countdown has run and
+/// the first serve has been requested.
+pub(crate) fn start_match(app: &mut App, config: MatchConfig) {
+    enter_match(app, config);
+    run_until(
+        app,
+        |app| match_state(app) == MatchState::Playing,
+        1_000,
+        "play never began",
+    );
+}
+
+/// The current match substate. Panics outside a match.
+pub(crate) fn match_state(app: &App) -> MatchState {
+    *app.world().resource::<State<MatchState>>().get()
+}
+
+/// Frames until `done` holds, at most `max`; panics with `what` otherwise.
+pub(crate) fn run_until(app: &mut App, done: impl Fn(&App) -> bool, max: u32, what: &str) {
+    for _ in 0..max {
+        if done(app) {
+            return;
+        }
+        app.update();
+    }
+    if done(app) {
+        return;
+    }
+    panic!("{what} within {max} frames");
 }
 
 /// One frame, which is one fixed step at [`STEP_HZ`].

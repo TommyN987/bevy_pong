@@ -21,6 +21,8 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) per plan rule P.6, each wit
 | 1.4.2 | `Position`, `Velocity`, and `Snap` are ball-feature components, not vocabulary. The paddle keeps its own `center_y`, and the shell's paddle view interpolates that (rule 8: one view per core feature). Vocabulary stays at eleven: `Random` and `Serve` joined it. | This report, 2026-11-03. |
 | 1.3 | `Serve { toward }` is an internal trigger from rules to ball, emitted by rules and read by the ball feature, not the shell. Rule 5 (cross-feature triggers are events) outweighed the "observed by the shell" wording of 1.3.2. | This report, 2026-11-03. Vocabulary count at close: eleven. |
 | 1.5.1 | The test harness exists early, in `src/testing/` under `#[cfg(test)]`: a headless app driven one fixed step per frame via `TimeUpdateStrategy::ManualDuration`, a seeded `Random`, and message recorders. 3.8 puts it behind the cargo feature and adds the fakes it still lacks. | This report, 2026-11-03. |
+| 1.4.8 | The tuning schema gains `match_flow.point_pause_seconds`: how long a scored point stays on screen before the next countdown. The spec gives `PointScored` no duration; a value found by playtesting belongs in tuning, not in code. | `tuning.ron` and `MatchFlowTuning::point_pause`, 2026-11-03. |
+| 1.4.5 | The substate type is `MatchState` and the first serve of a match goes toward a side drawn from the seeded random source; the spec names neither. | This report, 2026-11-03. |
 | 1.5.1 | The schedule-walking check lives in `app::phases` under `#[cfg(test)]` for now, not in the `testing` module, which does not exist until 3.8. | Move it in 3.8. |
 | ADR 0001 | `pong_core` enables Bevy's `debug` feature as a dev-dependency only, so the schedule walker can name a system that forgot its phase. Resolver 3 keeps it out of normal builds. | Comment in `pong_core/Cargo.toml`, 2026-11-03. |
 | 1.1 | `thiserror` 2 added to `pong_core`. Not listed in spec 1.1. Treadmill justification: proc-macro only, no Bevy types, the same major Bevy already compiles, so it cannot lag a Bevy upgrade. | Comment on the dependency in the workspace `Cargo.toml`, 2026-11-01. |
@@ -40,7 +42,10 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) per plan rule P.6, each wit
 - The swept collision runs in the collide phase along the straight line from the step's start (kept in a physics resource) to its end. A step that bounced off a wall and struck a paddle end in the same step is swept along the folded line; accepted, and the sanity phase is the net.
 - `clippy::needless_pass_by_value` was promoted to a workspace allow at nine sites across five modules, per the lint policy. The inline expects are gone.
 - Bevy inserts `apply_deferred` sync points into `FixedUpdate` whenever a system uses commands. The schedule walker skips them by name; they are not core systems.
-- Every fixed-step phase is gated on `AppState::InMatch` by `PhasesPlugin`, so no feature system guards for the resources and entities that exist only in a match. The rules feature narrows this to the `Playing` substate in 3.7.
+- Every fixed-step phase is gated on `MatchState::Playing` by `PhasesPlugin` (first `InMatch` in 3.6, narrowed in 3.7), so no feature system guards for the resources and entities that exist only in a match, and nothing moves during a countdown, a scored point, a pause, or after the match. The app roof importing a feature's state type is allowed by rule 1.
+- `Countdown` and `PointScored` are timed in `Update` with Bevy `Timer`s, outside the fixed-step phases, because the phases do not run in those states. A state transition requested during a fixed step applies on the next frame; tests account for that one frame.
+- Scoring and ending the match are two systems chained in the `Rules` phase. The second only reacts to a changed `Score`, and its `MatchOver` overrides the `PointScored` requested in the same step. Both events fire for the final point.
+- `Paused` and `MatchOver` have no core systems. The shell enters and leaves `Paused` (Escape, focus loss) and returns to the menu from `MatchOver` by setting `NextState`.
 - `just test-core` and the workspace run build the core differently: with the shell in the same cargo invocation, feature unification turns on Bevy's `multi_threaded` for the core's tests too. A system whose `Res` was missing panicked only in that build. CI runs the workspace, so both must stay green; `just dev-check` runs the workspace.
 - Bevy 0.20.1's default error handler is `match_severity`, not `panic`; an error built from a string carries `Severity::Panic`, so the default still panics. `ErrorPolicyPlugin` sets the handler explicitly anyway, because release must log rather than panic and the app accepts one handler only. The shell must not set its own.
 - `AppStatePlugin` adds Bevy's `StatesPlugin` itself when absent, so `MinimalPlugins` test apps and the `DefaultPlugins` shell share one `CorePlugins` group without an ordering contract for states. `AssetPlugin` stays a precondition of the group.
@@ -58,4 +63,5 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) per plan rule P.6, each wit
 | 3.4 App assembly | done |
 | 3.5 Seats and intents | done |
 | 3.6 Ball, paddle, physics | done |
-| 3.7 Rules | next |
+| 3.7 Rules | done |
+| 3.8 Testing module and soak | next |
