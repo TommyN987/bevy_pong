@@ -24,5 +24,10 @@ serde.workspace = true
 ron.workspace = true
 thiserror.workspace = true
 
+[dev-dependencies]
+# Tests only: `debug` makes Bevy keep system names, so the schedule-walking test can say
+# which system forgot its phase. Resolver 3 keeps dev-dependency features out of normal builds.
+bevy = { workspace = true, features = ["debug"] }
+
 [lints]
 workspace = true
