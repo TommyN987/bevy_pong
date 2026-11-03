@@ -11,6 +11,7 @@ pub mod collide;
 pub mod geometry;
 pub mod integrate;
 pub mod predict;
+pub mod random;
 pub mod reflect;
 
 #[cfg(test)]

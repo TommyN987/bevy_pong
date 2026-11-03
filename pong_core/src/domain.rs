@@ -55,6 +55,7 @@ use bevy::ecs::message::Message;
 use bevy::ecs::resource::Resource;
 
 use crate::kernel::geometry::Side;
+use crate::kernel::random::Pcg32;
 
 /// Who plays each side and how long the match runs. Built by the menu at match
 /// start; read by seats, rules, and the AI. Points-to-win comes from the tuning
@@ -78,6 +79,32 @@ impl MatchConfig {
             Side::Right => self.right,
         }
     }
+}
+
+/// The only source of randomness in the core. The shell seeds it from entropy
+/// at startup; tests seed it with a constant and assert exact outcomes.
+#[derive(Resource, Debug, Clone, PartialEq, Eq)]
+pub struct Random(Pcg32);
+
+impl Random {
+    /// A generator whose whole future follows from `seed`.
+    #[must_use]
+    pub fn seeded(seed: u64) -> Self {
+        Self(Pcg32::seed(seed))
+    }
+
+    /// Uniform in `lo..hi`. Precondition: `lo <= hi`, both finite.
+    pub fn next_f32_in(&mut self, lo: f32, hi: f32) -> f32 {
+        self.0.next_f32_in(lo, hi)
+    }
+}
+
+/// Launch the ball toward `toward`. Emitted by rules when play begins;
+/// consumed by the ball feature, which owns the serve geometry.
+#[derive(Message, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Serve {
+    /// The side the ball flies at: the side that conceded the last point.
+    pub toward: Side,
 }
 
 /// The ball bounced off the paddle standing on `side`. Emitted by physics.
@@ -125,7 +152,7 @@ mod tests {
 
     use super::{
         BallHitPaddle, BallHitWall, Controller, Difficulty, MatchConfig, MatchEnded, Notice,
-        PointScored, Seat,
+        PointScored, Random, Seat, Serve,
     };
     use crate::kernel::geometry::Side;
 
@@ -188,6 +215,29 @@ mod tests {
         assert_eq!(Difficulty::OneStar.stars(), 1);
         assert_eq!(Difficulty::TwoStars.stars(), 2);
         assert_eq!(Difficulty::ThreeStars.stars(), 3);
+    }
+
+    #[test]
+    fn random_resources_seeded_alike_draw_alike() {
+        let mut a = Random::seeded(99);
+        let mut b = Random::seeded(99);
+        assert_eq!(a.next_f32_in(-1.0, 1.0), b.next_f32_in(-1.0, 1.0));
+        assert_ne!(
+            a.next_f32_in(-1.0, 1.0),
+            Random::seeded(100).next_f32_in(-1.0, 1.0)
+        );
+    }
+
+    #[test]
+    fn serve_round_trips_as_a_message() {
+        assert_eq!(
+            round_trip(Serve {
+                toward: Side::Right
+            }),
+            vec![Serve {
+                toward: Side::Right
+            }]
+        );
     }
 
     #[test]

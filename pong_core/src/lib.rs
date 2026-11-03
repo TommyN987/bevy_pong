@@ -12,3 +12,6 @@ pub mod app;
 pub mod domain;
 pub mod features;
 pub mod kernel;
+
+#[cfg(test)]
+pub(crate) mod testing;

@@ -34,6 +34,8 @@ pub(super) struct PaddleFile {
     pub(super) height_default: f32,
     pub(super) thickness: f32,
     pub(super) speed: f32,
+    /// Distance from the goal line to the paddle's back face.
+    pub(super) inset: f32,
 }
 
 #[derive(Debug, Deserialize)]

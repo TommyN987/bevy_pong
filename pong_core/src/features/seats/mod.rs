@@ -60,10 +60,6 @@ impl PaddleIntents {
 }
 
 /// Each side held by a human takes that seat's intent for this step.
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "Bevy system parameters are taken by value"
-)]
 fn resolve_human_intents(
     config: Res<MatchConfig>,
     mut seats: ResMut<SeatIntents>,
@@ -148,19 +144,12 @@ impl SeatIntents {
 mod tests {
     use std::num::NonZeroU8;
 
-    use bevy::MinimalPlugins;
-    use bevy::app::{App, FixedUpdate};
+    use bevy::app::App;
 
-    use super::{PaddleIntent, PaddleIntents, SeatIntents, SeatsPlugin};
-    use crate::app::phases::{PhasesPlugin, unphased_fixed_step_systems};
+    use super::{PaddleIntent, PaddleIntents, SeatIntents};
     use crate::domain::{Controller, Difficulty, MatchConfig, Seat};
     use crate::kernel::geometry::Side;
-
-    fn app() -> App {
-        let mut app = App::new();
-        app.add_plugins((MinimalPlugins, PhasesPlugin, SeatsPlugin));
-        app
-    }
+    use crate::testing::{boot, headless_app, start_match, step};
 
     fn right_seat_plays_left_side_against_ai() -> MatchConfig {
         MatchConfig {
@@ -170,37 +159,33 @@ mod tests {
         }
     }
 
+    fn report(app: &mut App, seat: Seat, intent: PaddleIntent) {
+        app.world_mut()
+            .resource_mut::<SeatIntents>()
+            .report(seat, intent);
+    }
+
     #[test]
     fn a_human_seat_drives_its_side_and_an_ai_side_is_left_alone() {
-        let mut app = app();
-        app.insert_resource(right_seat_plays_left_side_against_ai());
-        app.world_mut()
-            .resource_mut::<SeatIntents>()
-            .report(Seat::Right, PaddleIntent::Up);
-        app.world_mut()
-            .resource_mut::<SeatIntents>()
-            .report(Seat::Left, PaddleIntent::Down);
-        app.world_mut().run_schedule(FixedUpdate);
+        let mut app = headless_app(1);
+        boot(&mut app);
+        start_match(&mut app, right_seat_plays_left_side_against_ai());
+        report(&mut app, Seat::Right, PaddleIntent::Up);
+        report(&mut app, Seat::Left, PaddleIntent::Down);
+        step(&mut app);
         let intents = *app.world().resource::<PaddleIntents>();
         assert_eq!(intents.side(Side::Left), PaddleIntent::Up);
         assert_eq!(intents.side(Side::Right), PaddleIntent::Still);
     }
 
     #[test]
-    fn without_a_match_config_the_fixed_step_runs_and_intents_stay_still() {
-        let mut app = app();
-        app.world_mut()
-            .resource_mut::<SeatIntents>()
-            .report(Seat::Left, PaddleIntent::Up);
-        app.world_mut().run_schedule(FixedUpdate);
+    fn outside_a_match_reports_do_not_reach_the_paddles() {
+        let mut app = headless_app(1);
+        boot(&mut app);
+        report(&mut app, Seat::Left, PaddleIntent::Up);
+        step(&mut app);
         let intents = *app.world().resource::<PaddleIntents>();
         assert_eq!(intents.side(Side::Left), PaddleIntent::Still);
-    }
-
-    #[test]
-    fn the_seats_system_declares_its_phase() {
-        let mut app = app();
-        assert_eq!(unphased_fixed_step_systems(&mut app), Vec::<String>::new());
     }
 
     #[test]
