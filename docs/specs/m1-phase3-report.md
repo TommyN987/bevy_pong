@@ -27,6 +27,8 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) per plan rule P.6, each wit
 | 1.5.1 | No temp-dir `SavePaths` fake: the `SavePaths` resource does not exist until persistence (plan phase 7). | Deferred to phase 7, with the resource. This report, 2026-11-03. |
 | 1.5.1 | The harness builds the whole `CorePlugins` group, not "chosen core plugins". Every headless test so far wants the full slice; a subset builder arrives with the first test that needs one. | This report, 2026-11-03. |
 | 1.5.2 | The soak checks the ball's invariants itself after every step (finite, inside the walls, no farther past a goal than one step's travel), because the sanity phase arrives in plan 6.1. Plan 6.1 reruns the soak and may drop the test-side checks. | `pong_core/tests/soak.rs`, 2026-11-03. |
+| 1.4.8 | A refused dev override emits one `Notice` naming the refused value, in addition to the asset server's own error log. The spec says "logs"; the architecture's error table says "keeps last good values, shows banner", and `Notice` is the banner's channel. The tuning plugin registers the `Notice` message. | `features/tuning`, 2026-11-03. |
+| 1.4.8 | The manual hot-reload check waits for a shell that plays a match (plan 3.9 wording). The unit tests drive the real embedded asset source the way Bevy's watcher does: new bytes into `EmbeddedAssetRegistry`, then `AssetServer::reload`. | Plan 3.9; this report, 2026-11-03. |
 | 1.7.1 | `ErrorPolicyPlugin` carries its policy (`ErrorPolicyPlugin(ErrorPolicy)`, default: this build's), so the harness can force `Dev` and the soak panics on a fault in a release test run too. | `app::error_policy`, 2026-11-03. |
 | ADR 0001 | `pong_core` enables Bevy's `debug` feature as a dev-dependency only, so the schedule walker can name a system that forgot its phase. Resolver 3 keeps it out of normal builds. | Comment in `pong_core/Cargo.toml`, 2026-11-03. |
 | 1.1 | `thiserror` 2 added to `pong_core`. Not listed in spec 1.1. Treadmill justification: proc-macro only, no Bevy types, the same major Bevy already compiles, so it cannot lag a Bevy upgrade. | Comment on the dependency in the workspace `Cargo.toml`, 2026-11-01. |
@@ -60,6 +62,8 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) per plan rule P.6, each wit
 - The harness is test code outside `#[cfg(test)]`, so clippy's test exception for `expect` does not reach it; the module carries one `#![expect(clippy::expect_used)]` with the reason. A harness helper whose precondition fails stops the test with the message.
 - The harness overrides the group's error-policy plugin with `CorePlugins.set(ErrorPolicyPlugin(ErrorPolicy::Dev))`. The red for that test is visible only in a release build; it was observed by running the test in release without the override (fails: no panic) and with it (passes).
 - The harness pins every schedule to Bevy's `SingleThreadedExecutor`. In the workspace build the unified `multi_threaded` feature made the soak take 19 s (dispatch overhead on a tiny world) against 3 s core-only; pinned, both take 3 s. `ExecutorKind` no longer exists in 0.20.1; `Schedule::set_executor` takes the executor value.
+- The dev override is the asset system's hot reload: `embedded_watcher` goes on the shell's `dev` feature only, so the game build never carries the file watcher. Core adopts `AssetEvent::Modified` for its handle into the resource; a refused file never reaches `Assets`, so keep-last-good holds by construction, and core only reports it.
+- Bevy 0.20.1 reports one refused reload twice: `load_internal` both sends the failure event and returns an error, so `reload_internal` falls back to an untyped load that fails again. With real task-pool threads the two can land in different frames. `ShownRefusal` remembers the refusal announced (the error's text) until a reload succeeds; a repeat of the same refusal is silent. Consequence: saving the same broken file twice shows one banner, not two.
 - The soak restarts a match the way the shell will: `MatchOver` → `Menu` (`leave_match`) → `InMatch` (`enter_match`). A same-state transition would not re-enter `InMatch`, so the detour through `Menu` is required, not a convenience.
 
 ## Items
@@ -74,4 +78,5 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) per plan rule P.6, each wit
 | 3.6 Ball, paddle, physics | done |
 | 3.7 Rules | done |
 | 3.8 Testing module and soak | done; soak 2.9 s locally for 100,000 steps, 47 matches to five points |
-| 3.9 Dev override | next |
+| 3.9 Dev override | done; manual check deferred to the first playable shell per plan |
+| 3.10 Schedule randomization | next |

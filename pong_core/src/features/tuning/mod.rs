@@ -11,19 +11,20 @@ use std::time::Duration;
 use bevy::app::{App, Plugin, Startup, Update};
 use bevy::asset::io::Reader;
 use bevy::asset::{
-    Asset, AssetApp, AssetLoader, AssetServer, Assets, Handle, LoadContext, LoadState,
-    embedded_asset, load_embedded_asset,
+    Asset, AssetApp, AssetEvent, AssetLoadFailedEvent, AssetLoader, AssetPath, AssetServer, Assets,
+    Handle, LoadContext, LoadState, embedded_asset, embedded_path,
 };
 use bevy::color::Srgba;
 use bevy::ecs::error::BevyError;
+use bevy::ecs::message::{MessageReader, MessageWriter};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::schedule::common_conditions::{not, resource_exists};
-use bevy::ecs::system::{Commands, Res};
+use bevy::ecs::system::{Commands, Res, ResMut};
 use bevy::input::keyboard::KeyCode;
 use bevy::reflect::TypePath;
 
-use crate::domain::{Difficulty, Seat};
+use crate::domain::{Difficulty, Notice, Seat};
 use crate::kernel::geometry::{Arena, InvalidArena, InvalidLengthBounds, LengthBounds, Radius};
 use crate::kernel::reflect::{InvalidSpeedRule, MaxDeflection, SpeedRule};
 use crate::kernel::{OutOfRange, Range};
@@ -47,10 +48,16 @@ impl Plugin for TuningPlugin {
         embedded_asset!(app, "tuning.ron");
         app.init_asset::<Tuning>()
             .register_asset_loader(TuningLoader)
+            .add_message::<Notice>()
+            .init_resource::<ShownRefusal>()
             .add_systems(Startup, begin_loading)
             .add_systems(
                 Update,
-                promote_when_loaded.run_if(not(resource_exists::<Tuning>)),
+                (
+                    promote_when_loaded.run_if(not(resource_exists::<Tuning>)),
+                    (adopt_reloaded_tuning, notice_refused_override)
+                        .run_if(resource_exists::<Tuning>),
+                ),
             );
     }
 }
@@ -60,10 +67,13 @@ impl Plugin for TuningPlugin {
 struct TuningHandle(Handle<Tuning>);
 
 fn begin_loading(mut commands: Commands, asset_server: Res<AssetServer>) {
-    commands.insert_resource(TuningHandle(load_embedded_asset!(
-        &*asset_server,
-        "tuning.ron"
-    )));
+    commands.insert_resource(TuningHandle(asset_server.load(embedded_tuning_path())));
+}
+
+/// Where the asset system serves the embedded tuning file, as
+/// `load_embedded_asset!` would resolve it from this module.
+fn embedded_tuning_path() -> AssetPath<'static> {
+    AssetPath::from_path_buf(embedded_path!("tuning.ron")).with_source("embedded")
 }
 
 /// Copies the loaded asset into the resource. A failed load is a programmer
@@ -85,6 +95,60 @@ fn promote_when_loaded(
         )));
     }
     Ok(())
+}
+
+/// Dev override, the accepting half (spec 1.4.8): when the asset system
+/// reloads the tuning file and the loader accepted it, the resource takes the
+/// new values. A refused file never reaches `Assets`, so the resource keeps
+/// the last good values by construction.
+fn adopt_reloaded_tuning(
+    mut commands: Commands,
+    mut events: MessageReader<AssetEvent<Tuning>>,
+    handle: Res<TuningHandle>,
+    assets: Res<Assets<Tuning>>,
+    mut shown: ResMut<ShownRefusal>,
+) {
+    let reloaded = events
+        .read()
+        .any(|event| matches!(event, AssetEvent::Modified { id } if *id == handle.0.id()));
+    if !reloaded {
+        return;
+    }
+    if let Some(tuning) = assets.get(&handle.0) {
+        commands.insert_resource(tuning.clone());
+        shown.0 = None;
+    }
+}
+
+/// The refusal the player has been told about, as the error's text, until a
+/// reload succeeds. Invariant: `Some` only after a notice went out and before
+/// the next adopted reload.
+///
+/// Bevy 0.20.1 reports one refused reload twice: `reload` retries a failed
+/// typed load as an untyped one, and both fail, possibly in different frames.
+/// A refusal equal to the one shown is not announced again.
+#[derive(Resource, Default)]
+struct ShownRefusal(Option<String>);
+
+/// Dev override, the refusing half: a reloaded file the loader refused leaves
+/// the resource as it is and tells the player why through one [`Notice`]. The
+/// asset server has already logged the error.
+fn notice_refused_override(
+    mut failures: MessageReader<AssetLoadFailedEvent<Tuning>>,
+    handle: Res<TuningHandle>,
+    mut shown: ResMut<ShownRefusal>,
+    mut notices: MessageWriter<Notice>,
+) {
+    for failure in failures.read().filter(|f| f.id == handle.0.id()) {
+        let refusal = failure.error.to_string();
+        if shown.0.as_deref() == Some(refusal.as_str()) {
+            continue;
+        }
+        notices.write(Notice {
+            text: format!("Tuning override refused, keeping the last good values: {refusal}"),
+        });
+        shown.0 = Some(refusal);
+    }
 }
 
 /// Reads the RON bytes and validates them into a [`Tuning`] asset.
@@ -665,11 +729,15 @@ mod tests {
     use bevy::asset::AssetPlugin;
     use bevy::input::keyboard::KeyCode;
 
-    use super::{EMBEDDED_RON, Tuning, TuningError, TuningPlugin};
-    use crate::domain::{Difficulty, Seat};
+    use bevy::asset::AssetServer;
+    use bevy::asset::io::embedded::{EmbeddedAssetRegistry, watched_path};
+
+    use super::{EMBEDDED_RON, Tuning, TuningError, TuningPlugin, embedded_tuning_path};
+    use crate::domain::{Difficulty, Notice, Seat};
     use crate::kernel::geometry::InvalidLengthBounds;
     use crate::kernel::test_support::assert_near;
     use crate::kernel::{OutOfRange, Range};
+    use crate::testing::{boot, headless_app, record, recorded, run_until, step, take_recorded};
 
     const VALID: &str = r"(
         arena: (width: 160.0, height: 90.0),
@@ -749,6 +817,96 @@ mod tests {
             }
         }
         None
+    }
+
+    /// What Bevy's embedded watcher does when the source file changes: new
+    /// bytes into the embedded source, then a reload of the asset path.
+    fn override_embedded_tuning(app: &mut App, ron: &str) {
+        app.world()
+            .resource::<EmbeddedAssetRegistry>()
+            .insert_asset(
+                watched_path(file!(), "tuning.ron"),
+                &bevy::asset::embedded_path!("tuning.ron"),
+                ron.as_bytes().to_vec(),
+            );
+        app.world()
+            .resource::<AssetServer>()
+            .reload(embedded_tuning_path());
+    }
+
+    fn ball_radius(app: &App) -> f32 {
+        app.world().resource::<Tuning>().ball().radius().value()
+    }
+
+    #[test]
+    fn a_valid_override_replaces_the_resource_on_reload() {
+        let mut app = headless_app(1);
+        boot(&mut app);
+        assert_near(ball_radius(&app), 1.0, 1e-6);
+        override_embedded_tuning(&mut app, &with("radius", "2.0"));
+        run_until(
+            &mut app,
+            |app| (ball_radius(app) - 2.0).abs() < 1e-6,
+            1_000,
+            "the override never reached the resource",
+        );
+    }
+
+    #[test]
+    fn a_refused_override_keeps_the_last_good_values_and_notifies() {
+        let mut app = headless_app(1);
+        record::<Notice>(&mut app);
+        boot(&mut app);
+        let last_good = app.world().resource::<Tuning>().clone();
+        override_embedded_tuning(&mut app, &with("radius", "-1.0"));
+        run_until(
+            &mut app,
+            |app| !recorded::<Notice>(app).is_empty(),
+            1_000,
+            "no notice about the refused override",
+        );
+        for _ in 0..10 {
+            step(&mut app);
+        }
+        let notices = take_recorded::<Notice>(&mut app);
+        assert_eq!(notices.len(), 1, "{notices:?}");
+        assert!(
+            notices[0].text.contains("ball.radius"),
+            "{}",
+            notices[0].text
+        );
+        assert_eq!(*app.world().resource::<Tuning>(), last_good);
+    }
+
+    #[test]
+    fn a_refusal_is_announced_again_once_a_reload_has_succeeded_in_between() {
+        let mut app = headless_app(1);
+        record::<Notice>(&mut app);
+        boot(&mut app);
+        let refused = with("radius", "-1.0");
+        override_embedded_tuning(&mut app, &refused);
+        run_until(
+            &mut app,
+            |app| !recorded::<Notice>(app).is_empty(),
+            1_000,
+            "no notice about the first refusal",
+        );
+        override_embedded_tuning(&mut app, &with("radius", "2.0"));
+        run_until(
+            &mut app,
+            |app| (ball_radius(app) - 2.0).abs() < 1e-6,
+            1_000,
+            "the valid override never reached the resource",
+        );
+        take_recorded::<Notice>(&mut app);
+        override_embedded_tuning(&mut app, &refused);
+        run_until(
+            &mut app,
+            |app| !recorded::<Notice>(app).is_empty(),
+            1_000,
+            "no notice about the second refusal",
+        );
+        assert_near(ball_radius(&app), 2.0, 1e-6);
     }
 
     #[test]

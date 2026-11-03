@@ -181,6 +181,18 @@ fn record_messages<M: Message + Clone>(
     recorded.0.extend(reader.read().cloned());
 }
 
+/// Everything recorded of `M` so far, without draining it.
+///
+/// # Panics
+/// If [`record`] was not called for `M`.
+#[must_use]
+pub fn recorded<M: Message>(app: &App) -> &[M] {
+    &app.world()
+        .get_resource::<Recorded<M>>()
+        .expect("a recorder for this message type")
+        .0
+}
+
 /// Drains the recording of `M`.
 ///
 /// # Panics
