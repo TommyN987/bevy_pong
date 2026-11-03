@@ -57,37 +57,6 @@ impl Plugin for PhasesPlugin {
     }
 }
 
-/// Names of `FixedUpdate` systems that belong to no [`FixedStepPhase`].
-/// Builds the schedule first, so it works on an app that has not run.
-#[cfg(test)]
-pub(crate) fn unphased_fixed_step_systems(app: &mut App) -> Vec<String> {
-    use std::collections::HashSet;
-
-    app.world_mut()
-        .schedule_scope(FixedUpdate, |world, schedule| {
-            schedule
-                .initialize(world)
-                .expect("the FixedUpdate schedule builds");
-            let graph = schedule.graph();
-            let phased: HashSet<_> = FixedStepPhase::IN_ORDER
-                .iter()
-                .filter_map(|phase| graph.systems_in_set(phase.intern()).ok())
-                .flat_map(|keys| keys.iter().copied())
-                .collect();
-            // Once built, the systems live in the executable, not the graph; only
-            // their keys and set membership remain on the graph side.
-            schedule
-                .systems()
-                .expect("an initialized schedule lists its systems")
-                .filter(|(key, _)| !phased.contains(key))
-                .map(|(_, system)| system.name().to_string())
-                // Bevy inserts its own sync points between phases when a system
-                // uses commands; they are not core systems and have no phase.
-                .filter(|name| name != "bevy_ecs::apply_deferred")
-                .collect()
-        })
-}
-
 #[cfg(test)]
 mod tests {
     use bevy::app::{App, FixedUpdate};
@@ -95,8 +64,8 @@ mod tests {
     use bevy::ecs::schedule::IntoScheduleConfigs;
     use bevy::ecs::system::ResMut;
 
-    use super::{FixedStepPhase, unphased_fixed_step_systems};
-    use crate::testing::{boot, headless_app, start_match};
+    use super::FixedStepPhase;
+    use crate::testing::{boot, headless_app, start_match, unphased_fixed_step_systems};
     use std::num::NonZeroU8;
 
     use crate::domain::{Controller, MatchConfig, Seat};

@@ -4397,6 +4397,7 @@ name = "pong_core"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "pong_core",
  "ron",
  "serde",
  "thiserror 2.0.21",

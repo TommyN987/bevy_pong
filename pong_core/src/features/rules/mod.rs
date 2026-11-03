@@ -232,7 +232,7 @@ mod tests {
     use crate::kernel::test_support::assert_vec_near;
     use crate::testing::{
         STEP_HZ, ball_state, boot, enter_match, headless_app, match_state, place_ball, record,
-        run_until, start_match, step, take_recorded,
+        report_intent, run_until, start_match, step, take_recorded,
     };
 
     fn two() -> NonZeroU8 {
@@ -367,9 +367,7 @@ mod tests {
     fn entering_countdown_clears_seat_intents() {
         let mut app = recording_app(1);
         start_match(&mut app, two_humans_to(ten()));
-        app.world_mut()
-            .resource_mut::<SeatIntents>()
-            .report(Seat::Left, PaddleIntent::Up);
+        report_intent(&mut app, Seat::Left, PaddleIntent::Up);
         ball_out_past_the_right_goal(&mut app);
         step(&mut app);
         run_until(

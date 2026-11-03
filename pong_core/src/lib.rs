@@ -13,5 +13,7 @@ pub mod domain;
 pub mod features;
 pub mod kernel;
 
-#[cfg(test)]
-pub(crate) mod testing;
+/// The headless test harness (spec 1.5.1), for this crate's tests and, behind
+/// the `testing` feature, for integration and shell tests.
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;

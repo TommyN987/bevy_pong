@@ -141,11 +141,11 @@ mod tests {
     use super::Paddle;
     use crate::app::states::AppState;
     use crate::domain::{Controller, MatchConfig, Seat};
-    use crate::features::seats::{PaddleIntent, SeatIntents};
+    use crate::features::seats::PaddleIntent;
     use crate::features::tuning::Tuning;
     use crate::kernel::geometry::{LengthBounds, Side};
     use crate::kernel::test_support::{assert_near, standard_arena};
-    use crate::testing::{boot, headless_app, start_match, step};
+    use crate::testing::{boot, headless_app, report_intent, start_match, step};
 
     fn two_humans() -> MatchConfig {
         MatchConfig {
@@ -188,9 +188,7 @@ mod tests {
         boot(&mut app);
         start_match(&mut app, two_humans());
         let speed = app.world().resource::<Tuning>().paddle().speed();
-        app.world_mut()
-            .resource_mut::<SeatIntents>()
-            .report(Seat::Left, PaddleIntent::Up);
+        report_intent(&mut app, Seat::Left, PaddleIntent::Up);
         step(&mut app);
         let paddles = paddles(&mut app);
         assert_near(paddles[0].center_y(), speed / 60.0, 1e-4);
