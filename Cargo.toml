@@ -21,6 +21,9 @@ unsafe_code = "forbid"
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }
+# Bevy system parameters (`Res`, `Query`, ...) are taken by value by design; this fired on
+# every system. Promoted from inline expects at nine sites across five modules (2026-11-03).
+needless_pass_by_value = "allow"
 # No upfront allows. Silence a lint inline with `#[expect(clippy::..., reason = "...")]`;
 # promote it to an allow here, with the reason, once it carries ~5 expects across 2+ modules.
 

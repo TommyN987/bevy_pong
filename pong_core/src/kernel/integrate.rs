@@ -32,6 +32,16 @@ pub fn integrate(motion: Motion, force: Vec2, dt: f32) -> Motion {
     }
 }
 
+/// Result of [`advance_between_walls`]: where the ball is now and whether it
+/// bounced off a wall during the step.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WallStep {
+    /// Position and velocity after the step.
+    pub motion: Motion,
+    /// Whether the step crossed a wall and was folded back inside.
+    pub bounced: bool,
+}
+
 /// One fixed step of a ball of `radius` inside `arena`: [`integrate`], then a
 /// bounce off the top or bottom wall if the step crossed one.
 ///
@@ -52,16 +62,25 @@ pub fn advance_between_walls(
     motion: Motion,
     force: Vec2,
     dt: f32,
-) -> Motion {
+) -> WallStep {
     let limit = arena.center_limit_y(radius);
     let stepped = integrate(motion, force, dt);
     if stepped.position.y > limit {
-        return fold_at_wall(stepped, limit);
+        return WallStep {
+            motion: fold_at_wall(stepped, limit),
+            bounced: true,
+        };
     }
     if stepped.position.y < -limit {
-        return fold_at_wall(stepped, -limit);
+        return WallStep {
+            motion: fold_at_wall(stepped, -limit),
+            bounced: true,
+        };
     }
-    stepped
+    WallStep {
+        motion: stepped,
+        bounced: false,
+    }
 }
 
 /// Reflects an overshoot past the horizontal line `y = wall_y` back inside.
@@ -118,8 +137,9 @@ mod tests {
             position: Vec2::new(5.0, 5.0),
             velocity: Vec2::new(60.0, 60.0),
         };
-        let stepped = advance_between_walls(standard_arena(), unit_radius(), start, Vec2::ZERO, DT);
-        assert_eq!(stepped, integrate(start, Vec2::ZERO, DT));
+        let step = advance_between_walls(standard_arena(), unit_radius(), start, Vec2::ZERO, DT);
+        assert_eq!(step.motion, integrate(start, Vec2::ZERO, DT));
+        assert!(!step.bounced);
     }
 
     #[test]
@@ -129,9 +149,10 @@ mod tests {
             position: Vec2::new(0.0, 43.0),
             velocity: Vec2::new(60.0, 120.0),
         };
-        let stepped = advance_between_walls(standard_arena(), unit_radius(), start, Vec2::ZERO, DT);
-        assert_vec_near(stepped.position, Vec2::new(1.0, 43.0), 1e-4);
-        assert_vec_near(stepped.velocity, Vec2::new(60.0, -120.0), 1e-6);
+        let step = advance_between_walls(standard_arena(), unit_radius(), start, Vec2::ZERO, DT);
+        assert_vec_near(step.motion.position, Vec2::new(1.0, 43.0), 1e-4);
+        assert_vec_near(step.motion.velocity, Vec2::new(60.0, -120.0), 1e-6);
+        assert!(step.bounced);
     }
 
     #[test]
@@ -140,8 +161,9 @@ mod tests {
             position: Vec2::new(0.0, -43.0),
             velocity: Vec2::new(60.0, -120.0),
         };
-        let stepped = advance_between_walls(standard_arena(), unit_radius(), start, Vec2::ZERO, DT);
-        assert_vec_near(stepped.position, Vec2::new(1.0, -43.0), 1e-4);
-        assert_vec_near(stepped.velocity, Vec2::new(60.0, 120.0), 1e-6);
+        let step = advance_between_walls(standard_arena(), unit_radius(), start, Vec2::ZERO, DT);
+        assert_vec_near(step.motion.position, Vec2::new(1.0, -43.0), 1e-4);
+        assert_vec_near(step.motion.velocity, Vec2::new(60.0, 120.0), 1e-6);
+        assert!(step.bounced);
     }
 }

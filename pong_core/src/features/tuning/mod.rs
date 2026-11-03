@@ -59,10 +59,6 @@ impl Plugin for TuningPlugin {
 #[derive(Resource)]
 struct TuningHandle(Handle<Tuning>);
 
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "Bevy system parameters are taken by value"
-)]
 fn begin_loading(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.insert_resource(TuningHandle(load_embedded_asset!(
         &*asset_server,
@@ -73,10 +69,6 @@ fn begin_loading(mut commands: Commands, asset_server: Res<AssetServer>) {
 /// Copies the loaded asset into the resource. A failed load is a programmer
 /// error for the embedded file (CI validates it), so it goes to the app's error
 /// handler: panic in dev, log in release.
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "Bevy system parameters are taken by value"
-)]
 fn promote_when_loaded(
     mut commands: Commands,
     handle: Res<TuningHandle>,
@@ -195,6 +187,7 @@ pub struct PaddleTuning {
     height_default: f32,
     thickness: f32,
     speed: f32,
+    inset: f32,
 }
 
 /// Ball size, speeds, and angles.
@@ -359,6 +352,7 @@ impl PaddleTuning {
             height_default,
             thickness: checked("paddle.thickness", Range::PositiveFinite, file.thickness)?,
             speed: checked("paddle.speed", Range::PositiveFinite, file.speed)?,
+            inset: checked("paddle.inset", Range::NonNegativeFinite, file.inset)?,
         })
     }
 
@@ -384,6 +378,13 @@ impl PaddleTuning {
     #[must_use]
     pub const fn speed(self) -> f32 {
         self.speed
+    }
+
+    /// Distance from the goal line to the paddle's back face; zero puts the
+    /// back face on the line.
+    #[must_use]
+    pub const fn inset(self) -> f32 {
+        self.inset
     }
 }
 
@@ -663,7 +664,7 @@ mod tests {
 
     const VALID: &str = r"(
         arena: (width: 160.0, height: 90.0),
-        paddle: (height_min: 8.0, height_max: 30.0, height_default: 14.0, thickness: 2.0, speed: 90.0),
+        paddle: (height_min: 8.0, height_max: 30.0, height_default: 14.0, thickness: 2.0, speed: 90.0, inset: 4.0),
         ball: (
             radius: 1.0,
             serve_speed: 80.0,
@@ -773,6 +774,7 @@ mod tests {
         assert_near(tuning.paddle().height_default(), 14.0, 1e-6);
         assert_near(tuning.paddle().thickness(), 2.0, 1e-6);
         assert_near(tuning.paddle().speed(), 90.0, 1e-6);
+        assert_near(tuning.paddle().inset(), 4.0, 1e-6);
     }
 
     #[test]

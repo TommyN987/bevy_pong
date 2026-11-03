@@ -4,6 +4,9 @@
 
 use bevy::app::{PluginGroup, PluginGroupBuilder};
 
+use crate::features::ball::BallPlugin;
+use crate::features::paddle::PaddlePlugin;
+use crate::features::physics::PhysicsPlugin;
 use crate::features::seats::SeatsPlugin;
 use crate::features::tuning::TuningPlugin;
 
@@ -25,6 +28,9 @@ impl PluginGroup for CorePlugins {
             .add(phases::PhasesPlugin)
             .add(TuningPlugin)
             .add(SeatsPlugin)
+            .add(PaddlePlugin)
+            .add(BallPlugin)
+            .add(PhysicsPlugin)
     }
 }
 
@@ -39,6 +45,9 @@ mod tests {
     use super::error_policy::ErrorPolicyPlugin;
     use super::phases::{PhasesPlugin, unphased_fixed_step_systems};
     use super::states::{AppState, AppStatePlugin};
+    use crate::features::ball::BallPlugin;
+    use crate::features::paddle::PaddlePlugin;
+    use crate::features::physics::PhysicsPlugin;
     use crate::features::seats::SeatsPlugin;
     use crate::features::tuning::TuningPlugin;
 
@@ -56,6 +65,9 @@ mod tests {
         assert!(app.is_plugin_added::<PhasesPlugin>());
         assert!(app.is_plugin_added::<TuningPlugin>());
         assert!(app.is_plugin_added::<SeatsPlugin>());
+        assert!(app.is_plugin_added::<PaddlePlugin>());
+        assert!(app.is_plugin_added::<BallPlugin>());
+        assert!(app.is_plugin_added::<PhysicsPlugin>());
     }
 
     #[test]

@@ -40,7 +40,7 @@ pub fn crossing_y(
     let limit = arena.center_limit_y(radius);
     let mut motion = start;
     for _ in 0..MAX_STEPS {
-        let next = advance_between_walls(arena, radius, motion, Vec2::ZERO, dt);
+        let next = advance_between_walls(arena, radius, motion, Vec2::ZERO, dt).motion;
         let remaining = target_x - motion.position.x;
         let travelled = next.position.x - motion.position.x;
         if travelled.abs() >= remaining.abs() {
