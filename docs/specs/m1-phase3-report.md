@@ -30,7 +30,7 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) per plan rule P.6, each wit
 | 1.4.8 | A refused dev override emits one `Notice` naming the refused value, in addition to the asset server's own error log. The spec says "logs"; the architecture's error table says "keeps last good values, shows banner", and `Notice` is the banner's channel. The tuning plugin registers the `Notice` message. | `features/tuning`, 2026-11-03. |
 | 1.4.8 | The manual hot-reload check waits for a shell that plays a match (plan 3.9 wording). The unit tests drive the real embedded asset source the way Bevy's watcher does: new bytes into `EmbeddedAssetRegistry`, then `AssetServer::reload`. | Plan 3.9; this report, 2026-11-03. |
 | 1.7.1 | `ErrorPolicyPlugin` carries its policy (`ErrorPolicyPlugin(ErrorPolicy)`, default: this build's), so the harness can force `Dev` and the soak panics on a fault in a release test run too. | `app::error_policy`, 2026-11-03. |
-| ADR 0001 | `pong_core` enables Bevy's `debug` feature as a dev-dependency only, so the schedule walker can name a system that forgot its phase. Resolver 3 keeps it out of normal builds. | Comment in `pong_core/Cargo.toml`, 2026-11-03. |
+| ADR 0001 | `pong_core` enables Bevy's `debug` feature for test builds only: first as a dev-dependency, since 3.10 through the `testing` feature (`testing = ["bevy/debug"]`), which the crate's self dev-dependency turns on. The walker needs it for system names, the shuffle for its seed. Resolver 3 keeps it out of normal builds. | Comment in `pong_core/Cargo.toml`, 2026-11-03. |
 | 1.1 | `thiserror` 2 added to `pong_core`. Not listed in spec 1.1. Treadmill justification: proc-macro only, no Bevy types, the same major Bevy already compiles, so it cannot lag a Bevy upgrade. | Comment on the dependency in the workspace `Cargo.toml`, 2026-11-01. |
 
 ## Decisions taken in this phase
@@ -64,6 +64,7 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) per plan rule P.6, each wit
 - The harness pins every schedule to Bevy's `SingleThreadedExecutor`. In the workspace build the unified `multi_threaded` feature made the soak take 19 s (dispatch overhead on a tiny world) against 3 s core-only; pinned, both take 3 s. `ExecutorKind` no longer exists in 0.20.1; `Schedule::set_executor` takes the executor value.
 - The dev override is the asset system's hot reload: `embedded_watcher` goes on the shell's `dev` feature only, so the game build never carries the file watcher. Core adopts `AssetEvent::Modified` for its handle into the resource; a refused file never reaches `Assets`, so keep-last-good holds by construction, and core only reports it.
 - Bevy 0.20.1 reports one refused reload twice: `load_internal` both sends the failure event and returns an error, so `reload_internal` falls back to an untyped load that fails again. With real task-pool threads the two can land in different frames. `ShownRefusal` remembers the refusal announced (the error's text) until a reload succeeds; a repeat of the same refusal is silent. Consequence: saving the same broken file twice shows one banner, not two.
+- Schedule randomization (1.5.3) is Bevy 0.20.1's `ScheduleBuildSettings::shuffle_seed`, set by the harness on every schedule from the test's seed, so two tests with different seeds see different orders and one test sees the same order every run. The field exists only with Bevy's `debug` feature, which the `testing` feature now carries. Bevy's own note: the shuffle holds only under the single-threaded executor, which the harness already uses; and `auto_insert_apply_deferred` keeps systems at their sync-point depth, so systems using commands shuffle only within a depth.
 - The soak restarts a match the way the shell will: `MatchOver` → `Menu` (`leave_match`) → `InMatch` (`enter_match`). A same-state transition would not re-enter `InMatch`, so the detour through `Menu` is required, not a convenience.
 
 ## Items
@@ -79,4 +80,4 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) per plan rule P.6, each wit
 | 3.7 Rules | done |
 | 3.8 Testing module and soak | done; soak 2.9 s locally for 100,000 steps, 47 matches to five points |
 | 3.9 Dev override | done; manual check deferred to the first playable shell per plan |
-| 3.10 Schedule randomization | next |
+| 3.10 Schedule randomization | done; the whole suite, soak included, is green with the shuffle on |

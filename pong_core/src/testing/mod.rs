@@ -19,7 +19,7 @@ use bevy::asset::AssetPlugin;
 use bevy::ecs::message::{Message, MessageReader};
 use bevy::ecs::query::With;
 use bevy::ecs::resource::Resource;
-use bevy::ecs::schedule::{Schedules, SingleThreadedExecutor, SystemSet};
+use bevy::ecs::schedule::{ScheduleBuildSettings, Schedules, SingleThreadedExecutor, SystemSet};
 use bevy::ecs::system::ResMut;
 use bevy::math::Vec2;
 use bevy::state::state::{NextState, State};
@@ -38,8 +38,9 @@ use crate::features::seats::{PaddleIntent, SeatIntents};
 pub const STEP_HZ: f64 = 60.0;
 
 /// A core app with no window and no real clock. Every [`step`] advances
-/// exactly one fixed step; the random source is seeded with `seed`; a system
-/// error panics in every build profile, so a soak run in release still fails.
+/// exactly one fixed step; `seed` seeds the random source and the schedule
+/// shuffle; a system error panics in every build profile, so a soak run in
+/// release still fails.
 pub fn headless_app(seed: u64) -> App {
     let fixed = Time::<Fixed>::from_hz(STEP_HZ);
     let timestep = fixed.timestep();
@@ -52,10 +53,17 @@ pub fn headless_app(seed: u64) -> App {
     .insert_resource(fixed)
     .insert_resource(TimeUpdateStrategy::ManualDuration(timestep))
     .insert_resource(Random::seeded(seed));
+    // Spec 1.5.3: systems with conflicting access and no declared order run in
+    // an order the seed decides, so a test cannot pass by accident of order.
+    app.configure_schedules(ScheduleBuildSettings {
+        shuffle_seed: Some(seed),
+        ..ScheduleBuildSettings::default()
+    });
     // A test runs many small frames. When the shell is built in the same cargo
     // run, feature unification turns on Bevy's multi-threaded executor, whose
     // dispatch costs more per schedule than the systems do (the soak went from
-    // 3 s to 19 s). Every schedule runs single-threaded here.
+    // 3 s to 19 s). Every schedule runs single-threaded here, which the shuffle
+    // also asks for: the multi-threaded executor does not keep the shuffled order.
     for (_, schedule) in app.world_mut().resource_mut::<Schedules>().iter_mut() {
         schedule.set_executor(SingleThreadedExecutor::new());
     }
@@ -270,13 +278,45 @@ pub fn unphased_fixed_step_systems(app: &mut App) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use bevy::app::Update;
     use bevy::ecs::error::BevyError;
+    use bevy::ecs::resource::Resource;
+    use bevy::ecs::system::ResMut;
 
     use super::headless_app;
 
     fn failing_system() -> Result<(), BevyError> {
         Err(BevyError::from("deliberate test failure"))
+    }
+
+    #[derive(Resource, Default)]
+    struct RunOrder(Vec<&'static str>);
+
+    fn first(mut order: ResMut<RunOrder>) {
+        order.0.push("first");
+    }
+
+    fn second(mut order: ResMut<RunOrder>) {
+        order.0.push("second");
+    }
+
+    /// Spec 1.5.3: systems with conflicting access and no declared order run
+    /// in an order the seed decides, so an order a test relies on by accident
+    /// shows up as a failure under another seed.
+    #[test]
+    fn unordered_conflicting_systems_run_in_a_seed_dependent_order() {
+        let orders: HashSet<Vec<&str>> = (0..16)
+            .map(|seed| {
+                let mut app = headless_app(seed);
+                app.init_resource::<RunOrder>()
+                    .add_systems(Update, (first, second));
+                app.update();
+                app.world().resource::<RunOrder>().0.clone()
+            })
+            .collect();
+        assert_eq!(orders.len(), 2, "{orders:?}");
     }
 
     #[test]
