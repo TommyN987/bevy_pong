@@ -25,7 +25,7 @@ The user's operating-mode framework (#Frame, #Research, #Design, #Record, #Spec,
 - pointers to `docs/frame.md`, `docs/research.md`, `docs/design.md`, `docs/architecture.md`
 - the pinned Bevy version
 - the `just` recipes: `dev-check`, `ci-check`, `test`, `run`
-- four non-negotiables: verify Bevy API against docs.rs for the pinned version before writing it; core never imports shell, render, window, audio, or UI; no new dependency without a treadmill justification; never run mutative git (the user owns commits, branches, pushes, PRs)
+- four non-negotiables: verify Bevy API against the pinned version before writing it (pinned source first, docs.rs fallback, through the agent); core never imports shell, render, window, audio, or UI; no new dependency without a treadmill justification; never run mutative git (the user owns commits, branches, pushes, PRs)
 - where specs and ADRs live
 
 **Rules** in `.claude/rules/`, path-scoped:
@@ -48,7 +48,7 @@ The quality gate for the user's own git flow is a native `pre-push` hook in `.gi
 - `/milestone-close`: check CI, docs, ADRs, and playtest before declaring a milestone done
 
 **Subagents**:
-- one custom, read-only `bevy-api-check`: fetches docs.rs for the pinned version and reports API mismatches before Bevy code is written
+- one custom, read-only `bevy-api-check`: reads the pinned crate source in the local cargo registry (docs.rs as fallback) and reports API mismatches, feature gates, and quoted behavior before Bevy code is written. Amended 2026-11-03: in phase 3 items 3.8–3.10 Claude read the registry source directly instead of calling the agent, which found two behaviors docs.rs does not show (a double failure event on refused reload, a `debug`-gated field); the agent now does that itself
 - reused from installed plugins: `silent-failure-hunter` (maps to the error policy), `pr-test-analyzer` (maps to the every-class-has-a-test rule), `type-design-analyzer` (maps to validated constructors and component-owned invariants)
 
 **Permissions**: cargo subcommands and `just` allowed; mutative git commands and `cargo publish` denied.

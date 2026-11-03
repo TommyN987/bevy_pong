@@ -10,13 +10,13 @@ Pong in Rust + Bevy with escalating chaos twists, built for two kids (9 and 11) 
 - `docs/adr/`: decision records; `docs/claude-code-setup.md`: this tooling
 
 ## Toolchain
-- Bevy `=0.20.1`, pinned in the workspace `Cargo.toml`. Verify every API on docs.rs for that exact version.
+- Bevy `=0.20.1`, pinned in the workspace `Cargo.toml`. Verify every API against that exact version: the pinned crate source in the local cargo registry first, docs.rs as fallback.
 - Commands are `just` recipes only: `just dev-check` (fmt, clippy -D warnings, nextest, doctests), `just ci-check` (same, fmt in check mode, plus cargo-deny), `just test`, `just test-core`, `just run`, `just build-release`.
 - Workspace: `pong_core` (render-free simulation, headless-testable) and `pong` (shell: window, render, audio, UI).
 - Clippy pedantic with no upfront allows. Silence inline with `#[expect(clippy::x, reason = "...")]`; promote to a workspace allow only at ~5 expects across 2+ modules.
 
 ## Non-negotiables
-1. Verify every Bevy API against docs.rs for the pinned version before writing it. Use the `bevy-api-check` agent.
+1. Verify every Bevy API against the pinned version before writing it, through the `bevy-api-check` agent (pinned source first, docs.rs fallback). Reading the source directly instead is a deviation to state in the handoff.
 2. `pong_core` never imports shell, render, window, audio, or UI crates.
 3. No new dependency without a treadmill justification: Bevy breaks every ~4 months and crates lag.
 4. Never run mutative git: no add, commit, branch, switch, push, pull, merge, rebase, reset, tag, or PR. Read-only git and `git stash` only. The user owns history.
