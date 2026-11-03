@@ -8,6 +8,7 @@
 // Test code may `expect` (see clippy.toml); `unwrap` is denied everywhere.
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 
+pub mod app;
 pub mod domain;
 pub mod features;
 pub mod kernel;

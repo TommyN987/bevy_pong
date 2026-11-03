@@ -826,6 +826,7 @@ dependencies = [
  "indexmap",
  "log",
  "nonmax",
+ "rand",
  "serde",
  "slotmap",
  "smallvec",
