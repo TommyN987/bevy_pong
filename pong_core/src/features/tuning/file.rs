@@ -2,6 +2,8 @@
 //! Validation into kernel types happens in [`super::Tuning::from_ron`].
 //! Angles are written in degrees because people edit this file.
 
+use std::num::NonZeroU8;
+
 use bevy::input::keyboard::KeyCode;
 use serde::Deserialize;
 
@@ -49,8 +51,9 @@ pub(super) struct BallFile {
 #[serde(deny_unknown_fields)]
 pub(super) struct MatchFlowFile {
     pub(super) countdown_seconds: f32,
-    pub(super) points_to_win_options: Vec<u8>,
-    pub(super) points_to_win_default: u8,
+    /// Zero is unrepresentable: a match to zero points would end before it starts.
+    pub(super) points_to_win_options: Vec<NonZeroU8>,
+    pub(super) points_to_win_default: NonZeroU8,
 }
 
 #[derive(Debug, Deserialize)]
