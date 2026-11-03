@@ -7,6 +7,7 @@ use bevy::app::{PluginGroup, PluginGroupBuilder};
 use crate::features::ball::BallPlugin;
 use crate::features::paddle::PaddlePlugin;
 use crate::features::physics::PhysicsPlugin;
+use crate::features::rules::RulesPlugin;
 use crate::features::seats::SeatsPlugin;
 use crate::features::tuning::TuningPlugin;
 
@@ -31,6 +32,7 @@ impl PluginGroup for CorePlugins {
             .add(PaddlePlugin)
             .add(BallPlugin)
             .add(PhysicsPlugin)
+            .add(RulesPlugin)
     }
 }
 
@@ -48,6 +50,7 @@ mod tests {
     use crate::features::ball::BallPlugin;
     use crate::features::paddle::PaddlePlugin;
     use crate::features::physics::PhysicsPlugin;
+    use crate::features::rules::RulesPlugin;
     use crate::features::seats::SeatsPlugin;
     use crate::features::tuning::TuningPlugin;
 
@@ -68,6 +71,7 @@ mod tests {
         assert!(app.is_plugin_added::<PaddlePlugin>());
         assert!(app.is_plugin_added::<BallPlugin>());
         assert!(app.is_plugin_added::<PhysicsPlugin>());
+        assert!(app.is_plugin_added::<RulesPlugin>());
     }
 
     #[test]

@@ -93,7 +93,7 @@ mod tests {
     use crate::features::tuning::Tuning;
     use crate::kernel::geometry::Side;
     use crate::kernel::test_support::{assert_near, assert_vec_near};
-    use crate::testing::{boot, headless_app, start_match, step};
+    use crate::testing::{boot, enter_match, headless_app, start_match, step};
 
     fn two_humans() -> MatchConfig {
         MatchConfig {
@@ -124,7 +124,7 @@ mod tests {
     fn entering_a_match_spawns_one_ball_at_rest_in_the_center() {
         let mut app = headless_app(1);
         boot(&mut app);
-        start_match(&mut app, two_humans());
+        enter_match(&mut app, two_humans());
         let (position, velocity, _) = ball(&mut app);
         assert_vec_near(position.0, Vec2::ZERO, 1e-6);
         assert_vec_near(velocity.0, Vec2::ZERO, 1e-6);
