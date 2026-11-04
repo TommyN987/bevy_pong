@@ -1,0 +1,50 @@
+# domain
+
+The shared vocabulary in [`domain.rs`](domain.rs):
+types two or more features use, and the messages the core emits.
+No systems live here.
+It imports only the kernel.
+
+## Why it exists
+
+A type two features share must sit below both.
+Otherwise one feature imports the other for the type, and they couple through it.
+ADR 0002 caps the vocabulary at twelve non-message types,
+so each addition answers "does every feature need this?"
+
+## Types
+
+| Type | Kind | Meaning |
+|---|---|---|
+| `Side` | enum (in `kernel::geometry`, which needs it first) | Where a paddle stands: `Left` (−x) or `Right` (+x). |
+| `Seat` | enum | Who plays: a chair and its key set. Against the computer, one seat drives one side; in menus one seat picks for both. |
+| `Difficulty` | enum | AI strength in stars; each variant has one tuning entry. |
+| `Controller` | enum | What drives a side: `Human(Seat)` or `Ai(Difficulty)`. |
+| `MatchConfig` | `Resource` | Controllers per side and `points_to_win: NonZeroU8`; zero points is unrepresentable. Inserted by the menu before a match. |
+| `Random` | `Resource` | The core's only randomness, a seeded `Pcg32`. One seed reproduces a match. |
+
+## Messages
+
+Each message has one emitting feature, `Notice` excepted.
+One emitter means one place to look when a message appears.
+
+| Message | Emitted by | Meaning |
+|---|---|---|
+| `Serve { toward }` | rules | Launch the ball toward a side. Read by ball. |
+| `BallHitPaddle { side }` | physics | The ball bounced off that side's paddle. |
+| `BallHitWall` | physics | The ball bounced off the top or bottom wall. |
+| `PointScored { scorer }` | rules | A goal line was crossed. |
+| `MatchEnded { winner }` | rules | A side reached the target. |
+| `Notice { text }` | tuning; later persistence | One sentence for the shell's notice line. |
+
+## How Bevy carries a message
+
+`#[derive(Message)]` marks the type;
+the emitting feature's plugin calls `add_message`,
+which creates `Messages<M>` and lists the type in Bevy's message registry.
+One shared system in `First` swaps every listed type's two buffers,
+so a message lives about two swaps.
+Each `MessageReader` keeps its own cursor in a `Local`,
+so readers consume independently.
+The swap waits for a fixed step to have run (see [the frame](../README.md#one-frame)),
+so fixed-step messages reach `Update` readers even across frames with no fixed step.
