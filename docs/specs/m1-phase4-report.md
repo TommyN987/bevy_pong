@@ -17,6 +17,10 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) and [m1-plan.md](m1-plan.md
 
 - Up and down held together cancel to `Still`, like two equal opposing forces. "Last pressed wins" needs press order, more state, and a rule a child cannot see; on a shared keyboard both keys at once is often ghosting.
 - Shell plugins assume `DefaultPlugins` and do not register Bevy's own messages or resources; tests add `InputPlugin` and register `WindowFocused` themselves.
+- The XDG resolver (`pong::xdg::AppDirs`) is plain Rust, not a Bevy resource: the panic hook (4.4) needs the state directory before the app runs. It takes the environment as a lookup function, because `std::env::set_var` is `unsafe` in edition 2024 and the workspace forbids `unsafe_code`; tests pass a fake environment.
+- Each base is its `XDG_*_HOME` if absolute, else its default under `HOME`, plus the directory `bevy_pong`. A relative or empty variable is ignored, as the XDG specification requires. `HOME` must be absolute, and is needed only by a base that falls back to it; with no usable base the resolver returns `NoHomeDirectory`, and each caller decides what that means for its file.
+- The resolver computes paths and creates no directory; the writer of a file creates its directory and handles its own failure (persistence write policy, spec 1.4.9).
+- Errors in `pong` derive with `thiserror`, as in `pong_core`; the workspace dependency is already justified (phase 3 report), so `pong` names it without a new treadmill entry.
 
 ## Open
 
