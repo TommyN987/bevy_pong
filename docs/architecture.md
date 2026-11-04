@@ -49,10 +49,10 @@ Forced by earlier decisions: a Bevy-free math floor, because the AI calls the ba
 
 Rules:
 
-1. **Feature-first, dependency-down.** Features depend on vocabulary and kernel. Kernel depends on nothing in the crate. The app roof depends on everything. No feature depends on another feature's module; they meet through components and events.
+1. **Feature-first, dependency-down.** Features depend on kernel, vocabulary, and flow. Kernel depends on nothing in the crate. Flow depends only on kernel and vocabulary. The app roof depends on everything; nothing depends on it. A feature may import the public components, resources, and messages of features earlier in the order declared in `features/mod.rs`, never their systems or plugin internals. Amended 2026-11-04 by ADR 0002.
 2. **The kernel is ECS-free.** `bevy_math` types are allowed; apps, worlds, systems, and schedules are not. Pure functions and plain data only.
-3. **Vocabulary stays tiny.** Only types used by two or more features: seat, side, effect identity, core events. A type used by one feature lives in that feature. If it passes a dozen types, it has become a god module.
-4. **Phases are declared once.** Fixed step runs named sets in order: intent, effects, integrate, collide, rules, sanity. Every system names its phase. No system orders itself relative to another feature's system.
+3. **Vocabulary stays tiny.** Only types used by two or more features: seat, side, effect identity, core events. A type used by one feature lives in that feature. If it passes a dozen types, it has become a god module. The dozen counts non-message types; each message has exactly one emitting feature, `Notice` excepted (ADR 0002).
+4. **Phases are declared once,** in `flow/` (ADR 0002). Fixed step runs named sets in order: intent, effects, integrate, collide, rules, sanity. Every system names its phase. No system orders itself relative to another feature's system.
 5. **Components own their invariants.** Mutation happens through the component's API from any feature. Cross-feature triggers are events, never direct calls.
 6. **Extension points are exhaustive enums.** Effect, boss, and item identities. Adding a variant makes the compiler enumerate every spawn table, cue map, and AI branch to extend.
 7. **A feature is a directory with a plugin at its root.** Growable sub-concepts (individual effects, bosses) are submodules with a uniform shape: components, systems, spawn function.
@@ -66,6 +66,7 @@ Orientational shape at the final milestone:
 pong_core/src/
   kernel/        geometry, integrate, collide, predict      (no ECS)
   domain/        Seat, EffectId, BossId, ItemId, events
+  flow/          AppState, MatchState, phase sets, step gate, FIXED_HZ   (ADR 0002, 0003)
   features/
     seats/       Seat, intent latch, controller kind
     ball/        Ball, Velocity, Position, snap marker
@@ -81,7 +82,7 @@ pong_core/src/
     persistence/ model, versions, migrations, io
     tuning/      schema, embedded load, dev override
     sanity/      invariant checks, SimFault, heal
-  app/           plugin group, states, phase sets
+  app/           plugin group, error policy, Boot gate
   testing/       headless app builder, fake ports         (cargo feature)
 
 pong/src/
@@ -99,7 +100,8 @@ Alternatives considered: flat feature files with a shared prelude (rejected: pre
 
 - Core owns `Position` and `Velocity`. The shell writes `Transform` from `Position`, interpolating between fixed steps. One entity, two components.
 - Teleports (point reset, portals later) set a snap marker so no interpolation crosses the jump.
-- Simulation runs in `FixedUpdate`. Input is latched into intents in `Update` and consumed in `FixedUpdate`, so momentary presses are neither missed nor doubled.
+- Simulation runs in `FixedUpdate` at one rate, `FIXED_HZ = 60`, in core and tests alike. A step runs only while play is live: the step gate closes once a transition out of `Playing` is pending (ADR 0003).
+- Input is latched into intents in `Update` and consumed in `FixedUpdate`, so momentary presses are neither missed nor doubled.
 - A seeded random resource is the only source of randomness. The shell seeds from entropy; tests seed deterministically.
 - Physics is hand-rolled as pure functions over plain data; systems are thin wrappers. The AI calls the same functions to predict.
 - Collision is swept circle-versus-rectangle, and ball speed is capped, because escalation makes the ball fast by design.
@@ -114,7 +116,7 @@ Alternatives considered: flat feature files with a shared prelude (rejected: pre
 ## Boundaries
 
 - Core emits events (`BallHitPaddle`, `PointScored`, `EffectStarted`, `EffectEnded`, and so on). Shell plugins observe them. Core never calls the shell.
-- Three ports flow shell to core as resources: paddle intents from the keyboard adapter, the beat clock at C4 from whichever audio engine owns time, and `SavePaths` from the XDG directories. Tests write fakes into the same resources.
+- Four ports flow shell to core as resources: paddle intents from the keyboard adapter, pause and resume requests through `MatchControl` (ADR 0003), the beat clock at C4 from whichever audio engine owns time, and `SavePaths` from the XDG directories. Tests write fakes into the same resources.
 - Audio is a shell plugin that observes core events and app state. Music cues derive from state transitions. Volume is a setting. No audio type exists in core. This amends the design record's facade wording; the substance of that decision stands: built-in `bevy_audio` now, swap at C4 touches one plugin.
 
 ## Input
@@ -128,6 +130,7 @@ Alternatives considered: flat feature files with a shared prelude (rejected: pre
 ## States
 
 Bevy `States` and `SubStates`: `Boot` (waits for settings, profiles, tuning), `Menu`, `InMatch` with substates `Countdown`, `Playing`, `Paused`, `PointScored`, `MatchOver`. Match mode, seat bindings, and score target live in a `MatchConfig` resource.
+Rules owns every `MatchState` transition; the shell requests pause and resume through `MatchControl`, and resume returns to the substate paused from (ADR 0003).
 
 ## Persistence
 

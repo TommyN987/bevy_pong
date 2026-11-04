@@ -61,15 +61,15 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 ## 1.3 Core vocabulary
 
 - **1.3.1 MUST** `Seat { Left, Right }`, `Controller { Human(Seat), Ai(Difficulty) }`. Done: each used by two or more features.
-- **1.3.2 MUST** Events: `BallHitPaddle { side }`, `BallHitWall`, `PointScored { scorer }`, `MatchEnded { winner }`, `Notice { text }`. Done: each emitted by exactly one feature, observed by the shell. Amended 2026-11-02 (phase 3 report): `BallHitPaddle` names the paddle's side, since an AI paddle has no seat; `PointScored` names the scorer, since "side" did not say scorer or conceder.
-- **1.3.3 MUST** Vocabulary under a dozen types. Done: counted at milestone close.
+- **1.3.2 MUST** Events: `BallHitPaddle { side }`, `BallHitWall`, `PointScored { scorer }`, `MatchEnded { winner }`, `Notice { text }`. Done: each emitted by exactly one feature, observed by the shell. Amended 2026-11-02 (phase 3 report): `BallHitPaddle` names the paddle's side, since an AI paddle has no seat; `PointScored` names the scorer, since "side" did not say scorer or conceder. Amended 2026-11-04 (ADR 0002): `Notice` is the one exception to "exactly one feature"; any feature with a player-actionable failure emits it.
+- **1.3.3 MUST** Vocabulary under a dozen types. Done: counted at milestone close. Amended 2026-11-04 (ADR 0002): the cap counts non-message types; messages fall under 1.3.2.
 - **1.3.4 WONT** `EffectId`, `BossId`, `ItemId`.
 
 ## 1.4 Core features
 
 ### 1.4.1 Seats and intents
 
-- **MUST** `PaddleIntent { Up, Down, None }` per seat; latched in `Update`, consumed and cleared in `FixedUpdate`. Done: a one-frame press spanning two fixed steps moves the paddle exactly once.
+- **MUST** `PaddleIntent { Up, Down, None }` per seat; latched in `Update`, consumed and cleared in `FixedUpdate`. Done: a one-frame press spanning two fixed steps moves the paddle exactly once. Amended 2026-11-04 (phase 3 report): the level is re-reported every `Update` and read by every fixed step, and a tap latch is spent by the first; done when a hold moves on every fixed step, and a press shorter than a frame moves exactly once and is never missed.
 - **MUST** Key bindings per seat in tuning. Done: changing the RON changes keys without recompiling in dev.
 - **MUST** Action and reserved keys exist in the binding schema. Done: present in the RON.
 
@@ -89,7 +89,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 ### 1.4.5 Rules
 
 - **MUST** `MatchConfig { left, right, points_to_win }`. Done: built by the menu, read by rules.
-- **MUST** Substates `Countdown`, `Playing`, `PointScored`, `Paused`, `MatchOver` under `InMatch`. Done: a headless test walks the cycle to `MatchOver`.
+- **MUST** Substates `Countdown`, `Playing`, `PointScored`, `Paused`, `MatchOver` under `InMatch`. Done: a headless test walks the cycle to `MatchOver`. Amended 2026-11-04 (ADR 0003): rules owns every transition; the serve fires on `Countdown → Playing` only; entering `Countdown` re-centres the ball; pause and resume come through the `MatchControl` port, and resume returns to the substate paused from.
 - **MUST** Score per side; `MatchEnded` at target. Done: test.
 - **MUST** Points-to-win options list and default in tuning. Done: menu offers the list, default preselected, match ends at the chosen value by test.
 - **SHOULD** Countdown length in tuning. Done: changeable.
@@ -135,7 +135,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 ## 1.5 Core testing
 
 - **1.5.1 MUST** `testing` module behind a cargo feature: `MinimalPlugins` plus chosen core plugins, fake intents, temp-dir `SavePaths`, fixed seed. Done: used by every headless test.
-- **1.5.2 MUST** Soak: scripted match with random intents for both seats over at least 100,000 fixed steps, panic handler on, no fault; nextest per-test timeout of thirty seconds fails the run. Done: passes in CI.
+- **1.5.2 MUST** Soak: scripted match with random intents for both seats over at least 100,000 fixed steps, panic handler on, no fault; nextest per-test timeout of thirty seconds fails the run. Done: passes in CI. Amended 2026-11-04 (plan 3.19): the 100,000 steps are counted in `Playing`.
 - **1.5.3 SHOULD** Schedule randomization on in tests. Done: tests pass with it enabled.
 
 ## 1.6 Shell
@@ -143,7 +143,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 ### 1.6.1 Ports
 
 - **MUST** Keyboard adapter maps physical keys from tuning to `PaddleIntent` per seat; `SavePaths` from XDG directories. Done: a held key maps to an intent by test.
-- **MUST** Focus loss clears intents and enters `Paused` only from `Playing`. Done: manual check plus a test sending the focus event.
+- **MUST** Focus loss clears intents and enters `Paused` only from `Playing`. Done: manual check plus a test sending the focus event. Amended 2026-11-04 (ADR 0003): the pause goes through the `MatchControl` port.
 
 ### 1.6.2 Views
 
@@ -194,7 +194,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 
 ## 1.9 Milestone close
 
-- **1.9.1 MUST** ADRs: crate structure (M0), error policy, persistence format, audio boundary. Done: four files.
+- **1.9.1 MUST** ADRs: crate structure (M0), error policy, persistence format, audio boundary. Done: four files. Amended 2026-11-04: plus ADR 0002 (intra-crate layering) and ADR 0003 (match flow ownership); six files.
 - **1.9.2 MUST** CLAUDE.md, rules, hooks per [claude-code-setup.md](../claude-code-setup.md). Done: hooks fire on an edit and a commit.
 - **1.9.3 MUST** Checklist: CI green, docs updated, vocabulary under twelve, no `unwrap` in core, AI review item 1.4.6 signed. Done: checklist marked in this file.
 
