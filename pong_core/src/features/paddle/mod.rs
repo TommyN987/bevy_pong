@@ -2,6 +2,7 @@
 //! spawned per side for a match, moved by its side's intent in the integrate phase.
 
 use bevy::app::{App, FixedUpdate, Plugin};
+use bevy::ecs::change_detection::DetectChanges;
 use bevy::ecs::component::Component;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::{Commands, Query, Res};
@@ -17,13 +18,19 @@ use crate::flow::states::AppState;
 use crate::kernel::geometry::{Arena, LengthBounds, Side};
 
 /// Spawns one paddle per side for the length of a match and moves each by its
-/// side's intent in the integrate phase.
+/// side's intent in the integrate phase, first refitting the paddles to a
+/// reloaded tuning file.
 pub struct PaddlePlugin;
 
 impl Plugin for PaddlePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(AppState::InMatch), spawn_paddles)
-            .add_systems(FixedUpdate, move_paddles.in_set(FixedStepPhase::Integrate));
+            .add_systems(
+                FixedUpdate,
+                (fit_paddles_to_changed_tuning, move_paddles)
+                    .chain()
+                    .in_set(FixedStepPhase::Integrate),
+            );
     }
 }
 
@@ -33,6 +40,20 @@ fn spawn_paddles(mut commands: Commands, tuning: Res<Tuning>) {
             Paddle::new(side, tuning.paddle()),
             DespawnOnExit(AppState::InMatch),
         ));
+    }
+}
+
+/// A reloaded tuning file (dev override) may narrow the height bounds or the
+/// arena under paddles already on the field. Pulling each height back into
+/// the new bounds restores both invariants, since the new file guarantees
+/// `height_max ≤ arena.height`; it runs before the paddles next move.
+fn fit_paddles_to_changed_tuning(tuning: Res<Tuning>, mut paddles: Query<&mut Paddle>) {
+    if !tuning.is_changed() {
+        return;
+    }
+    for mut paddle in &mut paddles {
+        let height = paddle.height();
+        paddle.set_height(height, tuning.paddle().height_bounds(), tuning.arena());
     }
 }
 
@@ -62,7 +83,10 @@ fn move_paddles(
 ///
 /// Invariants, kept by the constructor and the setters: height within the
 /// tuning bounds; the whole paddle inside the walls. Both hold because tuning
-/// guarantees `height_max ≤ arena.height` (plan 3.17).
+/// guarantees `height_max ≤ arena.height` (plan 3.17), and across a reload
+/// because the plugin refits every paddle to the new file before it moves.
+/// Precondition of [`move_by`](Self::move_by): `height ≤ arena.height`;
+/// otherwise its wall clamp has no room and panics.
 #[derive(Component, Debug, Clone, Copy, PartialEq)]
 pub struct Paddle {
     side: Side,
@@ -287,6 +311,32 @@ mod tests {
         assert_near(paddle.height(), 8.0, 1e-6);
         paddle.set_height(20.0, bounds(), arena);
         assert_near(paddle.height(), 20.0, 1e-6);
+    }
+
+    /// A reload may shrink the arena below the height of a paddle already on
+    /// the field. The paddle fits itself to the new tuning before it next
+    /// moves, so its wall clamp never sees a negative limit.
+    #[test]
+    fn a_reload_that_shrinks_the_arena_refits_paddles_before_they_next_move() {
+        let mut app = headless_app(1);
+        boot(&mut app);
+        start_match(&mut app, two_humans());
+        let cramped = EMBEDDED_RON
+            .replace("height: 90.0", "height: 12.0")
+            .replace("height_max: 30.0", "height_max: 10.0")
+            .replace("height_default: 14.0", "height_default: 9.0");
+        app.insert_resource(Tuning::from_ron(&cramped).expect("a cramped arena is valid"));
+        report_intent(&mut app, Seat::Left, PaddleIntent::Up);
+        frame(&mut app);
+        let tuning = app.world().resource::<Tuning>().clone();
+        for paddle in paddles(&mut app) {
+            assert_near(paddle.height(), 10.0, 1e-6);
+            let rect = paddle.rect(&tuning);
+            assert!(
+                rect.min.y >= -6.0 - 1e-6 && rect.max.y <= 6.0 + 1e-6,
+                "{rect:?}"
+            );
+        }
     }
 
     /// Plan 3.16: thickness and inset come from tuning at use, so a reload

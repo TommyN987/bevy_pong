@@ -52,7 +52,7 @@ Rules:
 1. **Feature-first, dependency-down.** Features depend on kernel, vocabulary, and flow. Kernel depends on nothing in the crate. Flow depends only on kernel and vocabulary. The app roof depends on everything; nothing depends on it. A feature may import the public components, resources, and messages of features earlier in the order declared in `features/mod.rs`, never their systems or plugin internals. Amended 2026-11-04 by ADR 0002.
 2. **The kernel is ECS-free.** `bevy_math` types are allowed; apps, worlds, systems, and schedules are not. Pure functions and plain data only.
 3. **Vocabulary stays tiny.** Only types used by two or more features: seat, side, effect identity, core events. A type used by one feature lives in that feature. If it passes a dozen types, it has become a god module. The dozen counts non-message types; each message has exactly one emitting feature, `Notice` excepted (ADR 0002).
-4. **Phases are declared once,** in `flow/` (ADR 0002). Fixed step runs named sets in order: intent, effects, integrate, collide, rules, sanity. Every system names its phase. No system orders itself relative to another feature's system.
+4. **Phases are declared once,** in `flow/` (ADR 0002). Fixed step runs named sets in order: intent, effects, integrate, collide, rules, sanity. Every `FixedUpdate` system names its phase. The step gate, in `FixedFirst`, decides whether the phases run and is the one fixed-step system outside them (ADR 0003). No system orders itself relative to another feature's system.
 5. **Components own their invariants.** Mutation happens through the component's API from any feature. Cross-feature triggers are events, never direct calls.
 6. **Extension points are exhaustive enums.** Effect, boss, and item identities. Adding a variant makes the compiler enumerate every spawn table, cue map, and AI branch to extend.
 7. **A feature is a directory with a plugin at its root.** Growable sub-concepts (individual effects, bosses) are submodules with a uniform shape: components, systems, spawn function.
@@ -68,11 +68,11 @@ pong_core/src/
   domain/        Seat, EffectId, BossId, ItemId, events
   flow/          AppState, MatchState, phase sets, step gate, FIXED_HZ   (ADR 0002, 0003)
   features/
-    seats/       Seat, intent latch, controller kind
+    seats/       intent port and latch, per-side paddle intents
     ball/        Ball, Velocity, Position, snap marker
     paddle/      Paddle with clamped size API
     physics/     systems wrapping kernel; force accumulator
-    rules/       scoring, match flow substates, MatchConfig
+    rules/       scoring, match-flow transitions, pause port
     ai/          mirror controller; bosses/ one module each
     effects/     EffectPool, spawn table; one module per effect
     meter/       chaos meter and catch-up bias           (C1)

@@ -39,7 +39,7 @@ Obligation levels: MUST, SHOULD, MAY, WONT. Every item carries a done-condition.
 - **1.1.5 SHOULD** Clippy beyond default: selected pedantic lints; `unwrap_used` denied in core. Done: lint config in workspace `Cargo.toml`, CI green.
 - **1.1.6 WONT** Release packaging or installers.
 - **1.1.7 MUST** `justfile` recipes: `fmt`, `lint`, `test`, `test-core`, `dev-check`, `ci-check`, `run`, `run-release`. Done: every command referenced by CLAUDE.md, CI, and hooks is a `just` recipe, verified by grep.
-- **1.1.8 MUST** `just dev-check` formats in place, then clippy with warnings denied, then the full test suite. `just ci-check` is identical with fmt in check mode. Done: `dev-check` exits non-zero on a planted clippy warning and a planted failing test; `ci-check` exits non-zero on an unformatted file.
+- **1.1.8 MUST** `just dev-check` formats in place, then clippy with warnings denied, then the full test suite. `just ci-check` is identical with fmt in check mode. Done: `dev-check` exits non-zero on a planted clippy warning and a planted failing test; `ci-check` exits non-zero on an unformatted file. Amended 2026-11-04 (ADR 0002, plan 3.11.1): both gates run `arch-check`, the layering check, after formatting and before clippy.
 - **1.1.9 MUST** Tests run via `cargo nextest run`; doctests via `cargo test --doc` in the same recipe. Done: a planted failing doctest fails `ci-check`.
 - **1.1.10 SHOULD** `cargo-deny` with license allowlist and advisories, inside `ci-check`. Done: `deny.toml` present, passes.
 
@@ -129,7 +129,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 ### 1.4.10 App assembly
 
 - **MUST** `AppState { Boot, Menu, InMatch }`; `Boot` leaves only when tuning, settings, profiles are resolved. Done: a held load produces no transition.
-- **MUST** Fixed-step phase sets in order: intent, effects, integrate, collide, rules, sanity. Done: every core system declares a phase, checked by a schedule-walking test.
+- **MUST** Fixed-step phase sets in order: intent, effects, integrate, collide, rules, sanity. Done: every core system declares a phase, checked by a schedule-walking test. Amended 2026-11-04 (ADR 0003): every core system in `FixedUpdate`; the step gate runs in `FixedFirst`, outside the phases it gates.
 - **MUST** One core plugin group used by both shell and testing module. Done: same group in both.
 
 ## 1.5 Core testing
