@@ -5,64 +5,54 @@ use std::num::NonZeroU8;
 
 use bevy::app::{App, FixedUpdate, Plugin, Update};
 use bevy::ecs::change_detection::DetectChanges;
+use bevy::ecs::error::BevyError;
 use bevy::ecs::message::MessageWriter;
 use bevy::ecs::query::With;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::{Commands, Query, Res, ResMut};
-use bevy::state::app::AppExtStates;
 use bevy::state::condition::in_state;
-use bevy::state::state::{NextState, OnEnter, SubStates};
+use bevy::state::state::{NextState, OnEnter, OnTransition, State};
 use bevy::time::{Time, Timer, TimerMode};
 
-use crate::app::phases::FixedStepPhase;
-use crate::app::states::AppState;
 use crate::domain::{MatchConfig, MatchEnded, PointScored, Random, Serve};
 use crate::features::ball::{Ball, Position};
-use crate::features::seats::SeatIntents;
 use crate::features::tuning::Tuning;
+use crate::flow::phases::FixedStepPhase;
+use crate::flow::states::{AppState, MatchState};
 use crate::kernel::geometry::Side;
 
-/// Where a match is in its flow. Exists only while [`AppState::InMatch`].
-///
-/// `Countdown` and `PointScored` are timed from tuning and advance by
-/// themselves. `Playing` is the only state in which the fixed-step phases run.
-/// `Paused` is entered and left by the shell (Escape, focus loss). `MatchOver`
-/// is final; the shell returns to the menu from it.
-#[derive(SubStates, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-#[source(AppState = AppState::InMatch)]
-pub enum MatchState {
-    /// The serve cue is running; nothing moves.
-    #[default]
-    Countdown,
-    /// The ball is live.
-    Playing,
-    /// A point was just scored; the score is shown.
-    PointScored,
-    /// Play is suspended by the shell.
-    Paused,
-    /// A side reached the target.
-    MatchOver,
-}
-
-/// Match flow: substates, scoring, serve timing, and the end of the match.
+/// Match flow: owns every [`MatchState`] transition (ADR 0003), scoring, serve
+/// timing, pause and resume through the [`MatchControl`] port, and the end of
+/// the match.
 pub struct RulesPlugin;
 
 impl Plugin for RulesPlugin {
     fn build(&self, app: &mut App) {
-        app.add_sub_state::<MatchState>()
-            .add_message::<PointScored>()
+        app.add_message::<PointScored>()
             .add_message::<MatchEnded>()
             .init_resource::<Score>()
+            .init_resource::<MatchControl>()
             .add_systems(OnEnter(AppState::InMatch), begin_match)
             .add_systems(OnEnter(MatchState::Countdown), begin_countdown)
-            .add_systems(OnEnter(MatchState::Playing), request_serve)
+            .add_systems(
+                OnTransition {
+                    exited: MatchState::Countdown,
+                    entered: MatchState::Playing,
+                },
+                request_serve,
+            )
             .add_systems(OnEnter(MatchState::PointScored), begin_point_pause)
             .add_systems(
                 Update,
                 (
                     advance_countdown.run_if(in_state(MatchState::Countdown)),
                     advance_point_pause.run_if(in_state(MatchState::PointScored)),
+                    // After the timers, so a timer's transition in the same
+                    // frame defers the request rather than being overwritten.
+                    apply_pause_requests
+                        .after(advance_countdown)
+                        .after(advance_point_pause),
                 ),
             )
             .add_systems(
@@ -83,6 +73,43 @@ struct NextServeToward(Side);
 #[derive(Resource, Debug)]
 struct StateTimer(Timer);
 
+/// Port: the shell's pause and resume requests (ADR 0003). The shell asks;
+/// rules decides, and the shell never sets [`MatchState`] itself.
+///
+/// The latest request of a frame wins. Rules acts on it in `Update` once no
+/// match transition is pending; a request made outside a match is dropped.
+#[derive(Resource, Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct MatchControl {
+    request: Option<PauseRequest>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PauseRequest {
+    Pause,
+    Resume,
+}
+
+impl MatchControl {
+    /// Asks to pause. Honoured in `Countdown`, `Playing`, and `PointScored`;
+    /// ignored in `Paused` and `MatchOver`. The shell's focus-loss adapter
+    /// asks only while `Playing` (spec 1.6.1).
+    pub const fn request_pause(&mut self) {
+        self.request = Some(PauseRequest::Pause);
+    }
+
+    /// Asks to resume. Honoured in `Paused`, returning to the substate the
+    /// pause interrupted; ignored elsewhere.
+    pub const fn request_resume(&mut self) {
+        self.request = Some(PauseRequest::Resume);
+    }
+}
+
+/// The substate a pause interrupted, which resume returns to.
+/// Invariant: present whenever `MatchState` is `Paused`, since only
+/// [`apply_pause_requests`] enters `Paused`.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+struct PausedFrom(MatchState);
+
 fn begin_match(mut commands: Commands, mut random: ResMut<Random>, mut score: ResMut<Score>) {
     *score = Score::default();
     let toward = if random.next_f32_in(0.0, 1.0) < 0.5 {
@@ -93,10 +120,7 @@ fn begin_match(mut commands: Commands, mut random: ResMut<Random>, mut score: Re
     commands.insert_resource(NextServeToward(toward));
 }
 
-/// A stale key press from the menu or the last rally must not become the first
-/// paddle move (seats contract, plan 3.5).
-fn begin_countdown(mut commands: Commands, tuning: Res<Tuning>, mut seats: ResMut<SeatIntents>) {
-    seats.clear();
+fn begin_countdown(mut commands: Commands, tuning: Res<Tuning>) {
     commands.insert_resource(StateTimer(Timer::new(
         tuning.match_flow().countdown(),
         TimerMode::Once,
@@ -113,8 +137,53 @@ fn advance_countdown(
     }
 }
 
+/// Runs only on `Countdown → Playing`, so resuming a paused rally never
+/// serves again (ADR 0003).
 fn request_serve(toward: Res<NextServeToward>, mut serves: MessageWriter<Serve>) {
     serves.write(Serve { toward: toward.0 });
+}
+
+/// Acts on the shell's latest [`MatchControl`] request. A resumed `Countdown`
+/// or `PointScored` restarts its timer, because entering it does.
+///
+/// # Errors
+/// `Paused` with no recorded substate to resume to: something other than
+/// this system entered `Paused`, against ADR 0003.
+fn apply_pause_requests(
+    mut commands: Commands,
+    mut control: ResMut<MatchControl>,
+    state: Option<Res<State<MatchState>>>,
+    paused_from: Option<Res<PausedFrom>>,
+    mut next: ResMut<NextState<MatchState>>,
+) -> Result<(), BevyError> {
+    let Some(state) = state else {
+        control.request = None;
+        return Ok(());
+    };
+    if !matches!(*next, NextState::Unchanged) {
+        // A transition is already on its way; the request waits a frame.
+        return Ok(());
+    }
+    let current = *state.get();
+    match (control.request.take(), current) {
+        (
+            Some(PauseRequest::Pause),
+            MatchState::Countdown | MatchState::Playing | MatchState::PointScored,
+        ) => {
+            commands.insert_resource(PausedFrom(current));
+            next.set(MatchState::Paused);
+        }
+        (Some(PauseRequest::Resume), MatchState::Paused) => {
+            let Some(paused_from) = paused_from else {
+                return Err(BevyError::from(
+                    "MatchState is Paused with no recorded substate to resume to",
+                ));
+            };
+            next.set(paused_from.0);
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 fn begin_point_pause(mut commands: Commands, tuning: Res<Tuning>) {
@@ -220,20 +289,26 @@ mod tests {
     use std::num::NonZeroU8;
 
     use bevy::app::App;
+    use bevy::ecs::change_detection::Mut;
     use bevy::math::Vec2;
-    use bevy::state::state::NextState;
-    use bevy::time::{Fixed, Time};
 
-    use super::{MatchState, Score};
+    use super::{MatchControl, MatchState, Score};
     use crate::domain::{Controller, MatchConfig, MatchEnded, PointScored, Seat, Serve};
-    use crate::features::seats::{PaddleIntent, SeatIntents};
     use crate::features::tuning::Tuning;
     use crate::kernel::geometry::Side;
     use crate::kernel::test_support::assert_vec_near;
     use crate::testing::{
-        STEP_HZ, ball_state, boot, enter_match, headless_app, match_state, place_ball, record,
-        report_intent, run_until, start_match, step, take_recorded,
+        FrameLength, ball_state, boot, enter_match, fixed_timestep, frame, headless_app,
+        match_state, place_ball, record, run_until, set_frame_length, start_match, take_recorded,
     };
+
+    /// The most whole fixed steps one frame can run at 60 Hz (see
+    /// [`set_frame_length`]), as after a long hitch.
+    const LONGEST_FRAME: FrameLength = FrameLength::Steps(14);
+
+    fn one() -> NonZeroU8 {
+        NonZeroU8::new(1).expect("one is non-zero")
+    }
 
     fn two() -> NonZeroU8 {
         NonZeroU8::new(2).expect("two is non-zero")
@@ -262,8 +337,8 @@ mod tests {
 
     /// Frames until a timer of `duration` finishes at the harness rate: the
     /// first frame count whose total time reaches the duration.
-    fn frames(duration: std::time::Duration) -> u32 {
-        let timestep = Time::<Fixed>::from_hz(STEP_HZ).timestep();
+    fn frames(app: &App, duration: std::time::Duration) -> u32 {
+        let timestep = fixed_timestep(app);
         u32::try_from(duration.as_nanos().div_ceil(timestep.as_nanos()))
             .expect("a tuning duration fits in frames")
     }
@@ -288,12 +363,44 @@ mod tests {
         enter_match(&mut app, two_humans_to(two()));
         assert_eq!(match_state(&app), MatchState::Countdown);
         let countdown = app.world().resource::<Tuning>().match_flow().countdown();
-        for _ in 0..frames(countdown) - 2 {
-            step(&mut app);
+        for _ in 0..frames(&app, countdown) - 2 {
+            frame(&mut app);
         }
         assert_eq!(match_state(&app), MatchState::Countdown);
         run_until(&mut app, playing, 4, "play never began");
         assert_eq!(take_recorded::<Serve>(&mut app).len(), 1);
+    }
+
+    /// ADR 0003: the transition to `PointScored` applies only next frame, so
+    /// the rest of this frame's fixed steps must not run.
+    #[test]
+    fn a_goal_in_the_longest_frame_scores_exactly_one_point() {
+        let mut app = recording_app(1);
+        start_match(&mut app, two_humans_to(ten()));
+        set_frame_length(&mut app, LONGEST_FRAME);
+        ball_out_past_the_right_goal(&mut app);
+        frame(&mut app);
+        assert_eq!(app.world().resource::<Score>().side(Side::Left), 1);
+        assert_eq!(
+            take_recorded::<PointScored>(&mut app),
+            vec![PointScored { scorer: Side::Left }]
+        );
+    }
+
+    #[test]
+    fn the_final_point_in_the_longest_frame_ends_the_match_exactly_once() {
+        let mut app = recording_app(1);
+        start_match(&mut app, two_humans_to(one()));
+        set_frame_length(&mut app, LONGEST_FRAME);
+        ball_out_past_the_right_goal(&mut app);
+        frame(&mut app);
+        assert_eq!(
+            take_recorded::<MatchEnded>(&mut app),
+            vec![MatchEnded { winner: Side::Left }]
+        );
+        frame(&mut app);
+        assert_eq!(match_state(&app), MatchState::MatchOver);
+        assert_eq!(app.world().resource::<Score>().side(Side::Left), 1);
     }
 
     #[test]
@@ -303,7 +410,7 @@ mod tests {
         start_match(&mut app, two_humans_to(ten()));
         take_recorded::<Serve>(&mut app);
         ball_out_past_the_right_goal(&mut app);
-        step(&mut app);
+        frame(&mut app);
         assert_eq!(app.world().resource::<Score>().side(Side::Left), 1);
         assert_eq!(
             take_recorded::<PointScored>(&mut app),
@@ -317,8 +424,8 @@ mod tests {
             "no point pause",
         );
         let point_pause = app.world().resource::<Tuning>().match_flow().point_pause();
-        for _ in 0..frames(point_pause) - 2 {
-            step(&mut app);
+        for _ in 0..frames(&app, point_pause) - 2 {
+            frame(&mut app);
         }
         assert_eq!(match_state(&app), MatchState::PointScored);
         run_until(
@@ -343,8 +450,8 @@ mod tests {
         for _ in 0..2 {
             run_until(&mut app, playing, 1_000, "no play");
             ball_out_past_the_right_goal(&mut app);
-            step(&mut app);
-            step(&mut app);
+            frame(&mut app);
+            frame(&mut app);
         }
         assert_eq!(match_state(&app), MatchState::MatchOver);
         assert_eq!(
@@ -353,7 +460,7 @@ mod tests {
         );
         take_recorded::<Serve>(&mut app);
         for _ in 0..200 {
-            step(&mut app);
+            frame(&mut app);
         }
         assert_eq!(match_state(&app), MatchState::MatchOver);
         assert_eq!(take_recorded::<Serve>(&mut app), Vec::<Serve>::new());
@@ -364,43 +471,117 @@ mod tests {
     }
 
     #[test]
-    fn entering_countdown_clears_seat_intents() {
-        let mut app = recording_app(1);
-        start_match(&mut app, two_humans_to(ten()));
-        report_intent(&mut app, Seat::Left, PaddleIntent::Up);
-        ball_out_past_the_right_goal(&mut app);
-        step(&mut app);
-        run_until(
-            &mut app,
-            |app| match_state(app) == MatchState::Countdown,
-            1_000,
-            "no countdown after the point",
-        );
-        assert_eq!(
-            app.world_mut()
-                .resource_mut::<SeatIntents>()
-                .consume(Seat::Left),
-            PaddleIntent::Still
-        );
-    }
-
-    #[test]
     fn the_simulation_stands_still_outside_playing() {
         let mut app = recording_app(1);
         enter_match(&mut app, two_humans_to(two()));
         place_ball(&mut app, Vec2::new(10.0, 10.0), Vec2::new(60.0, 60.0));
-        step(&mut app);
+        frame(&mut app);
         assert_vec_near(ball_state(&mut app).0, Vec2::new(10.0, 10.0), 1e-6);
 
         run_until(&mut app, playing, 1_000, "no play");
-        app.world_mut()
-            .resource_mut::<NextState<MatchState>>()
-            .set(MatchState::Paused);
-        step(&mut app);
-        assert_eq!(match_state(&app), MatchState::Paused);
+        pause(&mut app);
         place_ball(&mut app, Vec2::new(10.0, 10.0), Vec2::new(60.0, 60.0));
-        step(&mut app);
+        frame(&mut app);
         assert_vec_near(ball_state(&mut app).0, Vec2::new(10.0, 10.0), 1e-6);
+    }
+
+    fn control(app: &mut App) -> Mut<'_, MatchControl> {
+        app.world_mut().resource_mut::<MatchControl>()
+    }
+
+    /// Requests a pause and runs the frames until it applies.
+    fn pause(app: &mut App) {
+        control(app).request_pause();
+        run_until(
+            app,
+            |app| match_state(app) == MatchState::Paused,
+            2,
+            "the pause request was not honoured",
+        );
+    }
+
+    /// Requests a resume and returns the substate it lands in.
+    fn resume(app: &mut App) -> MatchState {
+        control(app).request_resume();
+        run_until(
+            app,
+            |app| match_state(app) != MatchState::Paused,
+            2,
+            "the resume request was not honoured",
+        );
+        match_state(app)
+    }
+
+    /// ADR 0003: only `Countdown → Playing` serves.
+    #[test]
+    fn resuming_a_paused_rally_neither_serves_nor_moves_the_ball_back() {
+        let mut app = recording_app(1);
+        start_match(&mut app, two_humans_to(ten()));
+        take_recorded::<Serve>(&mut app);
+        let velocity = Vec2::new(60.0, 60.0);
+        place_ball(&mut app, Vec2::new(10.0, 10.0), velocity);
+        pause(&mut app);
+        let (paused_at, _) = ball_state(&mut app);
+        assert_eq!(resume(&mut app), MatchState::Playing);
+        // The frame that applies the resume runs one fixed step of play.
+        let dt = fixed_timestep(&app).as_secs_f32();
+        let (position, now_moving) = ball_state(&mut app);
+        assert_vec_near(position, paused_at + velocity * dt, 1e-4);
+        assert_vec_near(now_moving, velocity, 1e-6);
+        assert_eq!(take_recorded::<Serve>(&mut app), Vec::<Serve>::new());
+    }
+
+    #[test]
+    fn a_pause_from_countdown_playing_or_point_scored_resumes_to_that_substate() {
+        let mut app = recording_app(1);
+        enter_match(&mut app, two_humans_to(ten()));
+        pause(&mut app);
+        assert_eq!(resume(&mut app), MatchState::Countdown);
+
+        run_until(&mut app, playing, 1_000, "no play");
+        pause(&mut app);
+        assert_eq!(resume(&mut app), MatchState::Playing);
+
+        ball_out_past_the_right_goal(&mut app);
+        run_until(
+            &mut app,
+            |app| match_state(app) == MatchState::PointScored,
+            2,
+            "no point pause",
+        );
+        pause(&mut app);
+        assert_eq!(resume(&mut app), MatchState::PointScored);
+        assert_eq!(app.world().resource::<Score>().side(Side::Left), 1);
+    }
+
+    #[test]
+    fn a_pause_request_after_the_match_is_over_is_ignored() {
+        let mut app = recording_app(1);
+        start_match(&mut app, two_humans_to(one()));
+        ball_out_past_the_right_goal(&mut app);
+        run_until(
+            &mut app,
+            |app| match_state(app) == MatchState::MatchOver,
+            2,
+            "no match over",
+        );
+        control(&mut app).request_pause();
+        for _ in 0..3 {
+            frame(&mut app);
+        }
+        assert_eq!(match_state(&app), MatchState::MatchOver);
+    }
+
+    #[test]
+    fn a_pause_request_made_outside_a_match_is_dropped_not_kept_for_the_next_match() {
+        let mut app = recording_app(1);
+        control(&mut app).request_pause();
+        frame(&mut app);
+        enter_match(&mut app, two_humans_to(ten()));
+        for _ in 0..3 {
+            frame(&mut app);
+        }
+        assert_eq!(match_state(&app), MatchState::Countdown);
     }
 
     #[test]

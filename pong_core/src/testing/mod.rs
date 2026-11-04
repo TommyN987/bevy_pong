@@ -1,6 +1,7 @@
 //! Headless test harness (spec 1.5.1): `MinimalPlugins`, the asset system, and
-//! the core plugin group, with time driven one fixed step per `update`, a
-//! constant seed, fake seat intents, and message recorders.
+//! the core plugin group, with time driven by hand (one fixed step per frame
+//! unless [`set_frame_length`] says otherwise), a constant seed, fake seat
+//! intents, and message recorders.
 //!
 //! Compiled for this crate's own tests and, behind the `testing` cargo
 //! feature, for integration tests and the shell's tests. Every helper that
@@ -12,6 +13,8 @@
     clippy::expect_used,
     reason = "test harness: a failed precondition stops the test with the reason"
 )]
+
+use std::time::Duration;
 
 use bevy::MinimalPlugins;
 use bevy::app::{App, FixedPostUpdate, FixedUpdate, PluginGroup};
@@ -27,32 +30,27 @@ use bevy::time::{Fixed, Time, TimeUpdateStrategy};
 
 use crate::app::CorePlugins;
 use crate::app::error_policy::{ErrorPolicy, ErrorPolicyPlugin};
-use crate::app::phases::FixedStepPhase;
-use crate::app::states::AppState;
-use crate::domain::{MatchConfig, Random, Seat};
+use crate::domain::{MatchConfig, Seat};
 use crate::features::ball::{Ball, Position, Velocity};
-use crate::features::rules::MatchState;
 use crate::features::seats::{PaddleIntent, SeatIntents};
+use crate::flow::phases::FixedStepPhase;
+use crate::flow::states::AppState;
+use crate::flow::states::MatchState;
 
-/// Fixed steps per second in every harness app.
-pub const STEP_HZ: f64 = 60.0;
-
-/// A core app with no window and no real clock. Every [`step`] advances
-/// exactly one fixed step; `seed` seeds the random source and the schedule
-/// shuffle; a system error panics in every build profile, so a soak run in
-/// release still fails.
+/// A core app with no window and no real clock. Every [`frame`] advances one
+/// fixed step at the core's rate until [`set_frame_length`] changes it; `seed`
+/// seeds the random source and the schedule shuffle; a system error panics in
+/// every build profile, so a soak run in release still fails.
+///
+/// Bevy's first frame has zero delta, so the first [`frame`] runs no fixed step.
 pub fn headless_app(seed: u64) -> App {
-    let fixed = Time::<Fixed>::from_hz(STEP_HZ);
-    let timestep = fixed.timestep();
     let mut app = App::new();
     app.add_plugins((
         MinimalPlugins,
         AssetPlugin::default(),
-        CorePlugins.set(ErrorPolicyPlugin(ErrorPolicy::Dev)),
-    ))
-    .insert_resource(fixed)
-    .insert_resource(TimeUpdateStrategy::ManualDuration(timestep))
-    .insert_resource(Random::seeded(seed));
+        CorePlugins { seed }.set(ErrorPolicyPlugin(ErrorPolicy::Dev)),
+    ));
+    set_frame_length(&mut app, FrameLength::Steps(1));
     // Spec 1.5.3: systems with conflicting access and no declared order run in
     // an order the seed decides, so a test cannot pass by accident of order.
     app.configure_schedules(ScheduleBuildSettings {
@@ -64,6 +62,11 @@ pub fn headless_app(seed: u64) -> App {
     // dispatch costs more per schedule than the systems do (the soak went from
     // 3 s to 19 s). Every schedule runs single-threaded here, which the shuffle
     // also asks for: the multi-threaded executor does not keep the shuffled order.
+    //
+    // Both the shuffle seed and the executor reach only the schedules that exist
+    // now, after every core plugin has built (Bevy applies neither to schedules
+    // created later). A test that adds systems to a schedule no plugin created
+    // gets Bevy's defaults there.
     for (_, schedule) in app.world_mut().resource_mut::<Schedules>().iter_mut() {
         schedule.set_executor(SingleThreadedExecutor::new());
     }
@@ -158,9 +161,51 @@ pub fn run_until(app: &mut App, done: impl Fn(&App) -> bool, max: u32, what: &st
     panic!("{what} within {max} frames");
 }
 
-/// One frame, which is one fixed step at [`STEP_HZ`].
-pub fn step(app: &mut App) {
+/// One frame: `Update` once and as many fixed steps as the frame length gives.
+pub fn frame(app: &mut App) {
     app.update();
+}
+
+/// How much game time one [`frame`] advances, measured in fixed steps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FrameLength {
+    /// Half a fixed step: frames alternate between one fixed step and none, as
+    /// on a display faster than the fixed rate. The step rounds to whole
+    /// nanoseconds, so a pair of halves can fall a nanosecond short and the
+    /// alternation slips by one frame now and then.
+    HalfStep,
+    /// This many whole fixed steps per frame, as on a slow or hitching display.
+    Steps(u32),
+}
+
+/// The longest frame Bevy accepts before clamping (`Time<Virtual>`'s default
+/// maximum delta). Longer frames would run fewer steps than asked.
+const MAX_FRAME: Duration = Duration::from_millis(250);
+
+/// Makes every following [`frame`] advance `length` of game time.
+///
+/// # Panics
+/// If `length` is `Steps(0)`, or longer than the 250 ms Bevy accepts in one
+/// frame. At 60 Hz the step rounds up to 16,666,667 ns, so 14 steps fit and
+/// 15 do not.
+pub fn set_frame_length(app: &mut App, length: FrameLength) {
+    let timestep = app.world().resource::<Time<Fixed>>().timestep();
+    let duration = match length {
+        FrameLength::HalfStep => timestep / 2,
+        FrameLength::Steps(0) => panic!("a frame of zero steps never advances time"),
+        FrameLength::Steps(steps) => timestep * steps,
+    };
+    assert!(
+        duration <= MAX_FRAME,
+        "{length:?} is {duration:?}, longer than the {MAX_FRAME:?} Bevy runs in one frame"
+    );
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(duration));
+}
+
+/// The length of one fixed step, as the core's clock has it.
+#[must_use]
+pub fn fixed_timestep(app: &App) -> Duration {
+    app.world().resource::<Time<Fixed>>().timestep()
 }
 
 /// Fakes `seat`'s keys asking for `intent`, as the shell's keyboard adapter
@@ -280,12 +325,62 @@ pub fn unphased_fixed_step_systems(app: &mut App) -> Vec<String> {
 mod tests {
     use std::collections::HashSet;
 
-    use bevy::app::Update;
+    use bevy::app::{App, FixedPostUpdate, Update};
     use bevy::ecs::error::BevyError;
     use bevy::ecs::resource::Resource;
     use bevy::ecs::system::ResMut;
 
-    use super::headless_app;
+    use super::{FrameLength, frame, headless_app, set_frame_length};
+
+    #[derive(Resource, Default)]
+    struct FixedSteps(u32);
+
+    fn count_fixed_step(mut steps: ResMut<FixedSteps>) {
+        steps.0 += 1;
+    }
+
+    /// Fixed steps run by each of `frames` frames of `length`, after the first
+    /// frame, whose delta Bevy reports as zero.
+    fn steps_per_frame(length: FrameLength, frames: usize) -> Vec<u32> {
+        let mut app = headless_app(1);
+        app.init_resource::<FixedSteps>()
+            .add_systems(FixedPostUpdate, count_fixed_step);
+        set_frame_length(&mut app, length);
+        frame(&mut app);
+        (0..frames)
+            .map(|_| {
+                let before = app.world().resource::<FixedSteps>().0;
+                frame(&mut app);
+                app.world().resource::<FixedSteps>().0 - before
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_frame_of_n_steps_runs_n_fixed_steps_up_to_the_longest_frame_bevy_accepts() {
+        assert_eq!(steps_per_frame(FrameLength::Steps(1), 3), [1, 1, 1]);
+        assert_eq!(steps_per_frame(FrameLength::Steps(4), 3), [4, 4, 4]);
+        assert_eq!(steps_per_frame(FrameLength::Steps(14), 2), [14, 14]);
+    }
+
+    #[test]
+    fn half_step_frames_never_run_two_fixed_steps_in_a_row_and_run_one_every_other_frame() {
+        let steps = steps_per_frame(FrameLength::HalfStep, 40);
+        assert!(steps.iter().all(|&n| n <= 1), "{steps:?}");
+        assert!(
+            steps.windows(2).all(|pair| pair[0] + pair[1] <= 1),
+            "{steps:?}"
+        );
+        // Nanosecond rounding loses at most one step over the run.
+        assert!((19..=20).contains(&steps.iter().sum::<u32>()), "{steps:?}");
+    }
+
+    #[test]
+    #[should_panic(expected = "longer than")]
+    fn a_frame_longer_than_bevy_accepts_is_refused() {
+        let mut app: App = headless_app(1);
+        set_frame_length(&mut app, FrameLength::Steps(15));
+    }
 
     fn failing_system() -> Result<(), BevyError> {
         Err(BevyError::from("deliberate test failure"))

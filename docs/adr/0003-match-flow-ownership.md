@@ -48,7 +48,7 @@ Rules owns every `MatchState` transition, and a fixed step runs only while play 
 
 - The architecture's shell-to-core ports grow from three to four.
 - A pause requested in `Update` applies at the next frame's `StateTransition`, before that frame's fixed steps.
-- Tests can run frames of 15 steps and of half a step (plan 3.12, 3.13).
+- Tests can run frames of up to 14 steps and of half a step (plan 3.12, 3.13). Corrected 2026-11-04 from 15: at 60 Hz the step rounds up to 16,666,667 ns, so 15 steps exceed the 250 ms clamp; a real 15-step frame needs overstep carried from the frame before.
 - Tuning validation can check `speed_cap / FIXED_HZ < arena.height − 2·radius` (plan 3.17).
 - Plan 3.12 through 3.14 implement this; plan 4.1 routes focus loss through `MatchControl`.
 - Amends `docs/architecture.md` (Simulation model, Boundaries, States) and spec 1.4.5 and 1.6.1.
