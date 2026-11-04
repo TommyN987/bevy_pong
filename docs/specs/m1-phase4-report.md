@@ -11,6 +11,10 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) and [m1-plan.md](m1-plan.md
 | 1.6.1 | Focus loss clears the intents after that frame's keyboard report, in every state, and asks `MatchControl` to pause only while `Playing`. Bevy releases `ButtonInput` keys one frame after focus loss, so a clear before the report would be overwritten by the stale keys. The latest focus change of a frame decides; focus lost and regained within one frame does nothing. | `pong::ports::focus`, 2026-11-04. |
 | plan 4.1 | `pong` is a library plus a thin binary. A binary crate warns on every item `main` does not yet use, and integration tests cannot import a binary. | Plan 4.1 amended 2026-11-04; `pong/src/lib.rs`. |
 | plan 4.1, 7.1 | The `SavePaths` resource moves to 7.1; 4.1 builds only the shell's XDG directory resolver, which 4.4's crash file also needs. A port shaped before its reader exists is a guess. | Plan 4.1, 7.1, and spec 1.6.1 amended 2026-11-04. |
+| plan 4.2, 4.8 | Views sample each body's centre every fixed tick in `FixedPostUpdate` and draw between the last two samples once a frame (`RunFixedMainLoopSystems::AfterFixedMainLoop`). 4.8 is declined: `StepStart` updates only on live steps, so between it and `Position` a stopped ball would shimmer through every countdown, point pause, and pause; sampling every tick also covers paddles. | Plan 4.2 and 4.8 amended 2026-11-04; `pong::views::motion`. |
+| 1.6.2 | Letterboxing is `ScalingMode::AutoMin` over a black backdrop with nothing drawn beyond the arena, not bars cut by `Camera.viewport`. `AutoMin` shows the whole arena at its aspect and extra world on a differently shaped window; the only gain of true bars, clipping what lies outside the arena, clips nothing. | Spec 1.6.2 amended 2026-11-04; `pong::views::camera`. |
+| 1.6.2, ADR 0001 | `pong` enables Bevy's `tonemapping_luts` and `zstd_rust`, adding `ktx2` 0.5 (Apache-2.0) and `ruzstd` 0.9 (MIT, with `twox-hash`). Without them TonyMcMapface reads a magenta placeholder table. Treadmill justification: they are Bevy's own optional dependencies at versions Bevy pins, so they move with each Bevy release rather than lagging it; the alternative was a tonemapper without a table, against the spec. | Spec 1.6.2 amended 2026-11-04; comment in `pong/Cargo.toml`. |
+| plan 4.2 | The 4.2 eye check needs a running game; order is 4.2 code, 4.5 dev entry, 4.2 eye check, 4.3, 4.4. | Plan 4.2 amended 2026-11-04. |
 | ADR 0001 | `pong` names Bevy's `keyboard` feature, which `bevy_window` already enables, so the adapter does not depend on another crate's feature list. `pong` gains a dev-dependency on `pong_core` with `testing`: our own crate, no new dependency. | Comments in `pong/Cargo.toml`, 2026-11-04. |
 
 ## Decisions taken in this phase
@@ -21,6 +25,16 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) and [m1-plan.md](m1-plan.md
 - Each base is its `XDG_*_HOME` if absolute, else its default under `HOME`, plus the directory `bevy_pong`. A relative or empty variable is ignored, as the XDG specification requires. `HOME` must be absolute, and is needed only by a base that falls back to it; with no usable base the resolver returns `NoHomeDirectory`, and each caller decides what that means for its file.
 - The resolver computes paths and creates no directory; the writer of a file creates its directory and handles its own failure (persistence write policy, spec 1.4.9).
 - Errors in `pong` derive with `thiserror`, as in `pong_core`; the workspace dependency is already justified (phase 3 report), so `pong` names it without a new treadmill entry.
+
+## Bevy API checks (plan 4.7)
+
+One `bevy-api-check` report per view module, before the code, against the pinned 0.20.1 source; corrections it made are listed.
+
+| Module | Checked | Corrections |
+|---|---|---|
+| `views::camera` | `Camera2d`, `Hdr`, `Bloom`, `Tonemapping`, `DebandDither`, `ClearColor`, `Projection`, `OrthographicProjection::default_2d`, `ScalingMode::AutoMin`, resize handling; `resource_exists_and_changed` | HDR is the `Hdr` component, not `Camera { hdr }`; `Camera2d` defaults to `Linear` tonemapping and no dither; TonyMcMapface needs `tonemapping_luts` and `zstd_rust`; `AutoMin` shows extra world, not bars. `resource_exists_and_changed` was written before its check and confirmed after (false while absent, true on insert and reinsert). |
+| `views::motion` | `Time<Fixed>::overstep_fraction`, `RunFixedMainLoopSystems::AfterFixedMainLoop`, `FixedPostUpdate`, `Added`, `#[require(Transform)]`, `Transform` without `TransformPlugin` | none |
+| `views::{arena, ball, paddle}`, `views` | `Mesh2d`, `MeshMaterial2d`, `ColorMaterial` from `Color`, `Color::linear_rgb` above 1.0 reaching the HDR target, `Assets<Mesh>::add` of `Rectangle`/`Circle`, `Assets` present by `Startup` | `Rectangle` and `Circle` are in `bevy::shape`, not `bevy::math` |
 
 ## Open
 
