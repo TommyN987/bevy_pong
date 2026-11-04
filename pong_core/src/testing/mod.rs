@@ -209,7 +209,7 @@ pub fn fixed_timestep(app: &App) -> Duration {
 }
 
 /// Fakes `seat`'s keys asking for `intent`, as the shell's keyboard adapter
-/// reports it every `Update`. The level stays until reported again.
+/// reports it once per frame. The level stays until reported again.
 pub fn report_intent(app: &mut App, seat: Seat, intent: PaddleIntent) {
     app.world_mut()
         .resource_mut::<SeatIntents>()

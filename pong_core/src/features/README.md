@@ -56,7 +56,7 @@ The core has no window or input plugin, so a resource stands between them.
 An AI or a test writes the same output with no keyboard.
 
 `SeatIntents` (the port) keeps two things per seat,
-because `Update` runs at the display rate and fixed steps at 60 Hz:
+because frames run at the display rate and fixed steps at 60 Hz:
 
 | Field | Set by `report` | Read by `consume` | Covers |
 |---|---|---|---|
@@ -68,9 +68,10 @@ the AI will write AI sides there.
 `forget_reported_intents` (`OnEnter(Countdown)`) clears the port,
 so a menu key press never becomes a serve's first move.
 
-Shell contract: report every `Update` during a match;
+Shell contract: report once per frame while `Playing`, before the fixed steps;
 report a key pressed and released within one frame as held for that frame;
-call `SeatIntents::clear` on focus loss.
+call `SeatIntents::clear` on focus loss, after that frame's report.
+The shell's adapter is `pong::ports`.
 
 ## ball
 
