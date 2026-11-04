@@ -50,6 +50,7 @@ Rationale: the order is dependency-correct, each layer reuses the previous, and 
 - C3 rooms are neon-generic; themes arrive as skins at or after C4.
 - The keyboard ghosting test runs before C3 ships.
 - The beat never gates paddle or ball movement.
+- C1 field effects express force as a pure function of position and time, called by both the physics step and the AI's prediction; a per-step accumulator cannot be predicted. Added 2026-11-04 (phase 3 review).
 
 ## Decision: persistence lands in Basic Pong
 

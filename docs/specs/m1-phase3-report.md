@@ -7,10 +7,10 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) per plan rule P.6, each wit
 
 | Item | Deviation | Recorded |
 |---|---|---|
-| 1.3.1 | `Side` is defined in `kernel::geometry`, not in the vocabulary module. Geometry is the lowest layer that needs it, and rule 1 of the intra-crate structure makes kernel types reachable from every feature. It still counts toward the vocabulary limit. | Spec 1.3.1 amended by the user, 2026-11-01. `docs/architecture.md` still lists `Side` under `domain/`; amend at milestone close. |
+| 1.3.1 | `Side` is defined in `kernel::geometry`, not in the vocabulary module. Geometry is the lowest layer that needs it, and rule 1 of the intra-crate structure makes kernel types reachable from every feature. It still counts toward the vocabulary limit. | Spec 1.3.1 amended by the user, 2026-11-01. `docs/architecture.md` sketch amended on this branch (`Side` removed from `domain/`). |
 | 1.3.2 | `BallHitPaddle { side }` instead of `{ seat }`. The AI's paddle has no seat (`Controller::Ai`), so a seat field could not be filled in a vs-computer match. | Spec 1.3.2 amended, 2026-11-02. |
 | 1.3.2 | `PointScored { scorer }` instead of `{ side }`. "Side" did not say whether it meant the scorer or the conceder. | Spec 1.3.2 amended, 2026-11-02. |
-| 1.2.6 | The done-condition says "equals simulation". No simulation exists before 3.6, so the 3.1 test compares `crossing_y` against an independent analytic zigzag within one unit. | Deferred: add the simulation-equality test in 3.6. |
+| 1.2.6 | The done-condition says "equals simulation". No simulation exists before 3.6, so the 3.1 test compares `crossing_y` against an independent analytic zigzag within one unit. | Done in 3.6: `physics::tests::the_prediction_equals_the_simulation_within_one_unit`. |
 | 1.4.1 | The binding schema names the fourth key `back`, where the spec says "reserved". The key backs out of menus now and is reserved in play; the name follows its live role. | This report, 2026-11-02; spec 1.4.1 wording to amend at milestone close. |
 | 1.4.8 | Angles in the tuning file are degrees, converted to radians at validation. The spec names "maximum reflection angle" without a unit; degrees are what a person editing the file expects. | File comment and `TuningFile` doc, 2026-11-02. |
 | ADR 0001 | `pong_core` enables three more Bevy features: `bevy_color` (palette type), `keyboard` and `serialize` (`KeyCode` bindings as data). `cargo tree` confirmed the tree still holds no render, window, audio, or UI crate. | Comment on the dependency in `pong_core/Cargo.toml`, 2026-11-02; ADR 0001 consequence to amend at milestone close. |
@@ -18,8 +18,8 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) per plan rule P.6, each wit
 | 1.4.1 | `PaddleIntent::Still` instead of `None`, to keep it apart from `Option::None` at every use site. | This report, 2026-11-03. |
 | 1.4.5 | `MatchConfig` is defined in vocabulary, not in rules: seats, rules, the AI, and the menu all read it. Vocabulary count is now ten of twelve. `points_to_win` is `NonZeroU8`, and tuning's options use the same type, so zero is unrepresentable rather than checked (the `PointsToWinZero` error variant is gone). | This report, 2026-11-03. |
 | 1.4.8 | The tuning schema gains `paddle.inset`, the distance from the goal line to the paddle's back face. The spec schema lists no such value, and a paddle sitting on the goal line makes "crossed the line" ambiguous. | `tuning.ron` and `PaddleTuning::inset`, 2026-11-03. |
-| 1.4.2 | `Position`, `Velocity`, and `Snap` are ball-feature components, not vocabulary. The paddle keeps its own `center_y`, and the shell's paddle view interpolates that (rule 8: one view per core feature). Vocabulary stays at eleven: `Random` and `Serve` joined it. | This report, 2026-11-03. |
-| 1.3 | `Serve { toward }` is an internal trigger from rules to ball, emitted by rules and read by the ball feature, not the shell. Rule 5 (cross-feature triggers are events) outweighed the "observed by the shell" wording of 1.3.2. | This report, 2026-11-03. Vocabulary count at close: eleven. |
+| 1.4.2 | `Position`, `Velocity`, and `Snap` are ball-feature components, not vocabulary. The paddle keeps its own `center_y`, and the shell's paddle view interpolates that (rule 8: one view per core feature). `Random` and `Serve` joined the vocabulary. | This report, 2026-11-03. The count of eleven given here was wrong: twelve under the old rule; recounted 2026-11-04 under ADR 0002. |
+| 1.3 | `Serve { toward }` is an internal trigger from rules to ball, emitted by rules and read by the ball feature, not the shell. Rule 5 (cross-feature triggers are events) outweighed the "observed by the shell" wording of 1.3.2. | This report, 2026-11-03. Recounted 2026-11-04: six types of twelve and six messages under ADR 0002. |
 | 1.5.1 | The test harness exists early, in `src/testing/` under `#[cfg(test)]`: a headless app driven one fixed step per frame via `TimeUpdateStrategy::ManualDuration`, a seeded `Random`, and message recorders. 3.8 puts it behind the cargo feature and adds the fakes it still lacks. | This report, 2026-11-03. Done in 3.8: `testing` feature, `report_intent`, `leave_match`, `app_state`. |
 | 1.4.8 | The tuning schema gains `match_flow.point_pause_seconds`: how long a scored point stays on screen before the next countdown. The spec gives `PointScored` no duration; a value found by playtesting belongs in tuning, not in code. | `tuning.ron` and `MatchFlowTuning::point_pause`, 2026-11-03. |
 | 1.4.5 | The substate type is `MatchState` and the first serve of a match goes toward a side drawn from the seeded random source; the spec names neither. | This report, 2026-11-03. |
@@ -68,6 +68,42 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) per plan rule P.6, each wit
 - Process deviation in 3.8–3.10: Bevy APIs were verified by reading the pinned crate source in the local cargo registry directly, not through the `bevy-api-check` agent as CLAUDE.md requires, and this was not stated at the time. Resolved 2026-11-03: the agent now reads the pinned source first and docs.rs as fallback, and the rule names direct source reading as a deviation to state.
 - The soak restarts a match the way the shell will: `MatchOver` → `Menu` (`leave_match`) → `InMatch` (`enter_match`). A same-state transition would not re-enter `InMatch`, so the detour through `Menu` is required, not a convenience.
 
+## Review, 2026-11-03
+
+Claude reviewed commits `2e6dcf4..c73f060` against the spec, design, and architecture; the user reviewed the findings and approved every recommendation on 2026-11-04.
+Bevy behaviour was verified through `bevy-api-check` against the pinned source.
+At review time `just lint` was green and 113 tests passed, the soak in 3.1 s.
+
+| # | Finding | Blocking | Disposition |
+|---|---|---|---|
+| 1 | A frame of several fixed steps scores one goal on every step; `NextState` applies only at the next frame | yes | ADR 0003; plan 3.13 |
+| 2 | `Paused → Playing` fires `OnEnter(Playing)` and serves again | yes | ADR 0003; plan 3.14 |
+| 3 | Features import other features and `app/`; `app::phases ↔ rules` cycle; rules calls `SeatIntents::clear()` | yes | ADR 0002; plan 3.11 |
+| 4 | Vocabulary held twelve types, not eleven, against "under a dozen" | yes | ADR 0002; recounted |
+| 5 | The harness runs exactly one fixed step per frame | no | plan 3.12 |
+| 6 | At least 53,600 of the soak's 100,000 frames run no phase; rallies stay short | no | plan 3.19; spec 1.5.2 amended |
+| 7 | No cross-field tuning checks; `height_max > arena.height` panics in `f32::clamp` | no | plan 3.17 |
+| 8 | The ball rests past the goal line through `PointScored` and `Countdown` | no | ADR 0003; plan 3.14 |
+| 9 | Multi-ball loops over single-ball resources (`BallStepStart`, `BallForce`) | no | plan 3.15 |
+| 10 | Nothing installs `Random`; release logs and never scores without it | no | plan 3.18 |
+| 11 | `Paddle::new` takes an unclamped height; `set_height` needs a follow-up `move_by(0.0)` | no | plan 3.16 |
+| 12 | `crossing_y` cannot see forces | no | design invariant added; C1 spec |
+| 13 | Seats contract omits presses released within one frame | no | plan 3.20, 4.1 |
+| 14 | No record of the substate to resume to after a pause | no | ADR 0003; plan 3.14 |
+| 15 | No rally counter for "longest rally" and C1's meter | no | plan 7.4 |
+| 16 | Bindings may claim `Escape` | no | plan 3.17 |
+| 17 | Report rows 1.3.1 and 1.2.6 stale | no | corrected 2026-11-04 |
+| 18 | `Notice` has two emitters against spec 1.3.2 | no | spec 1.3.2 amended |
+| 19 | Seats guards on `MatchConfig` despite the phase gate | no | plan 3.11 |
+| 20 | `Seat` doc says one seat drives both sides | no | plan 3.20 |
+| 21 | `use` statements mid-file in `domain.rs` | no | plan 3.20 |
+| 22 | `BallStepStart` doc wrong after the first match | no | plan 3.15 removes it |
+| 23 | Harness doc claims every schedule is configured | no | plan 3.20 |
+| 24 | `Paddle` copies thickness and inset; hot reload applies half | no | plan 3.16 |
+| 25 | Production would run at Bevy's 64 Hz, tests at 60 Hz | no | ADR 0003; plan 3.12 |
+
+Roles for 3.11 through 3.21 are not yet agreed (plan P.1).
+
 ## Items
 
 | Item | Status |
@@ -82,3 +118,14 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) per plan rule P.6, each wit
 | 3.8 Testing module and soak | done; soak 2.9 s locally for 100,000 steps, 47 matches to five points |
 | 3.9 Dev override | done; manual check deferred to the first playable shell per plan |
 | 3.10 Schedule randomization | done; the whole suite, soak included, is green with the shuffle on |
+| 3.11 Flow layer and feature order | planned 2026-11-04 |
+| 3.12 Fixed rate and frame-length control | planned 2026-11-04 |
+| 3.13 Step gate | planned 2026-11-04 |
+| 3.14 Serve trigger, ball reset, pause port | planned 2026-11-04 |
+| 3.15 Per-entity ball step state | planned 2026-11-04 |
+| 3.16 Paddle owns its geometry | planned 2026-11-04 |
+| 3.17 Cross-field tuning validation | planned 2026-11-04 |
+| 3.18 Seeded core group | planned 2026-11-04 |
+| 3.19 Soak coverage | planned 2026-11-04 |
+| 3.20 Small corrections | planned 2026-11-04 |
+| 3.21 Record step | decisions recorded 2026-11-04; deviations from 3.11–3.20 pending |

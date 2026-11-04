@@ -72,18 +72,36 @@ Realizes spec 1.2, 1.3, 1.4.1 through 1.4.5, 1.4.8, 1.4.10, 1.5, 1.7.1. Depends 
 - **3.9 SHOULD** Dev override with hot reload and keep-last-good. Done: unit test; manual check once the shell exists.
 - **3.10 SHOULD** Schedule randomization 1.5.3. Done: green with it on.
 
+Added 2026-11-04 from the phase 3 review (findings and dispositions in [m1-phase3-report.md](m1-phase3-report.md); decisions in ADR 0002 and ADR 0003).
+All on `feat/headless-rally`; the phase 3 PR waits for them.
+Order: 3.11, then 3.12, then 3.13 through 3.18 in any order, then 3.19, 3.20, 3.21.
+
+- **3.11 MUST** `flow` layer and feature order per ADR 0002. Done: (a) no production code in `features/` or `flow/` imports `crate::app`; (b) no feature imports one later in the order declared in `features/mod.rs`; (c) `flow` imports only kernel, domain, and Bevy; (d) `entering_countdown_clears_seat_intents` lives in seats and passes; (e) rules does not import seats; (f) the `resource_exists::<MatchConfig>` guard on seats is gone.
+  - **3.11.1 SHOULD** `just arch-check` inside `dev-check` and `ci-check`, checking (a) through (c) by grep. Done: a planted import of `features::rules` inside `paddle` fails `just dev-check`.
+- **3.12 MUST** One fixed rate and harness frame-length control per ADR 0003. Done: a `CorePlugins` app has a `Time<Fixed>` timestep of `1 / FIXED_HZ`; the harness has no rate constant of its own; an app-level test with half-step frames shows a tap moving the paddle exactly once.
+- **3.13 MUST** Step gate per ADR 0003; `bevy-api-check` first confirms whether a pending `NextState` can be read. Done, with 15-step frames: a goal raises the score by exactly 1 and writes one `PointScored`; the final point writes exactly one `MatchEnded`; a recording system in the sanity phase runs in the step that scores; no later step in that frame runs any phase.
+- **3.14 MUST** Serve trigger, ball reset, and `MatchControl` pause port per ADR 0003. Done: `Paused → Playing` writes no `Serve` and leaves the ball's position and velocity unchanged; entering `Countdown` after a point puts the ball at the origin, stationary, with `Snap`; a pause from each of `Countdown`, `Playing`, `PointScored` resumes to that substate; a pause request in `MatchOver` is ignored.
+- **3.15 SHOULD** Per-entity ball step state: `BallStepStart` becomes a `StepStart(Motion)` component, `BallForce` a `Force(Vec2)` component. Done: both resources gone; a test with two hand-spawned balls shows each swept from its own start.
+- **3.16 SHOULD** Paddle owns its geometry: the component keeps `side`, `center_y`, `height`; `Paddle::new(side, &PaddleTuning)`; `set_height(h, bounds, arena)` keeps the paddle inside the walls; `rect` reads thickness and inset from tuning. Done: growing against a wall stays inside without `move_by(0.0)`; a reloaded `thickness` changes an existing paddle's `rect` within one frame.
+- **3.17 MUST** Cross-field tuning validation: `height_max ≤ arena.height`; `2·radius < arena.height`; `inset + thickness < arena.width / 2`; `speed_cap / FIXED_HZ < arena.height − 2·radius`; no seat key bound to `Escape`. Done: each rule rejects a crafted RON naming its path; the embedded file passes.
+- **3.18 MUST** Seeded core group: `CorePlugins { seed: u64 }`; the shell seeds from std entropy, no new dependency. Done: a `CorePlugins` app has `Random` without the harness inserting it; the group's doc lists every precondition.
+- **3.19 MUST** Soak coverage. Done: at least 100,000 steps counted in `Playing`; one side tracks the ball with seeded noise, the other plays random intents; each frame's length drawn from {½, 1, 2, 4} steps; paddles inside the walls on every step; the speed cap reached at least once; a minimum paddle-hit count set from the first green run; under 30 s.
+- **3.20 SHOULD** Small corrections. Done: the `Seat` doc says one seat picks both sides in menus; `domain.rs` imports at the top; the harness doc says only schedules present at build are configured; the `SeatsPlugin` contract says to report a press released within one frame as a move for that frame.
+- **3.21 MUST** Record step. ADRs 0002 and 0003, the architecture, design, and spec amendments, and the corrected report rows were recorded 2026-11-04. Done: the phase report lists every deviation 3.11 through 3.20 introduce, and the amended documents match the code at phase close.
+
 Exit: `just dev-check` green; nothing drawn yet.
 
 ### 4. Shell vertical slice: two humans on screen
 Realizes spec 1.6.1, 1.6.2 MUSTs, 1.6.6 MUST, 1.7.2. Depends on 3.
 
-- **4.1 MUST** Keyboard adapter from tuning; `SavePaths` from XDG. Done: adapter test.
+- **4.1 MUST** Keyboard adapter from tuning; `SavePaths` from XDG. Done: adapter test. Amended 2026-11-04: a press released within one frame reports a move for that frame, by test; focus loss pauses through `MatchControl` (ADR 0003).
 - **4.2 MUST** Views: meshes, HDR colors, interpolation, snap, letterboxing camera, bloom. Done: no judder by eye; resize keeps aspect.
 - **4.3 MUST** Window: borderless fullscreen, title. Done: first start fullscreen.
 - **4.4 MUST** Panic hook crash file. Done: forced panic produces the file.
 - **4.5 MUST** Temporary dev entry (feature or flag) starting a two-human match directly; removed in 8.3. Done: match starts.
 - **4.6 SHOULD** Keyboard ghosting check (spec 1.8.2) run now. Done: result in the playtest log.
 - **4.7 MUST** `bevy-api-check` consulted before each rendering API when Claude drives. Done: one report per view module.
+- **4.8 MAY** Ball view interpolation reads `StepStart` (3.15). Added 2026-11-04. Done: no shell-side copy of the previous ball position.
 
 Exit: two people play Pong to ten on screen.
 
@@ -96,7 +114,7 @@ Realizes spec 1.4.6. Depends on 3; parallel with 4.
 ### 6. Sanity and heal
 Realizes spec 1.4.7. Depends on 3 and 5.
 
-- **6.1 MUST** Sanity phase, `SimFault`, heal, dev panic versus release heal. Done: NaN injection test both ways; soak rerun green.
+- **6.1 MUST** Sanity phase, `SimFault`, heal, dev panic versus release heal. Done: NaN injection test both ways; soak rerun green. Amended 2026-11-04: sanity checks exactly one ball exists in M1; heal re-serves through rules so `Serve` keeps one emitter (ADR 0002); the soak's own invariant checks go once sanity covers them.
 
 ### 7. Persistence
 Realizes spec 1.4.9. Depends on 3; independent of 4 through 6.
@@ -104,6 +122,7 @@ Realizes spec 1.4.9. Depends on 3; independent of 4 through 6.
 - **7.1 MUST** Models v1, atomic write, versioned enum, fixtures, count test. Done: round-trip and fixture tests green.
 - **7.2 MUST** Load and write policies with `Notice`. Done: corrupt, version-99, unwritable-path tests green.
 - **7.3 MUST** Guest semantics. Done: test green.
+- **7.4 MUST** Rally counter owned by rules, feeding the "longest rally" record (spec 1.4.9) and, later, C1's meter. Added 2026-11-04. Done: the match's longest rally is readable when `MatchEnded` fires, by test.
 
 ### 8. UI flow
 Realizes spec 1.6.3, settings mode in 1.6.6, 1.7.3. Depends on 4, 5, 7.
@@ -129,7 +148,7 @@ Realizes spec 1.6.2 SHOULD and MAY, 1.6.5, 1.6.6 MAY. Depends on 8.
 Realizes spec 1.8.3, 1.9. Depends on all above.
 
 - **11.1 SHOULD** One session per child, logged. Done: entries exist.
-- **11.2 MUST** ADRs: error policy, persistence format, audio boundary, plus 0001. Done: four files.
+- **11.2 MUST** ADRs: error policy, persistence format, audio boundary, plus 0001, 0002, 0003. Done: six files. Amended 2026-11-04.
 - **11.3 MUST** Close checklist per spec 1.9.3. Done: marked in the M1 spec.
 
 ## User actions outside the plan
