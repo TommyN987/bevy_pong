@@ -70,6 +70,9 @@ struct StepGate {
     open: bool,
 }
 
+/// Runs in `FixedFirst`, outside the phases it gates: the one fixed-step core
+/// system with no phase (architecture rule 4), so the schedule walker, which
+/// checks `FixedUpdate`, does not list it.
 fn open_or_close_step_gate(
     match_state: Option<Res<State<MatchState>>>,
     next_match_state: Res<NextState<MatchState>>,
