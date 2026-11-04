@@ -4,31 +4,43 @@
 use bevy::app::{App, FixedUpdate, Plugin};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
-use bevy::ecs::schedule::common_conditions::resource_exists;
 use bevy::ecs::system::{Res, ResMut};
+use bevy::state::state::OnEnter;
 
-use crate::app::phases::FixedStepPhase;
 use crate::domain::{Controller, MatchConfig, Seat};
+use crate::flow::phases::FixedStepPhase;
+use crate::flow::states::MatchState;
 use crate::kernel::geometry::Side;
 
-/// Registers the [`SeatIntents`] port and the [`PaddleIntents`] output, and
-/// resolves human seats onto their sides in the intent phase.
+/// Registers the [`SeatIntents`] port and the [`PaddleIntents`] output,
+/// resolves human seats onto their sides in the intent phase, and forgets
+/// every reported intent on entering a countdown.
 ///
-/// Contract for the shell adapter: report intents only while a match is in
-/// progress, and call [`SeatIntents::clear`] on focus loss (spec 1.6.6).
+/// Precondition: [`MatchConfig`] exists whenever the phases run; the menu
+/// inserts it before entering a match.
+///
+/// Contract for the shell adapter: report every `Update` while a match is in
+/// progress, and only then; report a key pressed and released within one frame
+/// (Bevy's `just_pressed`) as held for that frame, or the tap is lost before
+/// the latch sees it; call [`SeatIntents::clear`] on focus loss (spec 1.6.1).
 pub struct SeatsPlugin;
 
 impl Plugin for SeatsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SeatIntents>()
             .init_resource::<PaddleIntents>()
+            .add_systems(OnEnter(MatchState::Countdown), forget_reported_intents)
             .add_systems(
                 FixedUpdate,
-                resolve_human_intents
-                    .in_set(FixedStepPhase::Intent)
-                    .run_if(resource_exists::<MatchConfig>),
+                resolve_human_intents.in_set(FixedStepPhase::Intent),
             );
     }
+}
+
+/// A key press from the menu or the last rally must not become the first
+/// paddle move of the next serve.
+fn forget_reported_intents(mut seats: ResMut<SeatIntents>) {
+    seats.clear();
 }
 
 /// What each side's paddle is asked to do this fixed step. Written in the
@@ -146,10 +158,55 @@ mod tests {
 
     use bevy::app::App;
 
+    use bevy::state::state::NextState;
+
     use super::{PaddleIntent, PaddleIntents, SeatIntents};
     use crate::domain::{Controller, Difficulty, MatchConfig, Seat};
+    use crate::flow::states::MatchState;
     use crate::kernel::geometry::Side;
-    use crate::testing::{boot, headless_app, start_match, step};
+    use crate::testing::{
+        boot, enter_match, frame, headless_app, match_state, report_intent, run_until, start_match,
+    };
+
+    fn two_humans() -> MatchConfig {
+        MatchConfig {
+            left: Controller::Human(Seat::Left),
+            right: Controller::Human(Seat::Right),
+            points_to_win: NonZeroU8::new(10).expect("ten is non-zero"),
+        }
+    }
+
+    fn remaining_intent(app: &mut App, seat: Seat) -> PaddleIntent {
+        app.world_mut().resource_mut::<SeatIntents>().consume(seat)
+    }
+
+    #[test]
+    fn a_key_press_from_the_menu_is_forgotten_on_entering_the_first_countdown() {
+        let mut app = headless_app(1);
+        boot(&mut app);
+        report_intent(&mut app, Seat::Left, PaddleIntent::Up);
+        enter_match(&mut app, two_humans());
+        assert_eq!(match_state(&app), MatchState::Countdown);
+        assert_eq!(remaining_intent(&mut app, Seat::Left), PaddleIntent::Still);
+    }
+
+    #[test]
+    fn a_key_press_from_the_last_rally_is_forgotten_on_entering_every_later_countdown() {
+        let mut app = headless_app(1);
+        boot(&mut app);
+        start_match(&mut app, two_humans());
+        report_intent(&mut app, Seat::Right, PaddleIntent::Down);
+        app.world_mut()
+            .resource_mut::<NextState<MatchState>>()
+            .set(MatchState::Countdown);
+        run_until(
+            &mut app,
+            |app| match_state(app) == MatchState::Countdown,
+            2,
+            "no countdown",
+        );
+        assert_eq!(remaining_intent(&mut app, Seat::Right), PaddleIntent::Still);
+    }
 
     fn right_seat_plays_left_side_against_ai() -> MatchConfig {
         MatchConfig {
@@ -172,7 +229,7 @@ mod tests {
         start_match(&mut app, right_seat_plays_left_side_against_ai());
         report(&mut app, Seat::Right, PaddleIntent::Up);
         report(&mut app, Seat::Left, PaddleIntent::Down);
-        step(&mut app);
+        frame(&mut app);
         let intents = *app.world().resource::<PaddleIntents>();
         assert_eq!(intents.side(Side::Left), PaddleIntent::Up);
         assert_eq!(intents.side(Side::Right), PaddleIntent::Still);
@@ -183,7 +240,7 @@ mod tests {
         let mut app = headless_app(1);
         boot(&mut app);
         report(&mut app, Seat::Left, PaddleIntent::Up);
-        step(&mut app);
+        frame(&mut app);
         let intents = *app.world().resource::<PaddleIntents>();
         assert_eq!(intents.side(Side::Left), PaddleIntent::Still);
     }

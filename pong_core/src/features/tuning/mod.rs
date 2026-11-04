@@ -25,6 +25,7 @@ use bevy::input::keyboard::KeyCode;
 use bevy::reflect::TypePath;
 
 use crate::domain::{Difficulty, Notice, Seat};
+use crate::flow::FIXED_HZ;
 use crate::kernel::geometry::{Arena, InvalidArena, InvalidLengthBounds, LengthBounds, Radius};
 use crate::kernel::reflect::{InvalidSpeedRule, MaxDeflection, SpeedRule};
 use crate::kernel::{OutOfRange, Range};
@@ -334,6 +335,53 @@ pub enum TuningError {
         /// The upper bound given.
         max: f32,
     },
+    /// The tallest paddle would not fit between the walls.
+    #[error("tuning paddle.height_max {height_max} is above arena.height {arena_height}")]
+    PaddleTallerThanArena {
+        /// The largest paddle height given.
+        height_max: f32,
+        /// The arena height given.
+        arena_height: f32,
+    },
+    /// The ball would not fit between the walls.
+    #[error(
+        "tuning ball.radius {radius} leaves no room between the walls of arena.height {arena_height}"
+    )]
+    BallTooBigForArena {
+        /// The radius given.
+        radius: f32,
+        /// The arena height given.
+        arena_height: f32,
+    },
+    /// A paddle would stand on or past the centre line.
+    #[error(
+        "tuning paddle.inset {inset} plus paddle.thickness {thickness} reaches the centre line, {half_width} from each goal"
+    )]
+    PaddleReachesCentreLine {
+        /// The inset given.
+        inset: f32,
+        /// The thickness given.
+        thickness: f32,
+        /// Half the arena width.
+        half_width: f32,
+    },
+    /// At the cap the ball could cross the whole playable height in one fixed
+    /// step, more than the single wall fold of a physics step undoes.
+    #[error(
+        "tuning ball.speed_cap {cap} carries the ball across the playable height {playable_height} in one fixed step"
+    )]
+    SpeedCapCrossesArenaInOneStep {
+        /// The cap given.
+        cap: f32,
+        /// `arena.height` less the ball's diameter: the range of its centre.
+        playable_height: f32,
+    },
+    /// A key the shell keeps for itself: Escape pauses and backs out everywhere.
+    #[error("tuning bindings bind {key:?}, which is reserved")]
+    ReservedKey {
+        /// The reserved key bound.
+        key: KeyCode,
+    },
 }
 
 impl Tuning {
@@ -343,7 +391,7 @@ impl Tuning {
     /// The first problem found, naming the value to fix.
     pub fn from_ron(text: &str) -> Result<Self, TuningError> {
         let file: TuningFile = ron::from_str(text)?;
-        Ok(Self {
+        let tuning = Self {
             arena: Arena::new(file.arena.width, file.arena.height)?,
             paddle: PaddleTuning::validate(&file.paddle)?,
             ball: BallTuning::validate(&file.ball)?,
@@ -351,7 +399,46 @@ impl Tuning {
             ai: AiTuning::validate(&file.ai)?,
             bindings: BindingsTuning::validate(&file.bindings)?,
             palette: validate_palette(&file.palette)?,
-        })
+        };
+        tuning.check_everything_fits_the_arena()?;
+        Ok(tuning)
+    }
+
+    /// Rules across sections, each a precondition somewhere downstream: the
+    /// paddle's wall clamp, the ball's wall fold, and the swept collision.
+    fn check_everything_fits_the_arena(&self) -> Result<(), TuningError> {
+        let arena_height = 2.0 * self.arena.half_extents().y;
+        let half_width = self.arena.half_extents().x;
+        let height_max = self.paddle.height_bounds.max();
+        if height_max > arena_height {
+            return Err(TuningError::PaddleTallerThanArena {
+                height_max,
+                arena_height,
+            });
+        }
+        let radius = self.ball.radius.value();
+        if 2.0 * radius >= arena_height {
+            return Err(TuningError::BallTooBigForArena {
+                radius,
+                arena_height,
+            });
+        }
+        if self.paddle.inset + self.paddle.thickness >= half_width {
+            return Err(TuningError::PaddleReachesCentreLine {
+                inset: self.paddle.inset,
+                thickness: self.paddle.thickness,
+                half_width,
+            });
+        }
+        let cap = self.ball.speed_rule.cap();
+        let playable_height = 2.0 * self.arena.center_limit_y(self.ball.radius);
+        if f64::from(cap) / FIXED_HZ >= f64::from(playable_height) {
+            return Err(TuningError::SpeedCapCrossesArenaInOneStep {
+                cap,
+                playable_height,
+            });
+        }
+        Ok(())
     }
 
     /// Keys per seat.
@@ -621,6 +708,9 @@ impl BindingsTuning {
         let right = SeatKeys::from_file(&file.right);
         let mut seen = HashSet::new();
         for key in left.all().into_iter().chain(right.all()) {
+            if key == KeyCode::Escape {
+                return Err(TuningError::ReservedKey { key });
+            }
             if !seen.insert(key) {
                 return Err(TuningError::DuplicateKey { key });
             }
@@ -737,7 +827,7 @@ mod tests {
     use crate::kernel::geometry::InvalidLengthBounds;
     use crate::kernel::test_support::assert_near;
     use crate::kernel::{OutOfRange, Range};
-    use crate::testing::{boot, headless_app, record, recorded, run_until, step, take_recorded};
+    use crate::testing::{boot, frame, headless_app, record, recorded, run_until, take_recorded};
 
     const VALID: &str = r"(
         arena: (width: 160.0, height: 90.0),
@@ -866,7 +956,7 @@ mod tests {
             "no notice about the refused override",
         );
         for _ in 0..10 {
-            step(&mut app);
+            frame(&mut app);
         }
         let notices = take_recorded::<Notice>(&mut app);
         assert_eq!(notices.len(), 1, "{notices:?}");
@@ -1101,6 +1191,59 @@ mod tests {
             Err(TuningError::PaddleHeightBounds(
                 InvalidLengthBounds::MaxBelowMin { .. }
             ))
+        ));
+    }
+
+    /// The refusal for `ron`, which must name every path in `paths`.
+    fn refusal_naming(ron: &str, paths: &[&str]) -> TuningError {
+        let Err(err) = Tuning::from_ron(ron) else {
+            panic!("accepted a file that should be refused: {paths:?}");
+        };
+        let message = err.to_string();
+        for path in paths {
+            assert!(message.contains(path), "{message:?} does not name {path}");
+        }
+        err
+    }
+
+    /// Plan 3.17: each cross-section rule guards a precondition downstream.
+    /// `VALID` is a 160 by 90 arena, ball radius 1, paddles 2 thick at inset 4.
+    #[test]
+    fn everything_must_fit_the_arena_and_each_refusal_names_its_values() {
+        assert!(matches!(
+            refusal_naming(
+                &with("height_max", "95.0"),
+                &["paddle.height_max", "arena.height"]
+            ),
+            TuningError::PaddleTallerThanArena { .. }
+        ));
+        assert!(matches!(
+            refusal_naming(&with("radius", "45.0"), &["ball.radius", "arena.height"]),
+            TuningError::BallTooBigForArena { .. }
+        ));
+        assert!(matches!(
+            refusal_naming(
+                &with("inset", "78.0"),
+                &["paddle.inset", "paddle.thickness"]
+            ),
+            TuningError::PaddleReachesCentreLine { .. }
+        ));
+        // 88 units of playable height at 60 steps a second: 5,280 per second.
+        assert!(matches!(
+            refusal_naming(&with("speed_cap", "5280.0"), &["ball.speed_cap"]),
+            TuningError::SpeedCapCrossesArenaInOneStep { .. }
+        ));
+        assert!(Tuning::from_ron(&with("speed_cap", "5279.0")).is_ok());
+        assert!(Tuning::from_ron(&with("height_max", "90.0")).is_ok());
+    }
+
+    #[test]
+    fn escape_is_reserved_for_pause_and_cannot_be_bound_to_a_seat() {
+        assert!(matches!(
+            Tuning::from_ron(&with("back", "Escape")),
+            Err(TuningError::ReservedKey {
+                key: KeyCode::Escape
+            })
         ));
     }
 

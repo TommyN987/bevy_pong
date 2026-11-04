@@ -38,11 +38,47 @@ test-core:
 deny:
     cargo deny --log-level error check
 
-# Interactive gate: formats in place, then lint, then tests.
-dev-check: fmt lint test
+# Layering (ADR 0002): flow imports no feature and not the roof; a feature imports
+# neither the roof nor a feature later in the order of pong_core/src/features/mod.rs.
+# Production code only: each file is read up to its first `#[cfg(test)]` line, so
+# test modules must sit at the end of their file.
+arch-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    order=(tuning seats ball paddle physics rules ai sanity persistence)
+    production() { sed '/^#\[cfg(test)\]/,$d' "$1"; }
+    position() { local i; for i in "${!order[@]}"; do [[ ${order[$i]} == "$1" ]] && { echo "$i"; return; }; done; echo -1; }
+    failed=0
+    for file in $(find pong_core/src/flow -name '*.rs'); do
+        if production "$file" | grep -nE 'crate::(app|features)\b'; then
+            echo "^ $file: flow imports only kernel, domain, and Bevy"; failed=1
+        fi
+    done
+    for dir in pong_core/src/features/*/; do
+        feature=$(basename "$dir")
+        own=$(position "$feature")
+        if (( own < 0 )); then
+            echo "$dir: feature '$feature' is not in the feature order"; failed=1; continue
+        fi
+        for file in $(find "$dir" -name '*.rs'); do
+            if production "$file" | grep -nE 'crate::app\b|crate::features::\{'; then
+                echo "^ $file: no roof imports; name one feature per path"; failed=1
+            fi
+            for imported in $(production "$file" | grep -oE 'crate::features::[a-z_]+' | sed 's/.*:://' | sort -u); do
+                [[ $imported == "$feature" ]] && continue
+                if (( $(position "$imported") < 0 || $(position "$imported") >= own )); then
+                    echo "$file: '$feature' imports '$imported', which is not earlier in the feature order"; failed=1
+                fi
+            done
+        done
+    done
+    exit "$failed"
 
-# Non-mutating gate for CI and the pre-push hook: format check, lint, tests, deny.
-ci-check: fmt-check lint test deny
+# Interactive gate: formats in place, then the layering check, lint, and tests.
+dev-check: fmt arch-check lint test
+
+# Non-mutating gate for CI and the pre-push hook: format check, layering, lint, tests, deny.
+ci-check: fmt-check arch-check lint test deny
 
 # Run the game with the dev feature (dynamic linking).
 run:

@@ -8,9 +8,11 @@
 // Test code may `expect` (see clippy.toml); `unwrap` is denied everywhere.
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 
+// Layers, lowest first (ADR 0002): kernel, domain, flow, features, app.
 pub mod app;
 pub mod domain;
 pub mod features;
+pub mod flow;
 pub mod kernel;
 
 /// The headless test harness (spec 1.5.1), for this crate's tests and, behind

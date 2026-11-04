@@ -2,17 +2,28 @@
 //! events the core emits for the shell to observe. No systems live here.
 //!
 //! `Side` is also vocabulary; it is defined in [`crate::kernel::geometry`]
-//! because geometry needs it first. Count at milestone close: under twelve.
+//! because geometry needs it first. Count (ADR 0002): six types of twelve
+//! (`Side`, `Seat`, `Difficulty`, `Controller`, `MatchConfig`, `Random`) and
+//! six messages, each with one emitting feature, `Notice` excepted.
+
+use std::num::NonZeroU8;
+
+use bevy::ecs::message::Message;
+use bevy::ecs::resource::Resource;
+
+use crate::kernel::geometry::Side;
+use crate::kernel::random::Pcg32;
 
 /// A player's chair: which key set they hold and which profile slot they fill.
 ///
 /// Distinct from [`Side`](crate::kernel::geometry::Side): a seat is who plays,
-/// a side is where a paddle stands. One-human modes have one seat drive both sides.
+/// a side is where a paddle stands. Against the computer the one human seat
+/// drives one side; in the menus it picks the profiles for both sides.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Seat {
-    /// The left chair: W/A/S/D.
+    /// The left chair: W/A/S/D by default (tuning bindings).
     Left,
-    /// The right chair: the arrow keys.
+    /// The right chair: the arrow keys by default (tuning bindings).
     Right,
 }
 
@@ -48,14 +59,6 @@ pub enum Controller {
     /// Intents come from the AI feature at this strength.
     Ai(Difficulty),
 }
-
-use std::num::NonZeroU8;
-
-use bevy::ecs::message::Message;
-use bevy::ecs::resource::Resource;
-
-use crate::kernel::geometry::Side;
-use crate::kernel::random::Pcg32;
 
 /// Who plays each side and how long the match runs. Built by the menu at match
 /// start; read by seats, rules, and the AI. Points-to-win comes from the tuning
@@ -99,11 +102,12 @@ impl Random {
     }
 }
 
-/// Launch the ball toward `toward`. Emitted by rules when play begins;
+/// Launch the ball toward `toward`. Emitted by rules when a countdown ends;
 /// consumed by the ball feature, which owns the serve geometry.
 #[derive(Message, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Serve {
-    /// The side the ball flies at: the side that conceded the last point.
+    /// The side the ball flies at: the side that conceded the last point, or
+    /// a seeded random side for the first serve of a match.
     pub toward: Side,
 }
 
@@ -133,7 +137,8 @@ pub struct MatchEnded {
 }
 
 /// One plain sentence the player can act on, shown by the shell's notice line
-/// (error policy, docs/architecture.md). Emitted by persistence and tuning.
+/// (error policy, docs/architecture.md). Emitted by tuning, later persistence:
+/// the one message with several emitters (ADR 0002).
 #[derive(Message, Debug, Clone, PartialEq, Eq)]
 pub struct Notice {
     /// The sentence, already in the player's words.

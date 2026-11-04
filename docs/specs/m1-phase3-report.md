@@ -43,25 +43,25 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) per plan rule P.6, each wit
 - `expect` is allowed in test code only (`clippy.toml`, `allow-expect-in-tests`); production core still denies `unwrap` and `expect`. A test whose fixture is invalid should stop with the reason, and `unwrap_or_else(|e| panic!(..))` was the same thing spelled longer.
 - `clippy::needless_pass_by_value` fires on every Bevy system parameter. It is silenced inline per system with a reason; promote to a workspace allow when it reaches about five across two modules.
 - The intent phase has two writers of `PaddleIntents` by design: seats write the sides a human holds, the AI (plan 5.1) writes the sides it holds. They touch disjoint sides, so no ordering between them is declared, per rule 4.
-- Contract for the shell's keyboard adapter (4.1): report intents only while a match is in progress and call `SeatIntents::clear` on focus loss. Rules (3.7) should clear intents on entering `Countdown` so a menu key press does not become the first paddle move.
+- Contract for the shell's keyboard adapter (4.1): report intents only while a match is in progress and call `SeatIntents::clear` on focus loss. Rules (3.7) should clear intents on entering `Countdown` so a menu key press does not become the first paddle move. Superseded 2026-11-04 (ADR 0002): seats clears its own intents on entering `Countdown`; the contract also covers presses released within one frame (3.20).
 - Randomness is a hand-rolled PCG32 in `kernel::random`, wrapped by the `Random` resource. `rand` is already in the tree through Bevy, but depending on it directly would put determinism on the dependency treadmill for a dozen lines of arithmetic.
-- The swept collision runs in the collide phase along the straight line from the step's start (kept in a physics resource) to its end. A step that bounced off a wall and struck a paddle end in the same step is swept along the folded line; accepted, and the sanity phase is the net.
+- The swept collision runs in the collide phase along the straight line from the step's start (kept in a physics resource) to its end. A step that bounced off a wall and struck a paddle end in the same step is swept along the folded line; accepted, and the sanity phase is the net. The step's start moved from a physics resource to a per-ball `StepStart` component in 3.15.
 - `clippy::needless_pass_by_value` was promoted to a workspace allow at nine sites across five modules, per the lint policy. The inline expects are gone.
 - Bevy inserts `apply_deferred` sync points into `FixedUpdate` whenever a system uses commands. The schedule walker skips them by name; they are not core systems.
-- Every fixed-step phase is gated on `MatchState::Playing` by `PhasesPlugin` (first `InMatch` in 3.6, narrowed in 3.7), so no feature system guards for the resources and entities that exist only in a match, and nothing moves during a countdown, a scored point, a pause, or after the match. The app roof importing a feature's state type is allowed by rule 1.
+- Every fixed-step phase is gated on `MatchState::Playing` by `PhasesPlugin` (first `InMatch` in 3.6, narrowed in 3.7), so no feature system guards for the resources and entities that exist only in a match, and nothing moves during a countdown, a scored point, a pause, or after the match. The app roof importing a feature's state type is allowed by rule 1. Superseded 2026-11-04 (ADR 0002, 0003): `MatchState` lives in `flow`, and the phases run only while the step gate is open (3.13).
 - `Countdown` and `PointScored` are timed in `Update` with Bevy `Timer`s, outside the fixed-step phases, because the phases do not run in those states. A state transition requested during a fixed step applies on the next frame; tests account for that one frame.
 - Scoring and ending the match are two systems chained in the `Rules` phase. The second only reacts to a changed `Score`, and its `MatchOver` overrides the `PointScored` requested in the same step. Both events fire for the final point.
-- `Paused` and `MatchOver` have no core systems. The shell enters and leaves `Paused` (Escape, focus loss) and returns to the menu from `MatchOver` by setting `NextState`.
+- `Paused` and `MatchOver` have no core systems. The shell enters and leaves `Paused` (Escape, focus loss) and returns to the menu from `MatchOver` by setting `NextState`. Superseded 2026-11-04 (ADR 0003): the shell asks through the `MatchControl` port and rules enters and leaves `Paused` (3.14).
 - `just test-core` and the workspace run build the core differently: with the shell in the same cargo invocation, feature unification turns on Bevy's `multi_threaded` for the core's tests too. A system whose `Res` was missing panicked only in that build. CI runs the workspace, so both must stay green; `just dev-check` runs the workspace.
 - Bevy 0.20.1's default error handler is `match_severity`, not `panic`; an error built from a string carries `Severity::Panic`, so the default still panics. `ErrorPolicyPlugin` sets the handler explicitly anyway, because release must log rather than panic and the app accepts one handler only. The shell must not set its own.
-- `AppStatePlugin` adds Bevy's `StatesPlugin` itself when absent, so `MinimalPlugins` test apps and the `DefaultPlugins` shell share one `CorePlugins` group without an ordering contract for states. `AssetPlugin` stays a precondition of the group.
+- `AppStatePlugin` adds Bevy's `StatesPlugin` itself when absent, so `MinimalPlugins` test apps and the `DefaultPlugins` shell share one `CorePlugins` group without an ordering contract for states. `AssetPlugin` stays a precondition of the group. Since 3.11, `FlowPlugin` does this; `CorePlugins` documents every precondition (3.18).
 - Phase order is declared once as `FixedStepPhase::IN_ORDER` and chained pairwise, because arrays of sets do not implement the schedule-config trait and a tuple would be a second listing.
 - After `Schedule::initialize`, systems move out of the schedule graph into the executable; the walker lists them through `Schedule::systems()` and asks the graph only for set membership.
 - Core events are Bevy 0.20.1 `Message` types (buffered), not observer `Event`s. Shell audio and views read them per frame; buffers written in `FixedUpdate` survive to `Update` readers in the same frame.
 - The `testing` module is compiled under `cfg(any(test, feature = "testing"))`. The crate's integration tests get the feature through a dev-dependency on the crate itself (`pong_core = { path = ".", features = ["testing"] }`); the shell's tests will enable it the same way. A game build never compiles the harness.
 - The harness is test code outside `#[cfg(test)]`, so clippy's test exception for `expect` does not reach it; the module carries one `#![expect(clippy::expect_used)]` with the reason. A harness helper whose precondition fails stops the test with the message.
 - The harness overrides the group's error-policy plugin with `CorePlugins.set(ErrorPolicyPlugin(ErrorPolicy::Dev))`. The red for that test is visible only in a release build; it was observed by running the test in release without the override (fails: no panic) and with it (passes).
-- The harness pins every schedule to Bevy's `SingleThreadedExecutor`. In the workspace build the unified `multi_threaded` feature made the soak take 19 s (dispatch overhead on a tiny world) against 3 s core-only; pinned, both take 3 s. `ExecutorKind` no longer exists in 0.20.1; `Schedule::set_executor` takes the executor value.
+- The harness pins every schedule to Bevy's `SingleThreadedExecutor`. In the workspace build the unified `multi_threaded` feature made the soak take 19 s (dispatch overhead on a tiny world) against 3 s core-only; pinned, both take 3 s. `ExecutorKind` no longer exists in 0.20.1; `Schedule::set_executor` takes the executor value. Only schedules present when the harness builds are pinned (3.20).
 - The dev override is the asset system's hot reload: `embedded_watcher` goes on the shell's `dev` feature only, so the game build never carries the file watcher. Core adopts `AssetEvent::Modified` for its handle into the resource; a refused file never reaches `Assets`, so keep-last-good holds by construction, and core only reports it.
 - Bevy 0.20.1 reports one refused reload twice: `load_internal` both sends the failure event and returns an error, so `reload_internal` falls back to an untyped load that fails again. With real task-pool threads the two can land in different frames. `ShownRefusal` remembers the refusal announced (the error's text) until a reload succeeds; a repeat of the same refusal is silent. Consequence: saving the same broken file twice shows one banner, not two.
 - Schedule randomization (1.5.3) is Bevy 0.20.1's `ScheduleBuildSettings::shuffle_seed`, set by the harness on every schedule from the test's seed, so two tests with different seeds see different orders and one test sees the same order every run. The field exists only with Bevy's `debug` feature, which the `testing` feature now carries. Bevy's own note: the shuffle holds only under the single-threaded executor, which the harness already uses; and `auto_insert_apply_deferred` keeps systems at their sync-point depth, so systems using commands shuffle only within a depth.
@@ -102,7 +102,29 @@ At review time `just lint` was green and 113 tests passed, the soak in 3.1 s.
 | 24 | `Paddle` copies thickness and inset; hot reload applies half | no | plan 3.16 |
 | 25 | Production would run at Bevy's 64 Hz, tests at 60 Hz | no | ADR 0003; plan 3.12 |
 
-Roles for 3.11 through 3.21 are not yet agreed (plan P.1).
+Roles for 3.11 through 3.21, agreed 2026-11-04: Claude drives, the user reviews.
+
+## Deviations and decisions in 3.11 through 3.20
+
+Recorded 2026-11-04, Claude driving, the user reviewing. Bevy APIs were verified through `bevy-api-check` (behaviour of `NextState`, `OnTransition`, `FixedFirst`, `TimeUpdateStrategy`, required components).
+
+| Item | Deviation or decision | Recorded |
+|---|---|---|
+| 3.11 | Done-condition (d) names `entering_countdown_clears_seat_intents`; seats has two tests instead, one for the first countdown and one for later ones. | This report. |
+| 3.11 | `CorePlugins` adds the features in the declared order (ball before paddle). | `app/mod.rs`. |
+| 3.11.1 | `just arch-check` also refuses grouped `crate::features::{..}` imports, which grep cannot attribute, and feature directories missing from the order. | `justfile`; CLAUDE.md lists the check under `dev-check`. |
+| 3.12 | The harness's `step` is renamed `frame`, since a frame may now run several steps or none; `STEP_HZ` is gone; `FrameLength`, `set_frame_length`, and `fixed_timestep` are new. | `testing/mod.rs`; `.claude/rules/tests.md`. |
+| 3.12 | At 60 Hz the step rounds up to 16,666,667 ns, so 15 steps exceed Bevy's 250 ms frame clamp and are refused; the longest frame is 14 steps. Half-step frames drift by a nanosecond per pair, so their alternation slips by one frame now and then. Bevy's first frame has zero delta. | Plan 3.13 and ADR 0003 corrected to 14 steps. |
+| 3.13 | The gate is a private `StepGate` resource in `flow::phases`, set in `FixedFirst`. Red before the gate: one goal in a 14-step frame scored 14 points and wrote 14 `MatchEnded`. | `flow/phases.rs`. |
+| 3.14 | The serve now only sets velocity; entering `Countdown` places the ball and sets `Snap` (and the spawn sets it). Spec 1.4.2's "snap set on serve" no longer holds. | Spec 1.4.2 amended. |
+| 3.14 | A resumed `PointScored` restarts its full pause, as a resumed `Countdown` restarts its full countdown: entering either state starts its timer. | ADR 0003 names only `Countdown`; this report. |
+| 3.14 | A pause or resume request waits a frame while a match transition is pending, so a timer's or a goal's transition is never overwritten. `Paused` without a recorded substate is an error to the app's handler. | `features/rules`. |
+| 3.15 | `StepStart(Vec2)` instead of the plan's `StepStart(Motion)`: the step-start velocity was never read. Physics registers `Force` and `StepStart` as required components of `Ball`, so the ball feature, earlier in the order, never names them. | `features/physics`. |
+| 3.16 | `Paddle::new(side, PaddleTuning)` takes the copyable tuning by value; `rect` takes `&Tuning`. | `features/paddle`. |
+| 3.17 | The kernel's `SpeedRule` gains a `cap()` getter for the cross-field check. | `kernel/reflect.rs`. |
+| 3.18 | `CorePlugins { seed }` inserts `Random` through a private `SeededRandomPlugin`. The shell cannot seed from entropy yet: it builds no app until plan 4.3 or 4.5. | Deferred to plan 4.5, confirmed by the user 2026-11-04. |
+| 3.19 | Both seats mix random intents (one step in four) with tracking aimed by `crossing_y` off by a seeded error of up to ±9 units per approach. The plan's split, one tracker against one random player, could not reach the cap: that takes about 25 hits in a row. First green run: 66,991 frames, 15 matches, 1,118 paddle hits, top speed 250, 3.0 s; the minimum is 1,000 hits. | `tests/soak.rs`; `.claude/rules/tests.md`. |
+| 3.20 | The seats contract cited spec 1.6.6 for focus loss; it is 1.6.1. The `Serve` doc now says the first serve's side is seeded random. The kernel's wall-fold precondition now credits tuning validation, not the cap alone. | Code docs. |
 
 ## Items
 
@@ -118,14 +140,14 @@ Roles for 3.11 through 3.21 are not yet agreed (plan P.1).
 | 3.8 Testing module and soak | done; soak 2.9 s locally for 100,000 steps, 47 matches to five points |
 | 3.9 Dev override | done; manual check deferred to the first playable shell per plan |
 | 3.10 Schedule randomization | done; the whole suite, soak included, is green with the shuffle on |
-| 3.11 Flow layer and feature order | planned 2026-11-04 |
-| 3.12 Fixed rate and frame-length control | planned 2026-11-04 |
-| 3.13 Step gate | planned 2026-11-04 |
-| 3.14 Serve trigger, ball reset, pause port | planned 2026-11-04 |
-| 3.15 Per-entity ball step state | planned 2026-11-04 |
-| 3.16 Paddle owns its geometry | planned 2026-11-04 |
-| 3.17 Cross-field tuning validation | planned 2026-11-04 |
-| 3.18 Seeded core group | planned 2026-11-04 |
-| 3.19 Soak coverage | planned 2026-11-04 |
-| 3.20 Small corrections | planned 2026-11-04 |
-| 3.21 Record step | decisions recorded 2026-11-04; deviations from 3.11–3.20 pending |
+| 3.11 Flow layer and feature order | done; 3.11.1 `just arch-check` done, a planted import fails `dev-check` |
+| 3.12 Fixed rate and frame-length control | done |
+| 3.13 Step gate | done; red then green with 14-step frames |
+| 3.14 Serve trigger, ball reset, pause port | done |
+| 3.15 Per-entity ball step state | done |
+| 3.16 Paddle owns its geometry | done |
+| 3.17 Cross-field tuning validation | done |
+| 3.18 Seeded core group | done; shell entropy seeding deferred to plan 4.5 (user-confirmed) |
+| 3.19 Soak coverage | done; 3.0 s |
+| 3.20 Small corrections | done |
+| 3.21 Record step | done 2026-11-04; `just ci-check` green, 133 tests |

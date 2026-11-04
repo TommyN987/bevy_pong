@@ -122,6 +122,12 @@ impl SpeedRule {
     pub fn after_hit(self, speed: f32) -> f32 {
         (speed + self.per_hit_increase).min(self.cap)
     }
+
+    /// The highest speed a hit can produce.
+    #[must_use]
+    pub const fn cap(self) -> f32 {
+        self.cap
+    }
 }
 
 #[cfg(test)]

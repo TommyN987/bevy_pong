@@ -75,7 +75,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 
 ### 1.4.2 Ball
 
-- **MUST** `Position`, `Velocity`, `Ball`, `Snap` marker. Done: snap set on serve, cleared by the view after one frame.
+- **MUST** `Position`, `Velocity`, `Ball`, `Snap` marker. Done: snap set on serve, cleared by the view after one frame. Amended 2026-11-04 (ADR 0003, plan 3.14): the teleport moved from the serve to entering `Countdown`, so snap is set at spawn and on entering `Countdown`; the serve only launches.
 - **MUST** Serve: countdown, then launch toward the side that conceded at a random angle within a tunable cone from the seeded random resource. Done: fixed seed reproduces the angle.
 
 ### 1.4.3 Paddle

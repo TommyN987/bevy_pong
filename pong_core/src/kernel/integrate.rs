@@ -51,10 +51,11 @@ pub struct WallStep {
 /// bounced mid-step. Goal lines are not walls: the ball flies through them and
 /// the rules decide the point.
 ///
-/// Precondition: the step's vertical travel is under the playable height, which
-/// the speed cap ([`super::reflect::SpeedRule`]) guarantees; a single fold then
-/// always lands inside. Prediction (spec 1.2.6) and the physics step share this
-/// function.
+/// Precondition: the step's vertical travel is under the playable height; a
+/// single fold then always lands inside. Tuning validation guarantees it for
+/// every speed up to the cap ([`super::reflect::SpeedRule`]) at the core's
+/// fixed rate (plan 3.17). Prediction (spec 1.2.6) and the physics step share
+/// this function.
 #[must_use]
 pub fn advance_between_walls(
     arena: Arena,
