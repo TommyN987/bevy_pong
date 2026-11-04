@@ -9,7 +9,13 @@ publish.workspace = true
 
 [dependencies]
 pong_core = { path = "../pong_core" }
-bevy = { workspace = true, features = ["2d", "2d_api", "ui", "audio"] }
+# `keyboard` is named although `bevy_window` already pulls it in: the keyboard adapter
+# depends on it directly and should not rely on another crate's feature list.
+bevy = { workspace = true, features = ["2d", "2d_api", "ui", "audio", "keyboard"] }
+
+[dev-dependencies]
+# The headless harness (`pong_core::testing`) for the shell's tests. Our own crate, no new dependency.
+pong_core = { path = "../pong_core", features = ["testing"] }
 
 [features]
 # Development-only. Dynamic linking speeds iterative builds; `embedded_watcher` reloads the

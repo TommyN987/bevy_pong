@@ -142,7 +142,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 
 ### 1.6.1 Ports
 
-- **MUST** Keyboard adapter maps physical keys from tuning to `PaddleIntent` per seat; `SavePaths` from XDG directories. Done: a held key maps to an intent by test.
+- **MUST** Keyboard adapter maps physical keys from tuning to `PaddleIntent` per seat; `SavePaths` from XDG directories. Done: a held key maps to an intent by test. Amended 2026-11-04 (plan 4.1): the adapter reports once per frame before the fixed steps, only while `Playing`; the `SavePaths` resource lands with persistence (plan 7.1), the XDG resolver in plan 4.1.
 - **MUST** Focus loss clears intents and enters `Paused` only from `Playing`. Done: manual check plus a test sending the focus event. Amended 2026-11-04 (ADR 0003): the pause goes through the `MatchControl` port.
 
 ### 1.6.2 Views

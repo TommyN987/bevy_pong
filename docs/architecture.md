@@ -101,7 +101,7 @@ Alternatives considered: flat feature files with a shared prelude (rejected: pre
 - Core owns `Position` and `Velocity`. The shell writes `Transform` from `Position`, interpolating between fixed steps. One entity, two components.
 - Teleports (point reset, portals later) set a snap marker so no interpolation crosses the jump.
 - Simulation runs in `FixedUpdate` at one rate, `FIXED_HZ = 60`, in core and tests alike. A step runs only while play is live: the step gate closes once a transition out of `Playing` is pending (ADR 0003).
-- Input is latched into intents in `Update` and consumed in `FixedUpdate`, so momentary presses are neither missed nor doubled.
+- Input is latched into intents once per frame, before the fixed steps and only while `Playing`, and consumed in `FixedUpdate`, so momentary presses are neither missed nor doubled and every step reads that frame's keys. Amended 2026-11-04 (plan 4.1; phase 4 report).
 - A seeded random resource is the only source of randomness. The shell seeds from entropy; tests seed deterministically.
 - Physics is hand-rolled as pure functions over plain data; systems are thin wrappers. The AI calls the same functions to predict.
 - Collision is swept circle-versus-rectangle, and ball speed is capped, because escalation makes the ball fast by design.

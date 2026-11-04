@@ -94,7 +94,7 @@ Exit: `just dev-check` green; nothing drawn yet.
 ### 4. Shell vertical slice: two humans on screen
 Realizes spec 1.6.1, 1.6.2 MUSTs, 1.6.6 MUST, 1.7.2. Depends on 3.
 
-- **4.1 MUST** Keyboard adapter from tuning; `SavePaths` from XDG. Done: adapter test. Amended 2026-11-04: a press released within one frame reports a move for that frame, by test; focus loss pauses through `MatchControl` (ADR 0003).
+- **4.1 MUST** Keyboard adapter from tuning; `SavePaths` from XDG. Done: adapter test. Amended 2026-11-04: a press released within one frame reports a move for that frame, by test; focus loss pauses through `MatchControl` (ADR 0003). Amended 2026-11-04 ([phase 4 report](m1-phase4-report.md)): the adapter reports once per frame before the fixed steps, only while `Playing`; `pong` becomes a library plus a thin binary; 4.1 builds the shell's XDG directory resolver, which 4.4 reuses, and the `SavePaths` resource moves to 7.1.
 - **4.2 MUST** Views: meshes, HDR colors, interpolation, snap, letterboxing camera, bloom. Done: no judder by eye; resize keeps aspect.
 - **4.3 MUST** Window: borderless fullscreen, title. Done: first start fullscreen.
 - **4.4 MUST** Panic hook crash file. Done: forced panic produces the file.
@@ -119,7 +119,7 @@ Realizes spec 1.4.7. Depends on 3 and 5.
 ### 7. Persistence
 Realizes spec 1.4.9. Depends on 3; independent of 4 through 6.
 
-- **7.1 MUST** Models v1, atomic write, versioned enum, fixtures, count test. Done: round-trip and fixture tests green.
+- **7.1 MUST** Models v1, atomic write, versioned enum, fixtures, count test. Done: round-trip and fixture tests green. Amended 2026-11-04: also the `SavePaths` port resource, inserted by the shell from the XDG resolver of 4.1, and the harness's temp-dir fake (spec 1.5.1); its reader decides its shape.
 - **7.2 MUST** Load and write policies with `Notice`. Done: corrupt, version-99, unwritable-path tests green.
 - **7.3 MUST** Guest semantics. Done: test green.
 - **7.4 MUST** Rally counter owned by rules, feeding the "longest rally" record (spec 1.4.9) and, later, C1's meter. Added 2026-11-04. Done: the match's longest rally is readable when `MatchEnded` fires, by test.

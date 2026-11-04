@@ -19,10 +19,13 @@ use crate::kernel::geometry::Side;
 /// Precondition: [`MatchConfig`] exists whenever the phases run; the menu
 /// inserts it before entering a match.
 ///
-/// Contract for the shell adapter: report every `Update` while a match is in
-/// progress, and only then; report a key pressed and released within one frame
-/// (Bevy's `just_pressed`) as held for that frame, or the tap is lost before
-/// the latch sees it; call [`SeatIntents::clear`] on focus loss (spec 1.6.1).
+/// Contract for the shell adapter: report once per frame while `MatchState`
+/// is `Playing`, and only then, before the fixed steps run
+/// (`RunFixedMainLoopSystems::BeforeFixedMainLoop`), so every step reads that
+/// frame's keys and no tap from a countdown or pause is latched; report a key
+/// pressed and released within one frame (Bevy's `just_pressed`) as held for
+/// that frame, or the tap is lost before the latch sees it; call
+/// [`SeatIntents::clear`] on focus loss, after that frame's report (spec 1.6.1).
 pub struct SeatsPlugin;
 
 impl Plugin for SeatsPlugin {
@@ -98,7 +101,7 @@ pub enum PaddleIntent {
 }
 
 /// Port: what each seat's keys are asking for. The shell's keyboard adapter
-/// (or a test) calls [`report`](Self::report) every `Update`; the intent phase
+/// (or a test) calls [`report`](Self::report) once per frame; the intent phase
 /// calls [`consume`](Self::consume) every fixed step.
 ///
 /// Two things are kept per seat. `held` is the level: whatever was reported
@@ -118,7 +121,7 @@ struct SeatIntent {
 }
 
 impl SeatIntents {
-    /// Records what `seat`'s keys ask for right now. Call once per `Update`.
+    /// Records what `seat`'s keys ask for right now. Call once per frame.
     pub fn report(&mut self, seat: Seat, held: PaddleIntent) {
         let entry = self.entry_mut(seat);
         entry.held = held;
