@@ -4,3 +4,4 @@
 //! (docs/architecture.md, "Intra-crate structure": the shell mirrors core).
 
 pub mod ports;
+pub mod xdg;
