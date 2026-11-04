@@ -11,7 +11,18 @@ publish.workspace = true
 pong_core = { path = "../pong_core" }
 # `keyboard` is named although `bevy_window` already pulls it in: the keyboard adapter
 # depends on it directly and should not rely on another crate's feature list.
-bevy = { workspace = true, features = ["2d", "2d_api", "ui", "audio", "keyboard"] }
+# `tonemapping_luts` and `zstd_rust` ship TonyMcMapface's lookup table (spec 1.6.2); without
+# them the table is a magenta placeholder. They add Bevy's own optional dependencies (`ktx2`,
+# `ruzstd`) at versions Bevy pins, so they move with Bevy (phase 4 report).
+bevy = { workspace = true, features = [
+  "2d",
+  "2d_api",
+  "ui",
+  "audio",
+  "keyboard",
+  "tonemapping_luts",
+  "zstd_rust",
+] }
 # The workspace's error derive, as in pong_core; already justified there (phase 3 report).
 thiserror.workspace = true
 

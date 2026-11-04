@@ -148,8 +148,8 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 ### 1.6.2 Views
 
 - **MUST** Arena, paddles, ball as `Mesh2d` with HDR colors; `Transform` from `Position` with interpolation; snap honored. Done: no visible judder at a frame rate unequal to the fixed rate.
-- **MUST** Camera fits the arena with letterboxing; no pixel units in shell logic. Done: resizing keeps the aspect.
-- **MUST** Bloom with HDR, TonyMcMapface, deband dither. Done: glow visible.
+- **MUST** Camera fits the arena with letterboxing; no pixel units in shell logic. Done: resizing keeps the aspect. Amended 2026-11-04 (plan 4.2): `ScalingMode::AutoMin` shows the whole arena and nothing is drawn beyond it, so the dark backdrop forms the bars; no `Camera.viewport`.
+- **MUST** Bloom with HDR, TonyMcMapface, deband dither. Done: glow visible. Amended 2026-11-04 (plan 4.2): TonyMcMapface needs Bevy's `tonemapping_luts` and `zstd_rust` features, which add `ktx2` and `ruzstd`.
 - **SHOULD** Ball trail. Done: visible.
 - **MAY** Screen shake on a point. Done: visible.
 
