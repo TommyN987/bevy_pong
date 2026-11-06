@@ -25,6 +25,11 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) and [m1-plan.md](m1-plan.md
 - Each base is its `XDG_*_HOME` if absolute, else its default under `HOME`, plus the directory `bevy_pong`. A relative or empty variable is ignored, as the XDG specification requires. `HOME` must be absolute, and is needed only by a base that falls back to it; with no usable base the resolver returns `NoHomeDirectory`, and each caller decides what that means for its file.
 - The resolver computes paths and creates no directory; the writer of a file creates its directory and handles its own failure (persistence write policy, spec 1.4.9).
 - Errors in `pong` derive with `thiserror`, as in `pong_core`; the workspace dependency is already justified (phase 3 report), so `pong` names it without a new treadmill entry.
+- The dev entry (4.5, `pong::dev_entry`) is added only with the `dev` feature, by `cfg!` in `main.rs`, so it is compiled, linted, and tested in every build. `just run` starts a match; a build without `dev` stops at the empty menu until 8.3.
+- The dev entry's one key is Escape, the spec's key for pause and back-out: it pauses from `Countdown`, `Playing`, or `PointScored`, resumes from `Paused` (focus loss included), and from `MatchOver` returns to the menu, which starts the next match. This covers the temporary resume key and leaves no unfinished match.
+- With no score display before phase 8, the dev entry logs each score change at info level.
+- `main` logs the core seed at info level on every launch (`pong::seed`), so a launch can be replayed from its seed.
+- Plan 4.5 checked 2026-11-06 by the user: two launches of `just run` served at different first angles.
 
 ## Bevy API checks (plan 4.7)
 
@@ -38,5 +43,6 @@ One `bevy-api-check` report per view module, before the code, against the pinned
 
 ## Open
 
-- After a focus loss the match stays `Paused` until a resume exists; the pause screen arrives in phase 8. The dev entry (4.5) needs a temporary resume key.
+- After a focus loss the match stays `Paused` until a resume exists; the pause screen arrives in phase 8. Until then the dev entry's Escape resumes (4.5).
+- `testing::boot` gives up after 1,000 frames, but the tuning load it waits on runs on a background thread in wall-clock time. On 2026-11-06, with the machine busy after a long build, three tests failed with "the app never left Boot" and passed on rerun; not reproduced in 25 later runs. Fix in the harness, not in 4.5: wait on the load itself, or a wall-clock budget, rather than a frame count.
 - The embedded watcher may not see `pong_core/src/features/tuning/tuning.ron` under `cargo run -p pong`: it watches `BEVY_ASSET_ROOT`, else `CARGO_MANIFEST_DIR`. Inferred from the Bevy source, not observed; plan 3.9's manual check settles it.
