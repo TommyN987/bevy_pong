@@ -140,6 +140,25 @@ fn focus_loss_in_play_stops_the_paddles_that_frame_and_pauses() {
     assert_near(paddle_y(&mut app, Side::Left), moved);
 }
 
+/// ADR 0004: keys move the paddles while the players wait for the serve.
+#[test]
+fn a_held_key_moves_the_paddle_during_the_countdown() {
+    let mut app = shell_app();
+    enter_match(&mut app, two_humans());
+    assert_eq!(match_state(&app), MatchState::Countdown);
+    let up = keys(&app, Seat::Left).up();
+    key(&mut app, up, ButtonState::Pressed);
+    frame(&mut app);
+    frame(&mut app);
+    assert_eq!(match_state(&app), MatchState::Countdown);
+    let moved = paddle_y(&mut app, Side::Left);
+    let expected = 2.0 * step_travel(&app);
+    assert!(
+        (moved - expected).abs() <= 1e-4,
+        "moved {moved}, expected {expected}"
+    );
+}
+
 #[test]
 fn focus_loss_outside_play_does_not_pause() {
     let mut app = shell_app();

@@ -59,8 +59,10 @@ the schedule walker in the test harness lists any that does not.
 
 ## The step gate
 
-`StepGate` is open only when `MatchState` is `Playing` and neither state has a transition pending.
-`open_or_close_step_gate` decides it once per fixed step, in `FixedFirst`.
+`StepGate` is open when the paddles move in the current `MatchState` (`Countdown`, `Playing`, `PointScored`) and neither state has a transition pending.
+Its narrower half, `ball_in_play`, also needs `Playing`; it gates the `BallInPlay` set,
+which every system that serves, moves, collides, or judges the ball joins beside its phase (ADR 0004).
+`open_or_close_step_gate` decides both once per fixed step, in `FixedFirst`.
 It is the one fixed-step core system without a phase.
 
 Checking `NextState` closes the remaining steps of a frame once a step requests a transition,

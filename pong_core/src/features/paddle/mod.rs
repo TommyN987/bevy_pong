@@ -163,12 +163,12 @@ mod tests {
     use crate::domain::{Controller, MatchConfig, Seat};
     use crate::features::seats::PaddleIntent;
     use crate::features::tuning::{EMBEDDED_RON, Tuning};
-    use crate::flow::states::AppState;
+    use crate::flow::states::{AppState, MatchState};
     use crate::kernel::geometry::{LengthBounds, Side};
     use crate::kernel::test_support::{assert_near, standard_arena};
     use crate::testing::{
-        FrameLength, boot, fixed_timestep, frame, headless_app, report_intent, set_frame_length,
-        start_match,
+        FrameLength, ball_state, boot, fixed_timestep, frame, headless_app, match_state,
+        report_intent, set_frame_length, start_match,
     };
 
     /// How far one fixed step of `Up` moves a paddle.
@@ -222,6 +222,46 @@ mod tests {
         let paddles = paddles(&mut app);
         assert_near(paddles[0].center_y(), travel, 1e-4);
         assert_near(paddles[1].center_y(), 0.0, 1e-6);
+    }
+
+    /// A match in `state`, entered from play, with one frame run in it.
+    fn match_in(state: MatchState) -> App {
+        let mut app = headless_app(1);
+        boot(&mut app);
+        start_match(&mut app, two_humans());
+        app.world_mut()
+            .resource_mut::<NextState<MatchState>>()
+            .set(state);
+        frame(&mut app);
+        assert_eq!(match_state(&app), state);
+        app
+    }
+
+    /// ADR 0004: players line up during the countdown and after a point,
+    /// while the ball waits.
+    #[test]
+    fn between_rallies_a_paddle_moves_while_the_ball_waits() {
+        for state in [MatchState::Countdown, MatchState::PointScored] {
+            let mut app = match_in(state);
+            let before = paddles(&mut app)[0].center_y();
+            let ball = ball_state(&mut app).0;
+            report_intent(&mut app, Seat::Left, PaddleIntent::Up);
+            frame(&mut app);
+            let travel = one_step_of_travel(&app);
+            assert_near(paddles(&mut app)[0].center_y() - before, travel, 1e-4);
+            assert_eq!(ball_state(&mut app).0, ball, "{state:?}");
+        }
+    }
+
+    #[test]
+    fn a_paddle_stays_still_while_paused_or_after_the_match() {
+        for state in [MatchState::Paused, MatchState::MatchOver] {
+            let mut app = match_in(state);
+            let before = paddles(&mut app)[0].center_y();
+            report_intent(&mut app, Seat::Left, PaddleIntent::Up);
+            frame(&mut app);
+            assert_near(paddles(&mut app)[0].center_y(), before, 1e-6);
+        }
     }
 
     /// Spec 1.4.1 as amended: a hold moves on every fixed step, however many

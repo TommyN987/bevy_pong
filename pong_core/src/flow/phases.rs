@@ -39,17 +39,27 @@ impl FixedStepPhase {
     ];
 }
 
-/// Configures the phases in `FixedUpdate`. Features add systems with
-/// `.in_set(FixedStepPhase::X)` and nothing else about ordering or gating.
+/// Fixed-step systems that serve, move, collide, or judge the ball. A system
+/// joins this set beside its phase, and then runs only while the ball is in
+/// play: in [`MatchState::Playing`], with no transition pending. The rest of a
+/// phase also runs in the waits between rallies, where the paddles move and
+/// the ball waits (ADR 0004).
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct BallInPlay;
+
+/// Configures the phases and [`BallInPlay`] in `FixedUpdate`. Features add
+/// systems with `.in_set(FixedStepPhase::X)`, plus `.in_set(BallInPlay)` for
+/// the ball, and nothing else about ordering or gating.
 ///
-/// Every phase runs only while the [`StepGate`] is open: in
-/// [`MatchState::Playing`], with no transition pending. The simulation's
-/// resources and entities exist only in a match, and nothing moves during a
-/// countdown, a scored point, a pause, or after the match. No feature system
-/// guards for any of that itself.
+/// Every phase runs only while the [`StepGate`] is open: in a substate whose
+/// paddles move ([`MatchState::paddles_move`]), with no transition pending.
+/// The simulation's resources and entities exist only in a match, and nothing
+/// moves during a pause or after the match. No feature system guards for any
+/// of that itself.
 pub(super) fn configure(app: &mut App) {
     app.init_resource::<StepGate>()
-        .add_systems(FixedFirst, open_or_close_step_gate);
+        .add_systems(FixedFirst, open_or_close_step_gate)
+        .configure_sets(FixedUpdate, BallInPlay.run_if(ball_is_in_play));
     for phase in FixedStepPhase::IN_ORDER {
         app.configure_sets(FixedUpdate, phase.run_if(step_gate_is_open));
     }
@@ -58,16 +68,20 @@ pub(super) fn configure(app: &mut App) {
     }
 }
 
-/// Whether the current fixed step runs the phases (ADR 0003).
+/// Whether the current fixed step runs the phases, and the ball's systems
+/// among them (ADR 0003, ADR 0004).
 ///
 /// Decided once per step, in `FixedFirst`, so all phases of a step agree.
-/// Invariant: open only if `MatchState` is `Playing` and neither `MatchState`
-/// nor `AppState` has a transition pending. A transition requested inside a
-/// fixed step applies only at the next frame's `StateTransition`; the step that
-/// requests it finishes, and every later step of that frame stays shut.
+/// Invariant: `open` only if the paddles move in the current `MatchState` and
+/// neither `MatchState` nor `AppState` has a transition pending;
+/// `ball_in_play` only if also `open` and `MatchState` is `Playing`. A
+/// transition requested inside a fixed step applies only at the next frame's
+/// `StateTransition`; the step that requests it finishes, and every later step
+/// of that frame stays shut.
 #[derive(Resource, Debug, Default, Clone, Copy, PartialEq, Eq)]
 struct StepGate {
     open: bool,
+    ball_in_play: bool,
 }
 
 /// Runs in `FixedFirst`, outside the phases it gates: the one fixed-step core
@@ -79,14 +93,19 @@ fn open_or_close_step_gate(
     next_app_state: Res<NextState<AppState>>,
     mut gate: ResMut<StepGate>,
 ) {
-    let playing = match_state.is_some_and(|state| *state.get() == MatchState::Playing);
+    let state = match_state.map(|state| *state.get());
     let settled = matches!(*next_match_state, NextState::Unchanged)
         && matches!(*next_app_state, NextState::Unchanged);
-    gate.open = playing && settled;
+    gate.open = settled && state.is_some_and(MatchState::paddles_move);
+    gate.ball_in_play = gate.open && state == Some(MatchState::Playing);
 }
 
 fn step_gate_is_open(gate: Res<StepGate>) -> bool {
     gate.open
+}
+
+fn ball_is_in_play(gate: Res<StepGate>) -> bool {
+    gate.ball_in_play
 }
 
 #[cfg(test)]
@@ -99,11 +118,11 @@ mod tests {
     use bevy::ecs::system::{Local, ResMut};
     use bevy::state::state::NextState;
 
-    use super::FixedStepPhase;
+    use super::{BallInPlay, FixedStepPhase};
     use crate::domain::{Controller, MatchConfig, Seat};
     use crate::flow::states::MatchState;
     use crate::testing::{
-        FrameLength, boot, frame, headless_app, set_frame_length, start_match,
+        FrameLength, boot, frame, headless_app, match_state, set_frame_length, start_match,
         unphased_fixed_step_systems,
     };
 
@@ -155,8 +174,63 @@ mod tests {
         app
     }
 
+    /// Records `Intent` as any phase system would, and `Collide` as a ball
+    /// system would.
+    fn record_a_phase_and_a_ball_system(app: &mut App) {
+        app.add_systems(
+            FixedUpdate,
+            (
+                record(FixedStepPhase::Intent).in_set(FixedStepPhase::Intent),
+                record(FixedStepPhase::Collide)
+                    .in_set(FixedStepPhase::Collide)
+                    .in_set(BallInPlay),
+            ),
+        );
+    }
+
+    /// What one frame in `state` runs, entered from play.
+    fn ran_in(state: MatchState) -> Vec<FixedStepPhase> {
+        let mut app = app();
+        record_a_phase_and_a_ball_system(&mut app);
+        app.world_mut()
+            .resource_mut::<NextState<MatchState>>()
+            .set(state);
+        frame(&mut app);
+        assert_eq!(match_state(&app), state);
+        app.world_mut().resource_mut::<Ran>().0.clear();
+        frame(&mut app);
+        std::mem::take(&mut app.world_mut().resource_mut::<Ran>().0)
+    }
+
     #[test]
-    fn outside_play_no_phase_runs() {
+    fn in_play_the_phases_and_the_balls_systems_run() {
+        let mut app = app();
+        record_a_phase_and_a_ball_system(&mut app);
+        frame(&mut app);
+        assert_eq!(
+            app.world().resource::<Ran>().0,
+            vec![FixedStepPhase::Intent, FixedStepPhase::Collide]
+        );
+    }
+
+    /// ADR 0004: between rallies the paddles move, so the phases run, and
+    /// the ball waits, so its systems do not.
+    #[test]
+    fn between_rallies_the_phases_run_without_the_balls_systems() {
+        for state in [MatchState::Countdown, MatchState::PointScored] {
+            assert_eq!(ran_in(state), vec![FixedStepPhase::Intent], "{state:?}");
+        }
+    }
+
+    #[test]
+    fn paused_or_after_the_match_no_phase_runs() {
+        for state in [MatchState::Paused, MatchState::MatchOver] {
+            assert_eq!(ran_in(state), Vec::<FixedStepPhase>::new(), "{state:?}");
+        }
+    }
+
+    #[test]
+    fn outside_a_match_no_phase_runs() {
         let mut app = headless_app(1);
         app.init_resource::<Ran>();
         boot(&mut app);

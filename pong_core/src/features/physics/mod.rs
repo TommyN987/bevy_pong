@@ -15,7 +15,7 @@ use crate::domain::{BallHitPaddle, BallHitWall};
 use crate::features::ball::{Ball, Position, Velocity};
 use crate::features::paddle::Paddle;
 use crate::features::tuning::Tuning;
-use crate::flow::phases::FixedStepPhase;
+use crate::flow::phases::{BallInPlay, FixedStepPhase};
 use crate::kernel::collide::{Face, Impact, swept_circle_rect};
 use crate::kernel::integrate::{Motion, advance_between_walls};
 use crate::kernel::reflect::{HitOffset, mirror, paddle_reflection};
@@ -39,7 +39,8 @@ impl Plugin for PhysicsPlugin {
                 (
                     integrate_ball.in_set(FixedStepPhase::Integrate),
                     collide_ball_with_paddles.in_set(FixedStepPhase::Collide),
-                ),
+                )
+                    .in_set(BallInPlay),
             );
     }
 }

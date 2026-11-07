@@ -94,13 +94,14 @@ Exit: `just dev-check` green; nothing drawn yet.
 ### 4. Shell vertical slice: two humans on screen
 Realizes spec 1.6.1, 1.6.2 MUSTs, 1.6.6 MUST, 1.7.2. Depends on 3.
 
-- **4.1 MUST** Keyboard adapter from tuning; `SavePaths` from XDG. Done: adapter test. Amended 2026-11-04: a press released within one frame reports a move for that frame, by test; focus loss pauses through `MatchControl` (ADR 0003). Amended 2026-11-04 ([phase 4 report](m1-phase4-report.md)): the adapter reports once per frame before the fixed steps, only while `Playing`; `pong` becomes a library plus a thin binary; 4.1 builds the shell's XDG directory resolver, which 4.4 reuses, and the `SavePaths` resource moves to 7.1.
+- **4.1 MUST** Keyboard adapter from tuning; `SavePaths` from XDG. Done: adapter test. Amended 2026-11-04: a press released within one frame reports a move for that frame, by test; focus loss pauses through `MatchControl` (ADR 0003). Amended 2026-11-04 ([phase 4 report](m1-phase4-report.md)): the adapter reports once per frame before the fixed steps, only while `Playing`; `pong` becomes a library plus a thin binary; 4.1 builds the shell's XDG directory resolver, which 4.4 reuses, and the `SavePaths` resource moves to 7.1. Amended 2026-11-07 (ADR 0004): the adapter reports whenever the paddles move.
 - **4.2 MUST** Views: meshes, HDR colors, interpolation, snap, letterboxing camera, bloom. Done: no judder by eye; resize keeps aspect. Amended 2026-11-04 ([phase 4 report](m1-phase4-report.md)): the eye check waits for the dev entry, so the order is 4.2 code and headless tests, then 4.5, then the 4.2 eye check, then 4.3 and 4.4; the view samples each body every fixed tick (4.8 declined); the camera letterboxes by `ScalingMode::AutoMin` over a dark backdrop.
 - **4.3 MUST** Window: borderless fullscreen, title. Done: first start fullscreen.
 - **4.4 MUST** Panic hook crash file. Done: forced panic produces the file.
 - **4.5 MUST** Temporary dev entry (feature or flag) starting a two-human match directly; removed in 8.3. Done: match starts. Amended 2026-11-04: the shell builds `CorePlugins { seed }` with a seed from std entropy (`RandomState`, no new dependency); done when two launches serve at different first angles.
 - **4.6 SHOULD** Keyboard ghosting check (spec 1.8.2) run now. Done: result in the playtest log.
 - **4.7 MUST** `bevy-api-check` consulted before each rendering API when Claude drives. Done: one report per view module.
+- **4.9 MUST** Paddles move between rallies (ADR 0004). Added 2026-11-07 after the first two-human runs. Done: tests show a paddle moving in `Countdown` and `PointScored` while the ball waits, and still while paused or after the match; a held key moves the paddle during the countdown through the shell.
 - **4.8 MAY** Ball view interpolation reads `StepStart` (3.15). Added 2026-11-04. Done: no shell-side copy of the previous ball position. Declined 2026-11-04 (phase 4 report): `StepStart` updates only on live steps, so a view reading it replays the last step's motion through every pause; the view samples every fixed tick, paddles included.
 
 Exit: two people play Pong to ten on screen.

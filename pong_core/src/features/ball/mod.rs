@@ -14,7 +14,7 @@ use bevy::state::state_scoped::DespawnOnExit;
 
 use crate::domain::{Random, Serve};
 use crate::features::tuning::Tuning;
-use crate::flow::phases::FixedStepPhase;
+use crate::flow::phases::{BallInPlay, FixedStepPhase};
 use crate::flow::states::{AppState, MatchState};
 
 /// Spawns the ball for the length of a match, puts it back on the centre spot
@@ -26,7 +26,12 @@ impl Plugin for BallPlugin {
         app.add_message::<Serve>()
             .add_systems(OnEnter(AppState::InMatch), spawn_ball)
             .add_systems(OnEnter(MatchState::Countdown), place_ball_on_centre_spot)
-            .add_systems(FixedUpdate, serve_on_request.in_set(FixedStepPhase::Intent));
+            .add_systems(
+                FixedUpdate,
+                serve_on_request
+                    .in_set(FixedStepPhase::Intent)
+                    .in_set(BallInPlay),
+            );
     }
 }
 

@@ -21,7 +21,7 @@ use pong_core::domain::{BallHitPaddle, Controller, MatchConfig, Seat};
 use pong_core::features::paddle::Paddle;
 use pong_core::features::seats::PaddleIntent;
 use pong_core::features::tuning::Tuning;
-use pong_core::flow::phases::FixedStepPhase;
+use pong_core::flow::phases::{BallInPlay, FixedStepPhase};
 use pong_core::flow::states::{AppState, MatchState};
 use pong_core::kernel::geometry::Side;
 use pong_core::kernel::integrate::Motion;
@@ -32,7 +32,7 @@ use pong_core::testing::{
     leave_match, match_state, record, report_intent, set_frame_length, take_recorded,
 };
 
-/// Fixed steps of live play to run, counted where the phases run.
+/// Fixed steps of live play to run, counted where the ball's systems run.
 const LIVE_STEPS: u32 = 100_000;
 
 /// Frames allowed to reach [`LIVE_STEPS`]; countdowns and point pauses take
@@ -147,8 +147,12 @@ fn paddle(app: &mut App, side: Side) -> Paddle {
 #[test]
 fn a_hundred_thousand_live_steps_with_mixed_intents_and_frame_lengths_raise_no_fault() {
     let mut app = headless_app(152);
-    app.init_resource::<LiveSteps>()
-        .add_systems(FixedUpdate, count_live_step.in_set(FixedStepPhase::Sanity));
+    app.init_resource::<LiveSteps>().add_systems(
+        FixedUpdate,
+        count_live_step
+            .in_set(FixedStepPhase::Sanity)
+            .in_set(BallInPlay),
+    );
     record::<BallHitPaddle>(&mut app);
     boot(&mut app);
     let config = two_humans_to(5);
