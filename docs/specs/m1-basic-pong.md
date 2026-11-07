@@ -89,7 +89,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 ### 1.4.5 Rules
 
 - **MUST** `MatchConfig { left, right, points_to_win }`. Done: built by the menu, read by rules.
-- **MUST** Substates `Countdown`, `Playing`, `PointScored`, `Paused`, `MatchOver` under `InMatch`. Done: a headless test walks the cycle to `MatchOver`. Amended 2026-11-04 (ADR 0003): rules owns every transition; the serve fires on `Countdown → Playing` only; entering `Countdown` re-centres the ball; pause and resume come through the `MatchControl` port, and resume returns to the substate paused from.
+- **MUST** Substates `Countdown`, `Playing`, `PointScored`, `Paused`, `MatchOver` under `InMatch`. Done: a headless test walks the cycle to `MatchOver`. Amended 2026-11-04 (ADR 0003): rules owns every transition; the serve fires on `Countdown → Playing` only; entering `Countdown` re-centres the ball; pause and resume come through the `MatchControl` port, and resume returns to the substate paused from. Amended 2026-11-07 (ADR 0004): paddles move in `Countdown` and `PointScored` too; the ball moves, collides, and scores only in `Playing`.
 - **MUST** Score per side; `MatchEnded` at target. Done: test.
 - **MUST** Points-to-win options list and default in tuning. Done: menu offers the list, default preselected, match ends at the chosen value by test.
 - **SHOULD** Countdown length in tuning. Done: changeable.
@@ -142,7 +142,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 
 ### 1.6.1 Ports
 
-- **MUST** Keyboard adapter maps physical keys from tuning to `PaddleIntent` per seat; `SavePaths` from XDG directories. Done: a held key maps to an intent by test. Amended 2026-11-04 (plan 4.1): the adapter reports once per frame before the fixed steps, only while `Playing`; the `SavePaths` resource lands with persistence (plan 7.1), the XDG resolver in plan 4.1.
+- **MUST** Keyboard adapter maps physical keys from tuning to `PaddleIntent` per seat; `SavePaths` from XDG directories. Done: a held key maps to an intent by test. Amended 2026-11-04 (plan 4.1): the adapter reports once per frame before the fixed steps, only while `Playing`; the `SavePaths` resource lands with persistence (plan 7.1), the XDG resolver in plan 4.1. Amended 2026-11-07 (ADR 0004): the adapter reports whenever the paddles move, between rallies too.
 - **MUST** Focus loss clears intents and enters `Paused` only from `Playing`. Done: manual check plus a test sending the focus event. Amended 2026-11-04 (ADR 0003): the pause goes through the `MatchControl` port.
 
 ### 1.6.2 Views

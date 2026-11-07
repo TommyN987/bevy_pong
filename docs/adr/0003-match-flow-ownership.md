@@ -20,6 +20,7 @@ Bevy facts were verified against the pinned 0.20.1 source through `bevy-api-chec
 ## Decision
 
 Rules owns every `MatchState` transition, and a fixed step runs only while play is live.
+Amended by ADR 0004 (2026-11-07): the phases also run in `Countdown` and `PointScored`, where paddles move; the ball's systems keep this gate through `BallInPlay`.
 
 - Step gate: a system in `FixedFirst` opens the gate when `State<MatchState>` is `Playing` and no `MatchState` or `AppState` transition is pending.
   The phases run only while it is open.

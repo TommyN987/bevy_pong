@@ -18,7 +18,7 @@ use bevy::time::{Time, Timer, TimerMode};
 use crate::domain::{MatchConfig, MatchEnded, PointScored, Random, Serve};
 use crate::features::ball::{Ball, Position};
 use crate::features::tuning::Tuning;
-use crate::flow::phases::FixedStepPhase;
+use crate::flow::phases::{BallInPlay, FixedStepPhase};
 use crate::flow::states::{AppState, MatchState};
 use crate::kernel::geometry::Side;
 
@@ -59,7 +59,8 @@ impl Plugin for RulesPlugin {
                 FixedUpdate,
                 (score_goal_crossings, end_match_at_target)
                     .chain()
-                    .in_set(FixedStepPhase::Rules),
+                    .in_set(FixedStepPhase::Rules)
+                    .in_set(BallInPlay),
             );
     }
 }

@@ -84,6 +84,11 @@ ci-check: fmt-check arch-check lint test deny
 run:
     cargo run -p pong --features dev
 
+# Keyboard ghosting check (spec 1.8.2): the game with each change of held seat keys logged.
+# Hold W, S, D and Up, Down, Right together; the log should list six keys.
+key-check:
+    RUST_LOG=pong::ports::keyboard=debug cargo run -p pong --features dev
+
 # Run an optimized build without dev features.
 run-release:
     cargo run -p pong --release
