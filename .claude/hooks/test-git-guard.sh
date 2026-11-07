@@ -10,8 +10,8 @@ fail=0
 check() {
   local expect="$1" cmd="$2" out verdict
   out=$(printf '{"tool_name":"Bash","tool_input":{"command":%s}}' "$(printf '%s' "$cmd" | jq -Rs .)" | "$guard")
-  if [ -n "$out" ]; then verdict=DENY; else verdict=allow; fi
-  if [ "$verdict" = "$expect" ]; then
+  if [[ -n "$out" ]]; then verdict=DENY; else verdict=allow; fi
+  if [[ "$verdict" = "$expect" ]]; then
     printf 'ok    %-5s %s\n' "$verdict" "$cmd"
   else
     printf 'FAIL  got %-5s want %-5s %s\n' "$verdict" "$expect" "$cmd"

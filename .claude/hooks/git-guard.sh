@@ -5,7 +5,7 @@
 set -uo pipefail
 
 cmd=$(jq -r '.tool_input.command // empty' 2>/dev/null) || exit 0
-[ -z "$cmd" ] && exit 0
+[[ -z "$cmd" ]] && exit 0
 
 norm=$(printf '%s' "$cmd" | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g')
 mapfile -t parts < <(printf '%s\n' "$norm" | sed -E 's/(\|\||&&|;|\||\$\(|`)/\n/g')
@@ -30,10 +30,10 @@ for p in "${parts[@]}"; do
     gh\ *)
       printf '%s' "$p" | grep -qE -- '^gh (pr|issue|release|repo) (create|merge|close|edit|delete|reopen|comment|review|ready|checkout|fork|sync|rename|archive|upload)( |$)' && blocked="$p" ;;
   esac
-  [ -n "$blocked" ] && break
+  [[ -n "$blocked" ]] && break
 done
 
-if [ -n "$blocked" ]; then
+if [[ -n "$blocked" ]]; then
   reason="Blocked: [$blocked] is a mutative git/gh operation, which belongs to the user. Claude may run: git status, log, diff, show, blame, stash, rev-parse, ls-files, and read-only branch/tag/remote/config listings. Ask the user to run it."
   jq -n --arg r "$reason" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
 fi

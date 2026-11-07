@@ -53,7 +53,7 @@ The quality gate for the user's own git flow is a native `pre-push` hook in `.gi
 
 **Permissions**: cargo subcommands and `just` allowed; mutative git commands and `cargo publish` denied.
 
-**Not now**: MCP servers, scheduled routines, multi-agent workflows, custom status line. The installed automation-recommender skill is to be run after milestone one, when a codebase exists to analyze.
+**Not now**: MCP servers, scheduled routines, multi-agent workflows, custom status line. Amended 2026-11-08 (ADR 0006): the SonarQube MCP server and secrets-scanning hooks, installed by `sonar integrate claude` into the user's Claude Code config. The installed automation-recommender skill is to be run after milestone one, when a codebase exists to analyze.
 
 ## Alternatives considered
 

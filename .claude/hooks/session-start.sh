@@ -7,7 +7,7 @@ cd "$root" || exit 0
 bevy=$(grep -hE '^bevy\s*=' Cargo.toml pong_core/Cargo.toml pong/Cargo.toml 2>/dev/null | head -1)
 echo "bevy_pong session"
 echo "Bevy: ${bevy:-not yet pinned (arrives in plan phase 2); target 0.20}"
-if [ -f docs/specs/CURRENT ]; then
+if [[ -f docs/specs/CURRENT ]]; then
   echo "Current phase: $(cat docs/specs/CURRENT)"
 fi
 echo "Git:"
