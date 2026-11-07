@@ -48,7 +48,7 @@ Rationale: the order is dependency-correct, each layer reuses the previous, and 
 - C1's meter includes a catch-up bias toward the trailing player.
 - C3's room and boss definitions carry an "items available" parameter from the start, so C2 does not reopen C3.
 - C3 rooms are neon-generic; themes arrive as skins at or after C4.
-- The keyboard ghosting test runs before C3 ships.
+- The keyboard ghosting test runs before C3 ships. Amended 2026-11-07 (playtest log): the kids' keyboard drops one of the six keys with both seats holding up, down, and action; every hold of one direction plus action per seat registers, so the check is repeated when C2 gives the action key a job.
 - The beat never gates paddle or ball movement.
 - C1 field effects express force as a pure function of position and time, called by both the physics step and the AI's prediction; a per-step accumulator cannot be predicted. Added 2026-11-04 (phase 3 review).
 

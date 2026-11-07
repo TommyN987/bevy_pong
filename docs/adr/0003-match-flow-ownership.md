@@ -35,7 +35,7 @@ Amended by ADR 0004 (2026-11-07): the phases also run in `Countdown` and `PointS
 - Pause port `MatchControl`, a resource. The shell calls `request_pause()` and `request_resume()`.
   Rules accepts a pause from `Countdown`, `Playing`, or `PointScored`, records that substate, and ignores the request in `MatchOver`.
   Resume returns to the recorded substate; a resumed `Countdown` restarts its full timer.
-  Focus loss requests a pause only while `Playing`; the shell enforces that (spec 1.6.1).
+  Focus loss requests a pause only while `Playing`; the shell enforces that (spec 1.6.1). Amended by ADR 0004: wherever the paddles move.
 
 ## Alternatives considered
 

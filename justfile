@@ -4,6 +4,11 @@
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
+# Where the dev build's file watcher looks for the embedded tuning file (spec 1.4.8). Bevy
+# watches `BEVY_ASSET_ROOT`, else the running crate's directory, which for `pong` is `pong/`
+# and misses `pong_core/src/features/tuning/tuning.ron`. It must be absolute.
+dev_asset_root := justfile_directory() / "pong_core"
+
 # List recipes.
 default:
     @just --list
@@ -82,12 +87,12 @@ ci-check: fmt-check arch-check lint test deny
 
 # Run the game with the dev feature (dynamic linking).
 run:
-    cargo run -p pong --features dev
+    BEVY_ASSET_ROOT={{dev_asset_root}} cargo run -p pong --features dev
 
 # Keyboard ghosting check (spec 1.8.2): the game with each change of held seat keys logged.
 # Hold W, S, D and Up, Down, Right together; the log should list six keys.
 key-check:
-    RUST_LOG=pong::ports::keyboard=debug cargo run -p pong --features dev
+    BEVY_ASSET_ROOT={{dev_asset_root}} RUST_LOG=pong::ports::keyboard=debug cargo run -p pong --features dev
 
 # Run an optimized build without dev features.
 run-release:

@@ -69,7 +69,7 @@ Realizes spec 1.2, 1.3, 1.4.1 through 1.4.5, 1.4.8, 1.4.10, 1.5, 1.7.1. Depends 
 - **3.6 MUST** Ball, paddle, physics 1.4.2 through 1.4.4 with seeded random. Done: headless rally event sequence test green.
 - **3.7 MUST** Rules 1.4.5. Done: substate cycle test to `MatchOver` green.
 - **3.8 MUST** Testing module 1.5.1 and soak 1.5.2 with nextest timeout. Done: soak under thirty seconds locally.
-- **3.9 SHOULD** Dev override with hot reload and keep-last-good. Done: unit test; manual check once the shell exists.
+- **3.9 SHOULD** Dev override with hot reload and keep-last-good. Done: unit test; manual check once the shell exists. Manual check passed 2026-11-07 once `just run` set `BEVY_ASSET_ROOT` ([phase 4 report](m1-phase4-report.md)).
 - **3.10 SHOULD** Schedule randomization 1.5.3. Done: green with it on.
 
 Added 2026-11-04 from the phase 3 review (findings and dispositions in [m1-phase3-report.md](m1-phase3-report.md); decisions in ADR 0002 and ADR 0003).
@@ -130,7 +130,7 @@ Realizes spec 1.6.3, settings mode in 1.6.6, 1.7.3. Depends on 4, 5, 7.
 
 - **8.1 MUST** All screens per spec 1.6.3 including seat cue, key filter, text entry with filter suspension, name cap, notice line, settings. Done: full keyboard-only flow; filter and name tests green.
 - **8.2 SHOULD** Rename and delete. Done: reachable.
-- **8.3 MUST** Remove the dev entry from 4.5. Done: gone; ADR note.
+- **8.3 MUST** Remove the dev entry from 4.5. Done: gone; ADR note. Amended 2026-11-07 (phase 4 report): after a focus loss the pause screen resumes play, since the dev entry's Escape was the only resume until then.
 - **8.4 SHOULD** Readability review. Done: reviewed against the frame.
 
 ### 9. Audio
