@@ -2,8 +2,9 @@
 //! and the shell's plugins from the `pong` library.
 
 use bevy::DefaultPlugins;
-use bevy::app::{App, AppExit};
+use bevy::app::{App, AppExit, PluginGroup};
 use bevy::log::info;
+use bevy::window::WindowPlugin;
 use pong::dev_entry::DevEntryPlugin;
 use pong::ports::PortsPlugin;
 use pong::views::ViewsPlugin;
@@ -17,7 +18,10 @@ compile_error!(
 fn main() -> AppExit {
     let seed = pong::seed::from_entropy();
     let mut app = App::new();
-    app.add_plugins(DefaultPlugins);
+    app.add_plugins(DefaultPlugins.set(WindowPlugin {
+        primary_window: Some(pong::window::primary_window()),
+        ..WindowPlugin::default()
+    }));
     // Logged so a launch can be replayed from its seed; the log exists once
     // `DefaultPlugins` is added.
     info!("core seed {seed}");

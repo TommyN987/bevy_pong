@@ -29,7 +29,10 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) and [m1-plan.md](m1-plan.md
 - The dev entry's one key is Escape, the spec's key for pause and back-out: it pauses from `Countdown`, `Playing`, or `PointScored`, resumes from `Paused` (focus loss included), and from `MatchOver` returns to the menu, which starts the next match. This covers the temporary resume key and leaves no unfinished match.
 - With no score display before phase 8, the dev entry logs each score change at info level.
 - `main` logs the core seed at info level on every launch (`pong::seed`), so a launch can be replayed from its seed.
+- The window (4.3, `pong::window`) opens borderless fullscreen on `MonitorSelection::Primary`. At creation Bevy passes no current monitor, so `Current` warns on every start and falls back to none; on Wayland, which has no primary monitor, both leave the choice to the compositor. Settings-driven mode stays with 7.x.
+- Title and app ID (Wayland `app_id`, X11 `WM_CLASS`) are `bevy_pong`, a placeholder until the game has a name. On Hyprland the game runs as a native Wayland client: Bevy's `2d` feature enables both `wayland` and `x11`, and winit prefers Wayland.
 - Plan 4.5 checked 2026-11-06 by the user: two launches of `just run` served at different first angles.
+- Plan 4.2 eye check 2026-11-06 by the user: no judder on the 60 Hz laptop panel, and resizing keeps the arena's aspect with bars. The moving ball shows a dim trailing copy that vanishes when paused; with one mesh and no temporal pass in the pipeline, this is read as panel ghosting of a near-white ball on black. If it bothers players, a dark grey backdrop or a dimmer ball softens it (phase 10 polish).
 
 ## Bevy API checks (plan 4.7)
 
