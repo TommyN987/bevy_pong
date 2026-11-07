@@ -32,7 +32,7 @@ Obligation levels: MUST, SHOULD, MAY, WONT. Every item carries a done-condition.
 
 ## 1.1 Repository foundation
 
-- **1.1.1 MUST** Workspace per M0's ADR, Bevy pinned to an exact 0.20 patch, `rust-toolchain.toml` on stable. Done: `cargo build` succeeds on a clean clone.
+- **1.1.1 MUST** Workspace per M0's ADR, Bevy pinned to an exact 0.20 patch, `rust-toolchain.toml` on nightly. Done: `cargo build` succeeds on a clean clone. Amended 2026-11-07 (phase 4 report): a dated nightly with the cranelift component; a clean clone also needs `clang` and `mold`.
 - **1.1.2 MUST** `dynamic_linking` behind a dev-only cargo feature. Done: `ldd` on the release binary shows no `libbevy_dylib`.
 - **1.1.3 MUST** GitHub Actions on Ubuntu: Linux deps, `just`, nextest, cargo cache; runs `just ci-check` then a release build. Done: green on the default branch. Depends on the user creating the GitHub remote.
 - **1.1.4 MUST** `.gitignore`, license file, `docs/adr/` with a template, `docs/specs/` holding this spec. Done: files present.
