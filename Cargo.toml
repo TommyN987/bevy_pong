@@ -33,3 +33,7 @@ opt-level = 1
 
 [profile.dev.package."*"]
 opt-level = 3
+# Line tables only, not full debug info: backtraces keep file and line inside dependencies,
+# while each statically linked test binary shrinks from ~1.4 GB. With full debug info, the
+# parallel test links (mold, one per test binary) needed ~35 GB and thrashed a 15 GB machine.
+debug = "line-tables-only"

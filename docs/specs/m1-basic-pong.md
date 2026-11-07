@@ -32,7 +32,7 @@ Obligation levels: MUST, SHOULD, MAY, WONT. Every item carries a done-condition.
 
 ## 1.1 Repository foundation
 
-- **1.1.1 MUST** Workspace per M0's ADR, Bevy pinned to an exact 0.20 patch, `rust-toolchain.toml` on stable. Done: `cargo build` succeeds on a clean clone.
+- **1.1.1 MUST** Workspace per M0's ADR, Bevy pinned to an exact 0.20 patch, `rust-toolchain.toml` on nightly. Done: `cargo build` succeeds on a clean clone. Amended 2026-11-07 (phase 4 report): a dated nightly with the cranelift component; a clean clone also needs `clang` and `mold`.
 - **1.1.2 MUST** `dynamic_linking` behind a dev-only cargo feature. Done: `ldd` on the release binary shows no `libbevy_dylib`.
 - **1.1.3 MUST** GitHub Actions on Ubuntu: Linux deps, `just`, nextest, cargo cache; runs `just ci-check` then a release build. Done: green on the default branch. Depends on the user creating the GitHub remote.
 - **1.1.4 MUST** `.gitignore`, license file, `docs/adr/` with a template, `docs/specs/` holding this spec. Done: files present.
@@ -142,14 +142,14 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 
 ### 1.6.1 Ports
 
-- **MUST** Keyboard adapter maps physical keys from tuning to `PaddleIntent` per seat; `SavePaths` from XDG directories. Done: a held key maps to an intent by test.
+- **MUST** Keyboard adapter maps physical keys from tuning to `PaddleIntent` per seat; `SavePaths` from XDG directories. Done: a held key maps to an intent by test. Amended 2026-11-04 (plan 4.1): the adapter reports once per frame before the fixed steps, only while `Playing`; the `SavePaths` resource lands with persistence (plan 7.1), the XDG resolver in plan 4.1.
 - **MUST** Focus loss clears intents and enters `Paused` only from `Playing`. Done: manual check plus a test sending the focus event. Amended 2026-11-04 (ADR 0003): the pause goes through the `MatchControl` port.
 
 ### 1.6.2 Views
 
 - **MUST** Arena, paddles, ball as `Mesh2d` with HDR colors; `Transform` from `Position` with interpolation; snap honored. Done: no visible judder at a frame rate unequal to the fixed rate.
-- **MUST** Camera fits the arena with letterboxing; no pixel units in shell logic. Done: resizing keeps the aspect.
-- **MUST** Bloom with HDR, TonyMcMapface, deband dither. Done: glow visible.
+- **MUST** Camera fits the arena with letterboxing; no pixel units in shell logic. Done: resizing keeps the aspect. Amended 2026-11-04 (plan 4.2): `ScalingMode::AutoMin` shows the whole arena and nothing is drawn beyond it, so the dark backdrop forms the bars; no `Camera.viewport`.
+- **MUST** Bloom with HDR, TonyMcMapface, deband dither. Done: glow visible. Amended 2026-11-04 (plan 4.2): TonyMcMapface needs Bevy's `tonemapping_luts` and `zstd_rust` features, which add `ktx2` and `ruzstd`.
 - **SHOULD** Ball trail. Done: visible.
 - **MAY** Screen shake on a point. Done: visible.
 
