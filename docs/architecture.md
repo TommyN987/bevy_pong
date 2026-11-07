@@ -125,7 +125,7 @@ Alternatives considered: flat feature files with a shared prelude (rejected: pre
 - Two seats, left and right, each with a key set defined in tuning data so bindings can change if ghosting is found.
 - Menus use a single cursor. Profile selection is sequential per seat with a visible seat cue; during a seat's turn only that seat's keys drive the cursor. One-human modes have the single seat pick both sides.
 - Escape pauses or goes back from anywhere.
-- Window focus loss clears all intents and pauses, only while in the Playing substate.
+- Window focus loss clears all intents and pauses wherever the paddles move: `Countdown`, `Playing`, `PointScored` (ADR 0004).
 
 ## States
 
@@ -175,7 +175,9 @@ Mechanism: typed error enums only where a caller branches (persistence load and 
 | Data validation       | tuning out of range, negative wins       | validated constructor                     | CI test fails on embedded file; dev override keeps last good values, shows banner | cannot occur for embedded; save treated as Corrupt | none             | CI range-checks embedded tuning          |
 | Audio init            | no device                                | `Result` at plugin startup                | log, continue silent                                                              | silent mode                                        | none             | shell test with audio disabled           |
 | Render or window loss | GPU lost, no window                      | Bevy render error handler                 | exit with log                                                                     | exit with log and crash file                       | impossible       | none, accepted                           |
-| Uncaught panic        | anything missed above                    | panic hook                                | default                                                                           | crash file, exit                                   | none             | none, accepted; data safe by principle 5 |
+| Uncaught panic        | anything missed above                    | panic hook                                | crash file, then default                                                          | in a system: crash file, log, skip the system; elsewhere: crash file, exit | none | forced panic writes the file, by test |
+
+Amended 2026-11-07 (phase 4 report): Bevy catches a panic inside a system and hands it to the error handler, so in release play goes on; the hook writes the crash file in both builds, once per process.
 
 The soak test runs with panic enabled, so a fault that release would heal still fails CI.
 

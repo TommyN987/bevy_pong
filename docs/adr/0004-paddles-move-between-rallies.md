@@ -24,6 +24,7 @@ A new `flow` system set, `BallInPlay`, narrows its members to `Playing` with no 
 - `Paused` and `MatchOver` run no phase.
 - The keyboard adapter reports whenever the paddles move; a countdown tap now moves the paddle in the countdown.
 - Focus loss still clears intents in every state and pauses only from `Playing` (spec 1.6.1).
+  Amended 2026-11-07 after the plan 3.9 check: focus lost in a countdown let it run out and serve unseen, so focus loss pauses wherever the paddles move.
 
 ## Alternatives considered
 

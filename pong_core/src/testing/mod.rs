@@ -14,7 +14,7 @@
     reason = "test harness: a failed precondition stops the test with the reason"
 )]
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use bevy::MinimalPlugins;
 use bevy::app::{App, FixedPostUpdate, FixedUpdate, PluginGroup};
@@ -73,17 +73,29 @@ pub fn headless_app(seed: u64) -> App {
     app
 }
 
+/// How long [`boot`] waits for `Boot` to end. Boot waits on the tuning load,
+/// which Bevy's I/O threads run in wall-clock time, not in frames: on a busy
+/// machine 1,000 fast frames once passed before it finished (phase 4 report).
+const BOOT_LIMIT: Duration = Duration::from_secs(10);
+
 /// Runs frames until the app reaches `Menu`.
 ///
 /// # Panics
-/// If the app never leaves `Boot`.
+/// If the app is still in `Boot` after [`BOOT_LIMIT`] of wall-clock time.
 pub fn boot(app: &mut App) {
-    run_until(
-        app,
-        |app| app_state(app) == AppState::Menu,
-        1_000,
-        "the app never left Boot",
-    );
+    boot_within(app, BOOT_LIMIT);
+}
+
+/// [`boot`] with its wall-clock limit given.
+fn boot_within(app: &mut App, limit: Duration) {
+    let start = Instant::now();
+    while app_state(app) != AppState::Menu {
+        assert!(
+            start.elapsed() < limit,
+            "the app never left Boot within {limit:?}"
+        );
+        app.update();
+    }
 }
 
 /// Installs `config` and enters `InMatch`, which begins in `Countdown`.
@@ -330,7 +342,23 @@ mod tests {
     use bevy::ecs::resource::Resource;
     use bevy::ecs::system::ResMut;
 
-    use super::{FrameLength, frame, headless_app, set_frame_length};
+    use std::time::Duration;
+
+    use bevy::MinimalPlugins;
+
+    use super::{FrameLength, boot_within, frame, headless_app, set_frame_length};
+    use crate::app::boot::BootPlugin;
+    use crate::flow::FlowPlugin;
+
+    /// Without the tuning feature, nothing ever resolves tuning, so the app
+    /// stays in `Boot` and the limit is what ends the wait.
+    #[test]
+    #[should_panic(expected = "the app never left Boot within")]
+    fn boot_gives_up_once_its_wall_clock_limit_has_passed() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, FlowPlugin, BootPlugin));
+        boot_within(&mut app, Duration::from_millis(50));
+    }
 
     #[derive(Resource, Default)]
     struct FixedSteps(u32);

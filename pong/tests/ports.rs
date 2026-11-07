@@ -10,6 +10,7 @@ use bevy::ecs::entity::Entity;
 use bevy::ecs::message::Messages;
 use bevy::input::keyboard::{Key, KeyCode, KeyboardInput, NativeKey};
 use bevy::input::{ButtonState, InputPlugin};
+use bevy::state::state::NextState;
 use bevy::window::WindowFocused;
 use pong::ports::PortsPlugin;
 use pong_core::domain::{Controller, MatchConfig, Seat};
@@ -159,15 +160,38 @@ fn a_held_key_moves_the_paddle_during_the_countdown() {
     );
 }
 
-#[test]
-fn focus_loss_outside_play_does_not_pause() {
+/// A match in `state`, entered from play, with one frame run in it.
+fn match_in(state: MatchState) -> App {
     let mut app = shell_app();
-    enter_match(&mut app, two_humans());
-    assert_eq!(match_state(&app), MatchState::Countdown);
+    start_match(&mut app, two_humans());
+    app.world_mut()
+        .resource_mut::<NextState<MatchState>>()
+        .set(state);
+    frame(&mut app);
+    assert_eq!(match_state(&app), state);
+    app
+}
+
+/// Spec 1.6.1 as amended 2026-11-07: between rallies the paddles move and the
+/// countdown runs out by itself, so focus loss pauses there too.
+#[test]
+fn focus_loss_between_rallies_pauses() {
+    for state in [MatchState::Countdown, MatchState::PointScored] {
+        let mut app = match_in(state);
+        focus(&mut app, false);
+        frame(&mut app);
+        frame(&mut app);
+        assert_eq!(match_state(&app), MatchState::Paused, "from {state:?}");
+    }
+}
+
+#[test]
+fn focus_loss_after_the_match_does_not_pause() {
+    let mut app = match_in(MatchState::MatchOver);
     focus(&mut app, false);
     frame(&mut app);
     frame(&mut app);
-    assert_eq!(match_state(&app), MatchState::Countdown);
+    assert_eq!(match_state(&app), MatchState::MatchOver);
 }
 
 #[test]
