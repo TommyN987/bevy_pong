@@ -9,6 +9,7 @@ use pong_core::flow::states::paddles_move;
 
 pub mod focus;
 pub mod keyboard;
+pub mod save_paths;
 
 /// Reports seat intents from the keyboard whenever the paddles move (in play
 /// and between rallies, ADR 0004), then forgets them and asks for a pause on

@@ -32,6 +32,7 @@ Bevy's first update has zero delta, so the first frame runs no fixed step.
 | `report_intent` | Fakes a seat's keys, as the shell's adapter will. |
 | `record::<M>`, `recorded`, `take_recorded` | Keep every `M` written, read in `FixedPostUpdate` right after the steps that write. |
 | `ball_state`, `place_ball` | Read or script the one ball. |
+| `TempSaveDir` | A fresh directory under the system temp directory, removed when dropped; `save_paths()` gives the `SavePaths` fake (spec 1.5.1). Std only. |
 | `unphased_fixed_step_systems` | Walks the built `FixedUpdate` schedule and names systems in no phase. |
 
 ## Soak (`tests/soak.rs`)

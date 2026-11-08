@@ -1,0 +1,37 @@
+// Released profiles format, version 1 (spec 1.4.9). Never edit this file:
+// it is what a game of that version wrote, and every later game must still
+// read it. A new version gets its own fixture, profiles_v<N>.ron.
+// Id 2 is absent on purpose: a deleted profile leaves a gap.
+(
+    version: 1,
+    profiles: [
+        (
+            id: 1,
+            name: "Zoë",
+            color: (
+                red: 1.0,
+                green: 0.3,
+                blue: 0.25,
+            ),
+            records: (
+                wins: 4,
+                losses: 2,
+                longest_rally: 17,
+            ),
+        ),
+        (
+            id: 3,
+            name: "Max",
+            color: (
+                red: 0.2,
+                green: 0.8,
+                blue: 0.9,
+            ),
+            records: (
+                wins: 0,
+                losses: 0,
+                longest_rally: 0,
+            ),
+        ),
+    ],
+)

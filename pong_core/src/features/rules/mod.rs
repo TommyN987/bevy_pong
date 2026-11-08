@@ -204,7 +204,12 @@ fn apply_pause_requests(
 /// (ADR 0002). The score stands.
 ///
 /// A match already ending is left to end. Under the dev error policy the
-/// sanity phase panics first and this never runs. Logging is the error
+/// sanity phase panics first and this never runs.
+///
+/// Known limit (spec 1.4.7, kept for M1): a fault a re-serve cannot cure,
+/// such as a second ball, faults again every step, and this restarts the
+/// countdown every frame, so the match stalls there. Only a code bug can
+/// cause one in M1; revisit when a feature spawns balls (C1's ball split). Logging is the error
 /// handler's: the sanity system returned the fault as its error.
 fn restart_rally_after_fault(
     mut faults: MessageReader<SimFault>,

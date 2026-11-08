@@ -137,7 +137,7 @@ Rules owns every `MatchState` transition; the shell requests pause and resume th
 - Core performs file IO through an injected `SavePaths` resource using `std::fs`. The shell computes paths; tests inject a temp directory.
 - Two files: settings per device in the XDG config directory; profiles per child in the XDG data directory.
 - The save model is an explicit versioned enum with a sequential migration chain. No serde field defaults for migration.
-- One fixture file per released version lives in the core test tree. A test loads each against a golden model; another asserts fixture count equals the current version.
+- One fixture file per released version lives in the core test tree. A test loads each against a golden model; another asserts fixture count equals the current version. Amended by ADR 0007: each file kind has its own version chain and fixtures, and the file format is specified there.
 - Corrupt or newer-version file: rename with a timestamp suffix, start with an empty model, show one plain sentence in the menu. Never crash, never overwrite.
 - Profiles are open-ended. A built-in, non-persisted Guest always exists; a Guest side records nothing, the opposing child's records still count.
 

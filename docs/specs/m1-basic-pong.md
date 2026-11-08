@@ -106,7 +106,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 ### 1.4.7 Sanity and heal
 
 - **MUST** `sanity` phase checks finite velocity, ball within arena plus margin, paddles within arena. Done: injected NaN fires the fault.
-- **MUST** Dev panics; release emits `SimFault`, heal re-serves and logs at error. Done: both paths tested with the handler toggled.
+- **MUST** Dev panics; release emits `SimFault`, heal re-serves and logs at error. Done: both paths tested with the handler toggled. Amended 2026-11-08 ([phase 6 report](m1-phase6-report.md)): the sanity system returns the fault as its error, so the error-level line is written by Bevy's release error handler with the fault's text; the heal itself does not log, since the core has no logging feature. A fault a re-serve cannot cure, such as a second ball, faults again every step in release and the heal restarts the countdown every frame; accepted for M1, where only a code bug can cause one and dev panics first.
 
 ### 1.4.8 Tuning
 
