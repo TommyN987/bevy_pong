@@ -1,15 +1,20 @@
 //! What the menu screens show (spec 1.6.3): a heading, the seat cue on a
 //! seat's own screens, and one row per list item with the cursor's row
-//! marked. A seat's screens sit on that seat's half of the screen.
+//! marked, at most `SHOWN_ROWS` of them laid out at once, with ▲ and ▼ where
+//! rows are hidden. A seat's screens sit on that seat's half of the screen.
 
+use bevy::camera::visibility::Visibility;
 use bevy::color::{Color, Srgba};
+use bevy::ecs::bundle::Bundle;
 use bevy::ecs::component::Component;
 use bevy::ecs::system::{Commands, Query, Res};
 use bevy::state::state::State;
 use bevy::state::state_scoped::DespawnOnExit;
 use bevy::text::TextColor;
 use bevy::ui::widget::Text;
-use bevy::ui::{AlignItems, BorderColor, FlexDirection, JustifyContent, Node, UiRect, Val};
+use bevy::ui::{
+    AlignItems, BorderColor, Display, FlexDirection, JustifyContent, Node, UiRect, Val,
+};
 use pong_core::domain::{Player, ProfileId, Seat};
 use pong_core::features::persistence::model::{Profile, Profiles, Settings, WindowMode};
 use pong_core::features::tuning::{SeatKeys, Tuning};
@@ -36,6 +41,16 @@ pub struct MenuHeading;
 /// The keys of the seat whose turn it is (spec 1.6.3, seat cue).
 #[derive(Component, Debug, Default)]
 pub struct SeatCue;
+
+/// Marks rows hidden above or below the shown ones (▲, ▼); hidden itself,
+/// keeping its place, when none are.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScrollMark {
+    /// Rows hidden above.
+    Above,
+    /// Rows hidden below.
+    Below,
+}
 
 /// A row's words and colour.
 pub(super) fn label(item: MenuItem, profiles: &Profiles, settings: Settings) -> (String, Srgba) {
@@ -174,6 +189,10 @@ pub(super) fn show_screen(
                 root.spawn(name_field(typed));
                 root.spawn(hint(NAME_HINT));
             }
+            // Every row, and both marks hidden: `follow_cursor` shows the
+            // right ones this same frame, since entering the screen changed
+            // the list.
+            root.spawn(scroll_mark(ScrollMark::Above));
             for (index, &item) in list.items().iter().enumerate() {
                 let (text, color) = label(item, &profiles, *settings);
                 root.spawn((
@@ -181,13 +200,55 @@ pub(super) fn show_screen(
                     row(text, Color::from(color), index == list.cursor()),
                 ));
             }
+            root.spawn(scroll_mark(ScrollMark::Below));
         });
 }
 
-/// Moves the cursor's mark to the cursor's row.
-pub(super) fn mark_cursor(list: Res<MenuList>, mut rows: Query<(&MenuRow, &mut BorderColor)>) {
-    for (row, mut border) in &mut rows {
+fn scroll_mark(mark: ScrollMark) -> impl Bundle {
+    let glyph = match mark {
+        ScrollMark::Above => "▲",
+        ScrollMark::Below => "▼",
+    };
+    (
+        mark,
+        Text::new(glyph),
+        font(4.0),
+        TextColor(DIM),
+        Visibility::Hidden,
+    )
+}
+
+/// Moves the cursor's mark to the cursor's row and lays out only the shown
+/// rows; a scroll mark shows while rows are hidden on its side. Writes a
+/// row's `Node` only when its display changes, since any write lays it out
+/// again.
+pub(super) fn follow_cursor(
+    list: Res<MenuList>,
+    mut rows: Query<(&MenuRow, &mut BorderColor, &mut Node)>,
+    mut marks: Query<(&ScrollMark, &mut Visibility)>,
+) {
+    let shown = list.shown();
+    for (row, mut border, mut node) in &mut rows {
         *border = cursor_frame(row.0 == list.cursor());
+        let display = if shown.contains(&row.0) {
+            Display::Flex
+        } else {
+            Display::None
+        };
+        if node.display != display {
+            node.display = display;
+        }
+    }
+    for (mark, mut visibility) in &mut marks {
+        let hidden_beyond = match mark {
+            ScrollMark::Above => shown.start > 0,
+            ScrollMark::Below => shown.end < list.items().len(),
+        };
+        *visibility = if hidden_beyond {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
     }
 }
 

@@ -8,6 +8,7 @@ mod common;
 use std::num::NonZeroU8;
 
 use bevy::app::{App, AppExit};
+use bevy::camera::visibility::Visibility;
 use bevy::color::{Color, Srgba};
 use bevy::ecs::change_detection::Mut;
 use bevy::ecs::component::Component;
@@ -17,11 +18,11 @@ use bevy::input::keyboard::KeyCode;
 use bevy::state::state::State;
 use bevy::text::EditableText;
 use bevy::ui::widget::Text;
-use bevy::ui::{AlignItems, BorderColor, Node};
+use bevy::ui::{AlignItems, BorderColor, Display, Node};
 use common::tap;
 use pong::ui::menu::name_entry::NameField;
-use pong::ui::menu::view::{MenuHeading, MenuRow, MenuScreenRoot, SeatCue};
-use pong::ui::menu::{MenuItem, MenuList, MenuPlugin, MenuScreen};
+use pong::ui::menu::view::{MenuHeading, MenuRow, MenuScreenRoot, ScrollMark, SeatCue};
+use pong::ui::menu::{MenuItem, MenuList, MenuPlugin, MenuScreen, SHOWN_ROWS};
 use pong::ui::style::KeyHint;
 use pong_core::domain::{
     Controller, Difficulty, MatchConfig, Player, ProfileId, Seat, SeatPlayers,
@@ -834,4 +835,102 @@ fn the_name_screens_hint_that_enter_takes_the_name() {
 fn texts_of<C: Component>(app: &mut App) -> Vec<String> {
     let mut query = app.world_mut().query_filtered::<&Text, With<C>>();
     query.iter(app.world()).map(|text| text.0.clone()).collect()
+}
+
+/// The rows laid out, by index: a hidden row takes no space.
+fn rows_on_screen(app: &mut App) -> Vec<usize> {
+    let mut query = app.world_mut().query::<(&MenuRow, &Node)>();
+    let mut rows: Vec<usize> = query
+        .iter(app.world())
+        .filter(|(_, node)| node.display != Display::None)
+        .map(|(row, _)| row.0)
+        .collect();
+    rows.sort_unstable();
+    rows
+}
+
+/// Which scroll marks show: (▲, ▼).
+fn scroll_marks(app: &mut App) -> (bool, bool) {
+    let mut query = app.world_mut().query::<(&ScrollMark, &Visibility)>();
+    let marks: Vec<_> = query.iter(app.world()).map(|(m, v)| (*m, *v)).collect();
+    assert_eq!(marks.len(), 2, "one mark above the rows, one below");
+    let shows = |wanted| {
+        marks
+            .iter()
+            .any(|&(mark, visibility)| mark == wanted && visibility != Visibility::Hidden)
+    };
+    (shows(ScrollMark::Above), shows(ScrollMark::Below))
+}
+
+/// A list that fits shows every row and no scroll mark.
+#[test]
+fn a_short_list_shows_every_row_and_no_scroll_mark() {
+    let mut app = menu_app();
+    pick(&mut app, MenuItem::Settings, LEFT);
+    assert_eq!(rows_on_screen(&mut app), [0, 1]);
+    assert_eq!(scroll_marks(&mut app), (false, false));
+}
+
+/// The user's hand check (2026-11-08): 90 and 100 ran off the screen. A
+/// long list shows [`SHOWN_ROWS`] around the cursor, marking what is hidden.
+#[test]
+fn a_long_list_opens_around_the_cursor_and_marks_what_is_hidden() {
+    let mut app = menu_app();
+    pick(&mut app, MenuItem::Settings, LEFT);
+    pick(&mut app, MenuItem::OpenVolume, LEFT);
+    assert_eq!(list(&app).items().len(), 11);
+    assert_eq!(list(&app).cursor(), 8, "80 under the cursor");
+    assert_eq!(rows_on_screen(&mut app), (5..11).collect::<Vec<_>>());
+    assert_eq!(scroll_marks(&mut app), (true, false));
+}
+
+/// The shown rows move only when the cursor would leave them, one row at a
+/// time, and never past either end.
+#[test]
+fn the_shown_rows_follow_the_cursor_one_row_at_a_time() {
+    let mut app = menu_app();
+    pick(&mut app, MenuItem::Settings, LEFT);
+    pick(&mut app, MenuItem::OpenVolume, LEFT);
+    for _ in 0..3 {
+        tap(&mut app, LEFT_UP);
+    }
+    assert_eq!(list(&app).cursor(), 5);
+    assert_eq!(
+        rows_on_screen(&mut app),
+        (5..11).collect::<Vec<_>>(),
+        "the cursor is still on"
+    );
+    tap(&mut app, LEFT_UP);
+    assert_eq!(rows_on_screen(&mut app), (4..10).collect::<Vec<_>>());
+    assert_eq!(scroll_marks(&mut app), (true, true));
+    for _ in 0..10 {
+        tap(&mut app, LEFT_UP);
+    }
+    assert_eq!(
+        rows_on_screen(&mut app),
+        (0..SHOWN_ROWS).collect::<Vec<_>>()
+    );
+    assert_eq!(scroll_marks(&mut app), (false, true));
+    tap(&mut app, LEFT_DOWN);
+    assert_eq!(
+        rows_on_screen(&mut app),
+        (0..SHOWN_ROWS).collect::<Vec<_>>()
+    );
+    for _ in 0..20 {
+        tap(&mut app, LEFT_DOWN);
+    }
+    assert_eq!(rows_on_screen(&mut app), (5..11).collect::<Vec<_>>());
+    assert_eq!(list(&app).shown(), 5..11);
+}
+
+/// The cursor near an end does not shorten the list: at 100 the last
+/// [`SHOWN_ROWS`] show, not the cursor's row and the few after it.
+#[test]
+fn a_list_opened_near_its_end_still_shows_a_full_window() {
+    let mut app = menu_app();
+    app.world_mut().resource_mut::<Settings>().volume = Volume::new(100).expect("in range");
+    pick(&mut app, MenuItem::Settings, LEFT);
+    pick(&mut app, MenuItem::OpenVolume, LEFT);
+    assert_eq!(list(&app).cursor(), 10, "100 under the cursor");
+    assert_eq!(rows_on_screen(&mut app), (5..11).collect::<Vec<_>>());
 }
