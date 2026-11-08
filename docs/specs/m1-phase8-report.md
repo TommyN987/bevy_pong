@@ -12,6 +12,9 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) and [m1-plan.md](m1-plan.md
 | Facts, fonts | Bevy's built-in font (a FiraMono subset) draws printable ASCII only, 95 code points: no ★, no arrows, no "ë". The game embeds DejaVu Sans Bold 2.37 (709 KB, Bitstream Vera licence, beside it in `pong/src/ui/fonts/`) in the default font's slot at `Startup`, so every text uses it. Chosen by the user (2026-11-08) over Adwaita Sans and an ASCII-only menu. An asset, not a crate. | Spec facts amended 2026-11-08; this report. |
 | 1.6.3 | Names take Latin letters up to U+024F (all drawn by the font, checked), digits, spaces, and hyphens; a name is trimmed, and a blank one is not taken. | This report. |
 | plan 4.5 | The dev entry starts a match only with `--vs`; bare `just run` shows the menus. Its notice log is gone, since the notice line shows every `Notice`; Escape keeps its match duties until part C. | This report. |
+| 1.6.3 SHOULD, plan 8.4 | A profile's colour changes from Edit too, not only its name. Asked for by the user (2026-11-08). | Spec 1.6.3 amended 2026-11-08. |
+| 1.6.3, plan 8.4 | The HUD shows the countdown's whole seconds: no item named it; the user chose it over waiting for the playtest (2026-11-08). Rules' `StateTimer` became public read-only. | Spec 1.6.3 amended 2026-11-08; features README. |
+| 1.6.6 | The title is "Rusty Pong", chosen by the user; the app ID stays `bevy_pong`. | Spec 1.6.6 amended 2026-11-08; `docs/design.md`. |
 | 1.6.2, plan 8.1 | Paddles glow in their players' profile colours; no item named it, though the paddle view expected it in phase 8. Added to part C by the user (2026-11-08). | Spec 1.6.2 and plan 8.1 amended 2026-11-08. |
 
 ## Decisions taken in this phase
@@ -49,3 +52,28 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) and [m1-plan.md](m1-plan.md
   - The core's `Profiles::rename` and `Profiles::remove` hand back the old name or the profile, `None` for an unknown id; the shell treats an unknown id as its own error. The menu save trigger writes both.
   - Deleting the newest profile frees its id for the next new one; nothing outside the profile list names an id across sessions in M1. A stored next-id counter would need a v2 save; revisit at C1 if unlocks name ids from outside a profile.
   - Checked against deliberate breaks: Edit always offered, nothing withheld from Edit, Yes under the cursor, a renamed profile not under the cursor, Yes deleting nothing. Each fails a test.
+- Plan 8.4 (2026-11-08, approved by the user): the readability review against the frame ("readable by a 9-year-old: minimal text, visual feedback over menus") and spec 1.6.3's SHOULD (single words or icons).
+
+  | Screen | Text | Verdict |
+  |---|---|---|
+  | Boot, main heading | the game's name | "Rusty Pong" (R5, the user's) |
+  | Main | Play, Settings, Quit | kept |
+  | Settings | Volume 80, Fullscreen / Window | kept |
+  | Volume, window mode | 0–100 in tens; Fullscreen, Window | kept |
+  | Opponent | "vs"; Friend, ★, ★★, ★★★ | kept |
+  | Points | "Points"; 5, 10, 15, 21 | kept |
+  | Profile pick | "Who?"; Guest, names in their colour, New, Edit | kept |
+  | Seat cue | "W S D", "↑ ↓ →" | R1: now "W↑ S↓ D✓", "↑ ↓ →✓" |
+  | Name screens | "Name", the field | R2: "Enter ✓" under the field |
+  | Colour | ●●● per palette colour | kept |
+  | Edit | Rename, Color, Delete; "Delete Max?" with No, Yes | kept; Color added (C1) |
+  | HUD | score digits | kept; countdown added (R7) |
+  | Pause | Pause; Play, Menu | kept |
+  | Match over | "Zoë wins!", "Zoë +1 win, best rally 3" | R3: "D✓ →✓" under it; R4: gains kept |
+  | Notice line | full sentences | R6: kept, written for the parent (architecture principle 4) |
+
+  - Colour change (C1–C4): Rename, Color, Delete; `RecolorProfile` lists the palette with the profile's colour under the cursor, or the first row if its colour is no longer in it; a pick recolours and returns to the list with it under the cursor. The core's `Profiles::recolor` checks the colour as `Profile::new` does, through one shared check, and hands back the old one.
+  - Countdown (R7): the HUD shows the countdown's whole seconds left, rounded up, in the middle, and nothing outside `Countdown`.
+  - Key labels moved to `ui::menu_input` (`key_label`, `key_doing`), shared by the seat cue and match over; `ui::style` gained the dim `hint` line.
+  - Checked against deliberate breaks: the current colour not under the cursor, the recoloured profile not under it, the cue without meanings, the rename screen without its field and hint, the countdown outside `Countdown`, the match over hint for one seat, `recolor` taking any colour. Each fails a test.
+- A mutation run in this phase passed every break at first, falsely: zsh does not split an unquoted `$t`, so cargo received one malformed argument and ran no test. The rerun used `${=t}`; every break then failed a test.

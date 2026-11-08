@@ -136,7 +136,7 @@ Owns every `MatchState` transition (ADR 0003): scoring, serve timing, pause, mat
 | System | Runs | Does |
 |---|---|---|
 | `begin_match` | `OnEnter(InMatch)` | Resets `Score`; draws the first serve's side. |
-| `begin_countdown`, `begin_point_pause` | `OnEnter(Countdown)`, `OnEnter(PointScored)` | Insert a `StateTimer` from tuning. |
+| `begin_countdown`, `begin_point_pause` | `OnEnter(Countdown)`, `OnEnter(PointScored)` | Insert a `StateTimer` from tuning; it is public read-only (`time_left`), so the shell can show the countdown (plan 8.4). |
 | `advance_countdown`, `advance_point_pause` | `Update`, in their state | Tick on virtual time; request `Playing` or `Countdown`. |
 | `request_serve` | `OnTransition { Countdown → Playing }` | Writes `Serve`. |
 | `restart_rally_after_fault` | `Update`, after the timers, while the paddles move | On any `SimFault`, requests `Countdown` unless the match is already ending. |
@@ -227,7 +227,7 @@ Nothing is written during a match: a change made in one is written at its end, o
 
 | Module | Holds |
 |---|---|
-| `model` | `Profiles`, `Profile`, `ProfileName`, `Records`, `Settings`, `Volume`, `WindowMode`. Constructors check every value, so a model in hand is valid. `Profiles::create` gives a new profile the id after the highest, so ids stay unique (plan 8.1); `rename` and `remove` hand back what they replace or take (plan 8.2). |
+| `model` | `Profiles`, `Profile`, `ProfileName`, `Records`, `Settings`, `Volume`, `WindowMode`. Constructors check every value, so a model in hand is valid. `Profiles::create` gives a new profile the id after the highest, so ids stay unique (plan 8.1); `rename`, `recolor`, and `remove` hand back what they replace or take (plans 8.2, 8.4). |
 | `document` | `encode_*` and `decode_*` per kind; the frozen `v1` shapes; the versioned enums and their migration chains. |
 | `io` | The `SavePaths` port and `write_atomically`. |
 | `load` | The per-file load policy: `load`, `Loaded`, `LoadError`, backup names. |

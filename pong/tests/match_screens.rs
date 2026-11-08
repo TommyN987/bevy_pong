@@ -19,10 +19,11 @@ use bevy::state::state::State;
 use bevy::ui::widget::Text;
 use common::tap;
 use pong::ui::ScreensPlugin;
-use pong::ui::hud::ScoreText;
+use pong::ui::hud::{CountdownText, ScoreText};
 use pong::ui::match_over::{GainLine, WinnerHeading};
 use pong::ui::menu::MenuScreen;
 use pong::ui::pause::PauseRow;
+use pong::ui::style::KeyHint;
 use pong_core::domain::{
     BallHitPaddle, Controller, Difficulty, MatchConfig, Player, ProfileId, Seat, SeatPlayers,
 };
@@ -285,4 +286,29 @@ fn confirm_or_escape_after_the_match_returns_to_the_main_menu() {
         assert_eq!(app_state(&app), AppState::Menu, "{key:?}");
         assert_eq!(count::<WinnerHeading>(&mut app), 0, "{key:?}");
     }
+}
+
+/// Plan 8.4 (R3): match over says how to go on, with either seat's key.
+#[test]
+fn match_over_hints_at_both_seats_confirm_keys() {
+    let mut app = screens_app();
+    start_match(&mut app, humans(SeatPlayers::GUESTS, 1));
+    score_for(&mut app, Side::Left);
+    until(&mut app, MatchState::MatchOver);
+    frame(&mut app);
+    assert_eq!(texts::<KeyHint>(&mut app), ["D✓ →✓"]);
+}
+
+/// Plan 8.4 (R7): the wait before a serve counts down in whole seconds.
+#[test]
+fn the_countdown_shows_its_seconds_and_goes_when_play_begins() {
+    let mut app = screens_app();
+    enter_match(&mut app, humans(SeatPlayers::GUESTS, 10));
+    frame(&mut app);
+    let countdown = app.world().resource::<Tuning>().match_flow().countdown();
+    let seconds = countdown.as_millis().div_ceil(1000).to_string();
+    assert_eq!(texts::<CountdownText>(&mut app), [seconds]);
+    until(&mut app, MatchState::Playing);
+    frame(&mut app);
+    assert_eq!(texts::<CountdownText>(&mut app), [""]);
 }

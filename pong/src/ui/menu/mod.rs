@@ -12,9 +12,9 @@
 //! makes every later pick. New on a profile list leads to `NameProfile`, then
 //! `PickColor`, and back to the list with the new profile under the cursor.
 //! Edit on it (spec 1.6.3 SHOULD) lists the profiles the seat may pick; one
-//! of them leads to `ProfileActions`: `RenameProfile`, back to the list with
-//! it under the cursor, or `DeleteProfile`, which asks first with No under
-//! the cursor.
+//! of them leads to `ProfileActions`: `RenameProfile` or `RecolorProfile`,
+//! each back to the list with it under the cursor, or `DeleteProfile`, which
+//! asks first with No under the cursor.
 
 use std::num::NonZeroU8;
 
@@ -104,6 +104,8 @@ pub enum MenuScreen {
     ProfileActions(Seat),
     /// The seat retypes the profile's name.
     RenameProfile(Seat),
+    /// The seat picks the profile's new colour from the palette.
+    RecolorProfile(Seat),
     /// Whether to delete the profile, for good.
     DeleteProfile(Seat),
 }
@@ -118,6 +120,7 @@ impl MenuScreen {
             | Self::EditProfiles(seat)
             | Self::ProfileActions(seat)
             | Self::RenameProfile(seat)
+            | Self::RecolorProfile(seat)
             | Self::DeleteProfile(seat) => Some(seat),
             Self::Main
             | Self::Settings
@@ -156,7 +159,7 @@ pub enum MenuItem {
     Player(Player),
     /// A seat's profile list: make a new profile.
     NewProfile,
-    /// A seat's colour list: the new profile's colour.
+    /// A seat's colour list: the new profile's colour, or the edited one's.
     Color(Srgba),
     /// A seat's profile list: rename or delete one.
     EditProfiles,
@@ -164,6 +167,8 @@ pub enum MenuItem {
     EditProfile(ProfileId),
     /// A profile's actions: retype its name.
     RenameProfile,
+    /// A profile's actions: pick its colour again.
+    RecolorProfile,
     /// A profile's actions: delete it, after asking.
     DeleteProfile,
     /// The delete question: no, keep it.
@@ -401,6 +406,7 @@ impl MatchDraft {
             | MenuScreen::PickColor(seat)
             | MenuScreen::EditProfiles(seat)
             | MenuScreen::ProfileActions(seat)
+            | MenuScreen::RecolorProfile(seat)
             | MenuScreen::DeleteProfile(seat) => Some(MenuDrivers::Seat(seat)),
             MenuScreen::NameProfile(_) | MenuScreen::RenameProfile(_) => None,
         }
@@ -422,9 +428,9 @@ impl MatchDraft {
             }
             MenuScreen::PickColor(seat) => MenuScreen::NameProfile(seat),
             MenuScreen::ProfileActions(seat) => MenuScreen::EditProfiles(seat),
-            MenuScreen::RenameProfile(seat) | MenuScreen::DeleteProfile(seat) => {
-                MenuScreen::ProfileActions(seat)
-            }
+            MenuScreen::RenameProfile(seat)
+            | MenuScreen::RecolorProfile(seat)
+            | MenuScreen::DeleteProfile(seat) => MenuScreen::ProfileActions(seat),
         })
     }
 }
@@ -502,24 +508,43 @@ fn list_for(
                 .collect(),
             draft.editing.map(MenuItem::EditProfile),
         ),
-        MenuScreen::ProfileActions(_) => {
-            MenuList::new(vec![MenuItem::RenameProfile, MenuItem::DeleteProfile], None)
-        }
+        MenuScreen::ProfileActions(_) => MenuList::new(
+            vec![
+                MenuItem::RenameProfile,
+                MenuItem::RecolorProfile,
+                MenuItem::DeleteProfile,
+            ],
+            None,
+        ),
+        MenuScreen::RecolorProfile(_) => MenuList::new(
+            palette_items(tuning),
+            draft
+                .editing
+                .and_then(|id| {
+                    profiles
+                        .as_slice()
+                        .iter()
+                        .find(|profile| profile.id() == id)
+                })
+                .map(|profile| MenuItem::Color(profile.color())),
+        ),
         MenuScreen::DeleteProfile(_) => {
             MenuList::new(vec![MenuItem::KeepProfile, MenuItem::ConfirmDelete], None)
         }
         MenuScreen::NameProfile(_) | MenuScreen::RenameProfile(_) => {
             MenuList::new(Vec::new(), None)
         }
-        MenuScreen::PickColor(_) => MenuList::new(
-            tuning
-                .palette()
-                .iter()
-                .map(|&color| MenuItem::Color(color))
-                .collect(),
-            None,
-        ),
+        MenuScreen::PickColor(_) => MenuList::new(palette_items(tuning), None),
     }
+}
+
+/// One row per palette colour, in the palette's order.
+fn palette_items(tuning: &Tuning) -> Vec<MenuItem> {
+    tuning
+        .palette()
+        .iter()
+        .map(|&color| MenuItem::Color(color))
+        .collect()
 }
 
 /// Lists the screen just entered.
@@ -646,6 +671,15 @@ fn choose(
             }
         }
         MenuItem::NewProfile => Outcome::Show(MenuScreen::NameProfile(seat()?)),
+        MenuItem::Color(color) if matches!(screen, MenuScreen::RecolorProfile(_)) => {
+            let seat = seat()?;
+            let id = draft.editing()?;
+            profiles.recolor(id, color)?.ok_or_else(|| {
+                BevyError::from(format!("recolouring {id:?}, which no profile has"))
+            })?;
+            draft.cursor_profile = Some(id);
+            Outcome::Show(MenuScreen::PickProfile(seat))
+        }
         MenuItem::Color(color) => {
             let seat = seat()?;
             let name = draft
@@ -661,6 +695,7 @@ fn choose(
             Outcome::Show(MenuScreen::ProfileActions(seat()?))
         }
         MenuItem::RenameProfile => Outcome::Show(MenuScreen::RenameProfile(seat()?)),
+        MenuItem::RecolorProfile => Outcome::Show(MenuScreen::RecolorProfile(seat()?)),
         MenuItem::DeleteProfile => Outcome::Show(MenuScreen::DeleteProfile(seat()?)),
         MenuItem::KeepProfile => Outcome::Show(MenuScreen::ProfileActions(seat()?)),
         MenuItem::ConfirmDelete => {

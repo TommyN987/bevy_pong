@@ -4,6 +4,8 @@ Decided 2026-10-30, after [the frame](frame.md) and [the research](research.md).
 This document records the chosen game concept, its milestone order, and the decisions that bind the first milestone.
 Architecture is a separate design round.
 
+The game is called **Rusty Pong**, after the language and the family dog (chosen 2026-11-08). `bevy_pong` stays the repository's, the workspace's, and the window's app ID.
+
 ## Axes
 
 The design was factored into independent dimensions before candidates were compared.

@@ -23,7 +23,7 @@ use pong_core::features::persistence::io::SavePaths;
 use pong_core::features::persistence::load::peek;
 use pong_core::features::persistence::model::{Settings, WindowMode as SavedWindowMode};
 
-/// The window's title. A placeholder until the game has a name.
+/// The game's name, on the window and the title screens (`docs/design.md`).
 pub const TITLE: &str = "Rusty Pong";
 
 /// The application ID on Wayland and `WM_CLASS` on X11, which compositors

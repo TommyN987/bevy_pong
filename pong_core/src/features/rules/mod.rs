@@ -1,6 +1,8 @@
 //! Rules (spec 1.4.5): match flow substates, scoring, serve timing, and the
 //! end of the match.
 
+use std::time::Duration;
+
 use std::num::NonZeroU8;
 
 use bevy::app::{App, FixedUpdate, Plugin, Update};
@@ -81,9 +83,18 @@ impl Plugin for RulesPlugin {
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 struct NextServeToward(Side);
 
-/// Time left in a timed match state (`Countdown`, `PointScored`).
+/// Time left in a timed match state (`Countdown`, `PointScored`). Rules
+/// keeps it; the shell reads it to show the countdown (plan 8.4).
 #[derive(Resource, Debug)]
-struct StateTimer(Timer);
+pub struct StateTimer(Timer);
+
+impl StateTimer {
+    /// The time left before the timed state ends; zero once it has.
+    #[must_use]
+    pub fn time_left(&self) -> Duration {
+        self.0.remaining()
+    }
+}
 
 /// Port: the shell's pause and resume requests (ADR 0003). The shell asks;
 /// rules decides, and the shell never sets [`MatchState`] itself.
@@ -386,7 +397,7 @@ mod tests {
     use bevy::ecs::message::Messages;
     use bevy::math::Vec2;
 
-    use super::{MatchControl, MatchState, Rally, Score};
+    use super::{MatchControl, MatchState, Rally, Score, StateTimer};
     use crate::domain::{
         BallHitPaddle, BallHitWall, Controller, MatchConfig, MatchEnded, PointScored, Seat,
         SeatPlayers, Serve, SimFault,
@@ -468,6 +479,25 @@ mod tests {
         assert_eq!(match_state(&app), MatchState::Countdown);
         run_until(&mut app, playing, 4, "play never began");
         assert_eq!(take_recorded::<Serve>(&mut app).len(), 1);
+    }
+
+    /// Plan 8.4 (R7): the shell shows the countdown, so its time left is
+    /// readable.
+    #[test]
+    fn the_countdowns_time_left_starts_at_the_tuned_countdown_and_runs_down() {
+        let mut app = recording_app(1);
+        enter_match(&mut app, two_humans_to(two()));
+        let countdown = app.world().resource::<Tuning>().match_flow().countdown();
+        let time_left = |app: &App| app.world().resource::<StateTimer>().time_left();
+        let first = time_left(&app);
+        assert!(
+            first <= countdown && first + fixed_timestep(&app) * 2 > countdown,
+            "{first:?} of {countdown:?}"
+        );
+        for _ in 0..frames(&app, countdown) / 2 {
+            frame(&mut app);
+        }
+        assert!(time_left(&app) < first);
     }
 
     /// ADR 0003: the transition to `PointScored` applies only next frame, so
