@@ -169,7 +169,7 @@ mod tests {
     use bevy::math::Vec2;
     use bevy::time::{Fixed, Time};
 
-    use crate::domain::{BallHitPaddle, BallHitWall, Controller, MatchConfig, Seat};
+    use crate::domain::{BallHitPaddle, BallHitWall, Controller, MatchConfig, Seat, SeatPlayers};
     use crate::features::ball::{Ball, Position, Velocity};
     use crate::features::paddle::Paddle;
     use crate::features::sanity::SanityPlugin;
@@ -186,6 +186,7 @@ mod tests {
         MatchConfig {
             left: Controller::Human(Seat::Left),
             right: Controller::Human(Seat::Right),
+            players: SeatPlayers::GUESTS,
             points_to_win: NonZeroU8::new(10).expect("ten is non-zero"),
         }
     }

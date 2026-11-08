@@ -11,6 +11,7 @@ A type two features share must sit below both.
 Otherwise one feature imports the other for the type, and they couple through it.
 ADR 0002 caps the vocabulary at twelve non-message types,
 so each addition answers "does every feature need this?"
+Identifier types, which only name one thing of a kind, are outside the cap (ADR 0008).
 
 ## Types
 
@@ -20,7 +21,10 @@ so each addition answers "does every feature need this?"
 | `Seat` | enum | Who plays: a chair and its key set. Against the computer, one seat drives one side; in menus one seat picks for both. |
 | `Difficulty` | enum | AI strength in stars; each variant has one tuning entry. |
 | `Controller` | enum | What drives a side: `Human(Seat)` or `Ai(Difficulty)`. |
-| `MatchConfig` | `Resource` | Controllers per side and `points_to_win: NonZeroU8`; zero points is unrepresentable. Inserted by the menu before a match. |
+| `MatchConfig` | `Resource` | Controllers per side, `players` per seat, and `points_to_win: NonZeroU8`; zero points is unrepresentable. Inserted by the menu before a match. `player_on(side)` gives who plays a side, `None` for the computer. |
+| `Player` | enum | Who a seated human plays as: `Guest` (records nothing, never saved) or `Profile(ProfileId)` (ADR 0008). |
+| `SeatPlayers` | struct | A `Player` per seat; `GUESTS` for a match that records nothing. Keyed by seat, so a computer has none. |
+| `ProfileId` | identifier, outside the cap | A profile's identity, stable across renames. |
 | `Random` | `Resource` | The core's only randomness, a seeded `Pcg32`. One seed reproduces a match. |
 
 ## Messages
@@ -35,6 +39,7 @@ One emitter means one place to look when a message appears.
 | `BallHitWall` | physics | The ball bounced off the top or bottom wall. |
 | `PointScored { scorer }` | rules | A goal line was crossed. |
 | `MatchEnded { winner }` | rules | A side reached the target. |
+| `SimFault` | sanity | An invariant broke; rules restarts the rally (spec 1.4.7). Registered by rules, its reader. |
 | `Notice { text }` | tuning, persistence | One sentence for the shell's notice line. |
 
 ## How Bevy carries a message

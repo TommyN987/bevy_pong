@@ -11,6 +11,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::path::Path;
 
 use bevy::app::{App, Plugin, Update};
+use bevy::ecs::error::BevyError;
 use bevy::ecs::message::{MessageReader, MessageWriter};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
@@ -24,7 +25,7 @@ use self::document::{
 use self::io::{SavePaths, write_atomically};
 use self::load::{LoadError, Loaded, load};
 use self::model::{Profiles, Settings};
-use crate::domain::{MatchEnded, Notice};
+use crate::domain::{MatchConfig, MatchEnded, Notice, Player};
 use crate::flow::states::AppState;
 
 pub mod document;
@@ -49,7 +50,9 @@ impl Plugin for PersistencePlugin {
         app.add_systems(OnEnter(AppState::Boot), load_saves)
             .add_systems(
                 Update,
-                write_saves_at_match_end.run_if(resource_exists::<SaveState>),
+                (record_match_result, write_saves_at_match_end)
+                    .chain()
+                    .run_if(resource_exists::<SaveState>),
             );
     }
 }
@@ -221,6 +224,53 @@ fn load_saves(
     });
 }
 
+/// Credits a finished match to the profiles that played it (spec 1.4.9): a
+/// win to the winning side's player, a loss to the losing side's. A Guest or
+/// a computer side records nothing; one profile on both seats records
+/// nothing at all (decided 2026-11-08). Runs before the match-end write, so
+/// the file holds the result.
+///
+/// # Errors
+/// A `MatchEnded` while no [`MatchConfig`] exists, or one naming a profile
+/// that [`Profiles`] lacks: the menu built the match wrong. Nothing is
+/// recorded then.
+fn record_match_result(
+    mut ended: MessageReader<MatchEnded>,
+    config: Option<Res<MatchConfig>>,
+    mut profiles: ResMut<Profiles>,
+) -> Result<(), BevyError> {
+    let Some(&MatchEnded { winner }) = ended.read().last() else {
+        return Ok(());
+    };
+    let Some(config) = config else {
+        return Err(BevyError::from("a match ended with no MatchConfig"));
+    };
+    let profile_on = |side| match config.player_on(side) {
+        Some(Player::Profile(id)) => Some(id),
+        Some(Player::Guest) | None => None,
+    };
+    let (winner_id, loser_id) = (profile_on(winner), profile_on(winner.opposite()));
+    if winner_id.is_some() && winner_id == loser_id {
+        return Ok(());
+    }
+    if let Some(unknown) = [winner_id, loser_id]
+        .into_iter()
+        .flatten()
+        .find(|&id| profiles.records_mut(id).is_none())
+    {
+        return Err(BevyError::from(format!(
+            "the match named {unknown:?}, which no profile has"
+        )));
+    }
+    if let Some(records) = winner_id.and_then(|id| profiles.records_mut(id)) {
+        records.add_win();
+    }
+    if let Some(records) = loser_id.and_then(|id| profiles.records_mut(id)) {
+        records.add_loss();
+    }
+    Ok(())
+}
+
 /// Writes each writable file whose model changed since its last write, once
 /// per [`MatchEnded`] (spec 1.4.9: records are written at match end only). A
 /// failure keeps the model in memory and is retried at the next match end;
@@ -264,12 +314,12 @@ mod tests {
     use bevy::color::Srgba;
     use bevy::math::Vec2;
 
-    use super::document::{decode_settings, encode_profiles};
+    use super::document::{decode_profiles, decode_settings, encode_profiles};
     use super::io::SavePaths;
-    use super::model::{
-        Profile, ProfileId, ProfileName, Profiles, Records, Settings, Volume, WindowMode,
+    use super::model::{Profile, ProfileName, Profiles, Records, Settings, Volume, WindowMode};
+    use crate::domain::{
+        Controller, Difficulty, MatchConfig, Notice, Player, ProfileId, Seat, SeatPlayers,
     };
-    use crate::domain::{Controller, MatchConfig, Notice, Seat};
     use crate::features::tuning::Tuning;
     use crate::flow::states::{AppState, MatchState};
     use crate::kernel::geometry::Side;
@@ -287,13 +337,25 @@ mod tests {
             .expect("the test owns the directory");
     }
 
-    /// One match to a single point, from the menu back to the menu.
+    /// One match of two guests to a single point, from the menu back to it.
     fn play_a_match_to_its_end(app: &mut App) {
+        left_side_wins(
+            app,
+            Controller::Human(Seat::Left),
+            Controller::Human(Seat::Right),
+            SeatPlayers::GUESTS,
+        );
+    }
+
+    /// One match to a single point that the left side wins, from the menu
+    /// back to the menu.
+    fn left_side_wins(app: &mut App, left: Controller, right: Controller, players: SeatPlayers) {
         start_match(
             app,
             MatchConfig {
-                left: Controller::Human(Seat::Left),
-                right: Controller::Human(Seat::Right),
+                left,
+                right,
+                players,
                 points_to_win: NonZeroU8::MIN,
             },
         );
@@ -518,5 +580,133 @@ mod tests {
         play_a_match_to_its_end(&mut app);
         assert!(!paths.settings_file().exists());
         assert!(!paths.profiles_file().exists());
+    }
+
+    const ZOE: ProfileId = ProfileId(1);
+    const MAX: ProfileId = ProfileId(2);
+
+    /// A booted app whose profiles are Zoë and Max, with no records yet.
+    fn zoe_and_max() -> App {
+        let mut app = booted();
+        let child = |id: ProfileId, name: &str| {
+            Profile::new(
+                id,
+                ProfileName::new(name).expect("valid"),
+                Srgba::RED,
+                Records::default(),
+            )
+            .expect("valid")
+        };
+        app.insert_resource(
+            Profiles::new(vec![child(ZOE, "Zoë"), child(MAX, "Max")]).expect("distinct ids"),
+        );
+        app
+    }
+
+    fn records(app: &App, id: ProfileId) -> Records {
+        app.world()
+            .resource::<Profiles>()
+            .as_slice()
+            .iter()
+            .find(|profile| profile.id() == id)
+            .expect("the profile exists")
+            .records()
+    }
+
+    fn seats(left_seat: Player, right_seat: Player) -> SeatPlayers {
+        SeatPlayers {
+            left_seat,
+            right_seat,
+        }
+    }
+
+    fn wins_losses(app: &App, id: ProfileId) -> (u32, u32) {
+        let records = records(app, id);
+        (records.wins, records.losses)
+    }
+
+    /// Spec 1.4.9: a Guest side records nothing; the other side records
+    /// normally, and the file holds it.
+    #[test]
+    fn a_guest_side_records_nothing_and_the_other_side_records_normally() {
+        let mut app = zoe_and_max();
+        let humans = (
+            Controller::Human(Seat::Left),
+            Controller::Human(Seat::Right),
+        );
+        left_side_wins(
+            &mut app,
+            humans.0,
+            humans.1,
+            seats(Player::Profile(ZOE), Player::Guest),
+        );
+        left_side_wins(
+            &mut app,
+            humans.0,
+            humans.1,
+            seats(Player::Guest, Player::Profile(ZOE)),
+        );
+        assert_eq!(wins_losses(&app, ZOE), (1, 1));
+        assert_eq!(wins_losses(&app, MAX), (0, 0));
+
+        let saved = std::fs::read_to_string(save_paths(&app).profiles_file()).expect("written");
+        assert_eq!(
+            decode_profiles(&saved).expect("decodes"),
+            *app.world().resource::<Profiles>()
+        );
+    }
+
+    #[test]
+    fn the_winners_profile_gains_a_win_and_the_losers_a_loss() {
+        let mut app = zoe_and_max();
+        left_side_wins(
+            &mut app,
+            Controller::Human(Seat::Left),
+            Controller::Human(Seat::Right),
+            seats(Player::Profile(ZOE), Player::Profile(MAX)),
+        );
+        assert_eq!(wins_losses(&app, ZOE), (1, 0));
+        assert_eq!(wins_losses(&app, MAX), (0, 1));
+    }
+
+    /// The side a seat plays decides, not the seat's name: here the right
+    /// seat's keys play the left side.
+    #[test]
+    fn against_the_computer_only_the_human_records_through_the_seat_it_plays() {
+        let mut app = zoe_and_max();
+        left_side_wins(
+            &mut app,
+            Controller::Ai(Difficulty::ThreeStars),
+            Controller::Human(Seat::Left),
+            seats(Player::Profile(MAX), Player::Profile(ZOE)),
+        );
+        assert_eq!(wins_losses(&app, MAX), (0, 1));
+        assert_eq!(wins_losses(&app, ZOE), (0, 0));
+    }
+
+    /// Decision 2 (2026-11-08): a child playing themselves moves no record.
+    #[test]
+    fn one_profile_on_both_seats_records_nothing() {
+        let mut app = zoe_and_max();
+        left_side_wins(
+            &mut app,
+            Controller::Human(Seat::Left),
+            Controller::Human(Seat::Right),
+            seats(Player::Profile(ZOE), Player::Profile(ZOE)),
+        );
+        assert_eq!(wins_losses(&app, ZOE), (0, 0));
+    }
+
+    /// A match naming a profile that does not exist is a menu bug.
+    #[test]
+    #[should_panic(expected = "ProfileId(9)")]
+    fn under_the_dev_policy_a_match_with_an_unknown_profile_panics_at_its_end() {
+        let mut app = zoe_and_max();
+        left_side_wins(
+            &mut app,
+            Controller::Human(Seat::Left),
+            Controller::Human(Seat::Right),
+            seats(Player::Profile(ZOE), Player::Profile(ProfileId(9))),
+        );
     }
 }

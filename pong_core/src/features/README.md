@@ -209,7 +209,8 @@ Profiles and settings kept between runs (spec 1.4.9); the file format is ADR 000
 | System | Runs | Does |
 |---|---|---|
 | `load_saves` | `OnEnter(Boot)` | Reads both files and inserts `Profiles`, `Settings`, and the private `SaveState`; the Boot gate waits for them (spec 1.4.10). |
-| `write_saves_at_match_end` | `Update`, on `MatchEnded` | Writes each writable file whose encoding differs from what it last wrote. |
+| `record_match_result` | `Update`, on `MatchEnded` | A win to the winning side's player, a loss to the loser's, through `MatchConfig::player_on` (ADR 0008). Guest and computer sides record nothing; one profile on both seats records nothing. An unknown profile id is an error. |
+| `write_saves_at_match_end` | `Update`, on `MatchEnded`, after `record_match_result` | Writes each writable file whose encoding differs from what it last wrote. |
 
 Load policy, per file: missing starts fresh; corrupt, newer, or unreadable is renamed to `<name>.<seconds>.bak` and the game starts fresh with one `Notice`;
 if it cannot even be renamed, the game starts fresh and never writes that file this session ("never overwrite").

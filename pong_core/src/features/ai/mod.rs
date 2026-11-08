@@ -247,7 +247,7 @@ mod tests {
 
     use super::{MirrorController, intent_toward};
     use crate::domain::{
-        BallHitPaddle, Controller, Difficulty, MatchConfig, PointScored, Random, Seat,
+        BallHitPaddle, Controller, Difficulty, MatchConfig, PointScored, Random, Seat, SeatPlayers,
     };
     use crate::features::paddle::Paddle;
     use crate::features::seats::PaddleIntent;
@@ -267,6 +267,7 @@ mod tests {
         MatchConfig {
             left,
             right,
+            players: SeatPlayers::GUESTS,
             points_to_win: NonZeroU8::new(10).expect("ten is non-zero"),
         }
     }

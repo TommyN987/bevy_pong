@@ -2,9 +2,11 @@
 //! events the core emits for the shell to observe. No systems live here.
 //!
 //! `Side` is also vocabulary; it is defined in [`crate::kernel::geometry`]
-//! because geometry needs it first. Count (ADR 0002): six types of twelve
-//! (`Side`, `Seat`, `Difficulty`, `Controller`, `MatchConfig`, `Random`) and
-//! seven messages, each with one emitting feature, `Notice` excepted.
+//! because geometry needs it first. Count (ADR 0002, ADR 0008): eight capped
+//! types of twelve (`Side`, `Seat`, `Difficulty`, `Controller`, `MatchConfig`,
+//! `Random`, `Player`, `SeatPlayers`), one identifier type outside the cap
+//! (`ProfileId`), and seven messages, each with one emitting feature,
+//! `Notice` excepted.
 
 use std::num::NonZeroU8;
 
@@ -61,15 +63,62 @@ pub enum Controller {
     Ai(Difficulty),
 }
 
-/// Who plays each side and how long the match runs. Built by the menu at match
-/// start; read by seats, rules, and the AI. Points-to-win comes from the tuning
-/// options, so zero is unrepresentable rather than checked.
+/// A profile's identity, stable across renames (spec 1.4.9). An id newtype,
+/// so outside the vocabulary cap (ADR 0002, amended 2026-11-08).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ProfileId(pub u32);
+
+/// Who a seated human plays as (ADR 0008): the built-in Guest, never saved,
+/// or a child's profile.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Player {
+    /// Anyone; records nothing (spec 1.4.9).
+    Guest,
+    /// The profile with this id.
+    Profile(ProfileId),
+}
+
+/// Who each seat plays as in a match (ADR 0008). Keyed by seat, not side:
+/// the menu picks a player per seat (spec 1.6.3), a computer has no seat and
+/// so no player, and seats outlast the side and paddle layouts later
+/// milestones bring.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SeatPlayers {
+    /// Who sits at the left seat's keys.
+    pub left_seat: Player,
+    /// Who sits at the right seat's keys.
+    pub right_seat: Player,
+}
+
+impl SeatPlayers {
+    /// Who sits at `seat`.
+    #[must_use]
+    pub const fn seat(self, seat: Seat) -> Player {
+        match seat {
+            Seat::Left => self.left_seat,
+            Seat::Right => self.right_seat,
+        }
+    }
+
+    /// Both seats as Guest: a match that records nothing.
+    pub const GUESTS: Self = Self {
+        left_seat: Player::Guest,
+        right_seat: Player::Guest,
+    };
+}
+
+/// Who plays each side, as whom, and how long the match runs. Built by the
+/// menu at match start; read by seats, rules, the AI, and persistence.
+/// Points-to-win comes from the tuning options, so zero is unrepresentable
+/// rather than checked.
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MatchConfig {
     /// Controller of the left paddle.
     pub left: Controller,
     /// Controller of the right paddle.
     pub right: Controller,
+    /// Who each seat plays as.
+    pub players: SeatPlayers,
     /// First to this many points wins.
     pub points_to_win: NonZeroU8,
 }
@@ -81,6 +130,16 @@ impl MatchConfig {
         match side {
             Side::Left => self.left,
             Side::Right => self.right,
+        }
+    }
+
+    /// Who plays on `side`: the player of the seat that holds it, or `None`
+    /// for a side the computer holds.
+    #[must_use]
+    pub const fn player_on(self, side: Side) -> Option<Player> {
+        match self.controller(side) {
+            Controller::Human(seat) => Some(self.players.seat(seat)),
+            Controller::Ai(_) => None,
         }
     }
 }
@@ -194,7 +253,7 @@ mod tests {
 
     use super::{
         BallHitPaddle, BallHitWall, Controller, Difficulty, MatchConfig, MatchEnded, Notice,
-        PointScored, Random, Seat, Serve, SimFault,
+        Player, PointScored, ProfileId, Random, Seat, SeatPlayers, Serve, SimFault,
     };
     use crate::kernel::geometry::Side;
 
@@ -297,6 +356,7 @@ mod tests {
         let config = MatchConfig {
             left: Controller::Human(Seat::Right),
             right: Controller::Ai(Difficulty::OneStar),
+            players: SeatPlayers::GUESTS,
             points_to_win: NonZeroU8::new(10).expect("ten is non-zero"),
         };
         assert_eq!(
@@ -316,5 +376,35 @@ mod tests {
         assert_ne!(human, ai);
         assert!(matches!(human, Controller::Human(Seat::Right)));
         assert!(matches!(ai, Controller::Ai(d) if d.stars() == 2));
+    }
+
+    #[test]
+    fn each_seat_has_its_own_player() {
+        let players = SeatPlayers {
+            left_seat: Player::Profile(ProfileId(1)),
+            right_seat: Player::Profile(ProfileId(2)),
+        };
+        assert_eq!(players.seat(Seat::Left), Player::Profile(ProfileId(1)));
+        assert_eq!(players.seat(Seat::Right), Player::Profile(ProfileId(2)));
+    }
+
+    /// ADR 0008: a side reaches its player through the seat holding it; a
+    /// computer side has none.
+    #[test]
+    fn a_side_is_played_by_its_seats_player_and_a_computer_side_by_no_one() {
+        let config = MatchConfig {
+            left: Controller::Human(Seat::Right),
+            right: Controller::Ai(Difficulty::OneStar),
+            players: SeatPlayers {
+                left_seat: Player::Profile(ProfileId(1)),
+                right_seat: Player::Profile(ProfileId(2)),
+            },
+            points_to_win: NonZeroU8::new(10).expect("ten is non-zero"),
+        };
+        assert_eq!(
+            config.player_on(Side::Left),
+            Some(Player::Profile(ProfileId(2)))
+        );
+        assert_eq!(config.player_on(Side::Right), None);
     }
 }

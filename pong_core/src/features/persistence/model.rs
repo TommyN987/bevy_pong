@@ -7,6 +7,8 @@ use std::collections::HashSet;
 use bevy::color::{Alpha, Srgba};
 use bevy::ecs::resource::Resource;
 
+use crate::domain::ProfileId;
+
 /// A save value a model refuses.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum InvalidSaveData {
@@ -77,10 +79,6 @@ impl ProfileName {
     }
 }
 
-/// A profile's identity, stable across renames. Unique within [`Profiles`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ProfileId(pub u32);
-
 /// What a profile has won, lost, and rallied (spec 1.4.9). Unsigned, so a
 /// negative count cannot exist.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -91,6 +89,18 @@ pub struct Records {
     pub losses: u32,
     /// Most paddle hits in one rally.
     pub longest_rally: u32,
+}
+
+impl Records {
+    /// One more match won; stays at the maximum rather than wrapping.
+    pub const fn add_win(&mut self) {
+        self.wins = self.wins.saturating_add(1);
+    }
+
+    /// One more match lost; stays at the maximum rather than wrapping.
+    pub const fn add_loss(&mut self) {
+        self.losses = self.losses.saturating_add(1);
+    }
 }
 
 /// One child's profile. The colour is the value the child picked, not a
@@ -179,6 +189,15 @@ impl Profiles {
     #[must_use]
     pub fn as_slice(&self) -> &[Profile] {
         &self.0
+    }
+
+    /// The records of the profile with `id`, to change; `None` if no profile
+    /// has it. Ids cannot change through this, so they stay unique.
+    pub fn records_mut(&mut self, id: ProfileId) -> Option<&mut Records> {
+        self.0
+            .iter_mut()
+            .find(|profile| profile.id == id)
+            .map(|profile| &mut profile.records)
     }
 }
 
@@ -348,5 +367,38 @@ mod tests {
         let settings = Settings::default();
         assert_eq!(settings.window_mode, WindowMode::BorderlessFullscreen);
         assert_eq!(settings.volume.percent(), 80);
+    }
+
+    #[test]
+    fn a_profiles_records_change_through_its_id_and_an_unknown_id_finds_nothing() {
+        let mut profiles = Profiles::new(vec![
+            profile(1, Srgba::RED).expect("valid"),
+            profile(2, Srgba::BLUE).expect("valid"),
+        ])
+        .expect("distinct ids");
+        profiles
+            .records_mut(ProfileId(2))
+            .expect("profile 2 exists")
+            .add_win();
+        assert_eq!(profiles.as_slice()[1].records().wins, 1);
+        assert_eq!(profiles.as_slice()[0].records(), Records::default());
+        assert!(profiles.records_mut(ProfileId(9)).is_none());
+    }
+
+    #[test]
+    fn wins_and_losses_count_up_and_stop_at_the_maximum() {
+        let mut records = Records::default();
+        records.add_win();
+        records.add_loss();
+        records.add_loss();
+        assert_eq!((records.wins, records.losses), (1, 2));
+        let mut full = Records {
+            wins: u32::MAX,
+            losses: u32::MAX,
+            longest_rally: 0,
+        };
+        full.add_win();
+        full.add_loss();
+        assert_eq!((full.wins, full.losses), (u32::MAX, u32::MAX));
     }
 }

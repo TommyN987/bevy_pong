@@ -336,7 +336,9 @@ mod tests {
     use bevy::math::Vec2;
 
     use super::{MatchControl, MatchState, Score};
-    use crate::domain::{Controller, MatchConfig, MatchEnded, PointScored, Seat, Serve, SimFault};
+    use crate::domain::{
+        Controller, MatchConfig, MatchEnded, PointScored, Seat, SeatPlayers, Serve, SimFault,
+    };
     use crate::features::tuning::Tuning;
     use crate::kernel::geometry::Side;
     use crate::kernel::test_support::assert_vec_near;
@@ -365,6 +367,7 @@ mod tests {
         MatchConfig {
             left: Controller::Human(Seat::Left),
             right: Controller::Human(Seat::Right),
+            players: SeatPlayers::GUESTS,
             points_to_win,
         }
     }

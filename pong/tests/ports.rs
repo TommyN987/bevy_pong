@@ -13,7 +13,7 @@ use bevy::input::{ButtonState, InputPlugin};
 use bevy::state::state::NextState;
 use bevy::window::WindowFocused;
 use pong::ports::PortsPlugin;
-use pong_core::domain::{Controller, MatchConfig, Seat};
+use pong_core::domain::{Controller, MatchConfig, Seat, SeatPlayers};
 use pong_core::features::paddle::Paddle;
 use pong_core::features::tuning::{SeatKeys, Tuning};
 use pong_core::flow::states::MatchState;
@@ -27,6 +27,7 @@ fn two_humans() -> MatchConfig {
     MatchConfig {
         left: Controller::Human(Seat::Left),
         right: Controller::Human(Seat::Right),
+        players: SeatPlayers::GUESTS,
         points_to_win: NonZeroU8::new(10).expect("ten is non-zero"),
     }
 }

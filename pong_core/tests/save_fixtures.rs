@@ -6,10 +6,11 @@
 use std::path::PathBuf;
 
 use bevy::color::Srgba;
+use pong_core::domain::ProfileId;
 use pong_core::features::persistence::document::{
     PROFILES_VERSION, SETTINGS_VERSION, decode_profiles, decode_settings,
 };
-use pong_core::features::persistence::model::{ProfileId, Records, WindowMode};
+use pong_core::features::persistence::model::{Records, WindowMode};
 
 fn fixtures() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")

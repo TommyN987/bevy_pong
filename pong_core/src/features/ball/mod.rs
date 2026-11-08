@@ -114,7 +114,7 @@ mod tests {
     use bevy::state::state::NextState;
 
     use super::{Ball, Position, Snap, Velocity};
-    use crate::domain::{Controller, MatchConfig, Seat, Serve};
+    use crate::domain::{Controller, MatchConfig, Seat, SeatPlayers, Serve};
     use crate::features::tuning::Tuning;
     use crate::flow::states::MatchState;
     use crate::kernel::geometry::Side;
@@ -127,6 +127,7 @@ mod tests {
         MatchConfig {
             left: Controller::Human(Seat::Left),
             right: Controller::Human(Seat::Right),
+            players: SeatPlayers::GUESTS,
             points_to_win: NonZeroU8::new(10).expect("ten is non-zero"),
         }
     }
