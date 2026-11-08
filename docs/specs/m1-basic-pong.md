@@ -11,7 +11,7 @@ Obligation levels: MUST, SHOULD, MAY, WONT. Every item carries a done-condition.
 - Render-free core compiles without `wgpu`. [probable; M0 verifies]
 - 2D bloom needs an HDR camera and colors above 1.0; TonyMcMapface tonemapping and deband dither recommended. [confirmed]
 - A window focus event exists. [probable]
-- Bevy 0.19 ships an `EditableText` component for text entry. [confirmed]
+- Bevy 0.19 ships an `EditableText` component for text entry. [confirmed] Amended 2026-11-08 (`bevy-api-check`, [phase 8 report](m1-phase8-report.md)): at 0.20.1 it takes keys only with the `TextInput` marker and input focus, and it does not hide them from `ButtonInput<KeyCode>`.
 - Bevy's audio accepts an in-memory source built from bytes or a custom decodable source. [probable; verify in the first audio task]
 - cargo-nextest does not run doctests. [confirmed]
 - nextest supports per-test timeouts that fail the run. [probable]
@@ -121,7 +121,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 - **MUST** Profiles file v1: id, display name, color value, records (wins, losses, longest rally). Done: round-trip test.
 - **MUST** Settings file v1: master volume, window mode. Done: round-trip test.
 - **MUST** Load policy: corrupt or newer version backs up with timestamp suffix, starts fresh, emits one `Notice`. Done: fixtures for corrupt and for version 99.
-- **MUST** Write policy: failure keeps the model in memory, retries at next match end, one `Notice` per session. Done: test with an unwritable path.
+- **MUST** Write policy: failure keeps the model in memory, retries at next match end, one `Notice` per session. Done: test with an unwritable path. Amended 2026-11-08 (plan 8.1, [phase 8 report](m1-phase8-report.md)): the game also writes in `Menu` whenever profiles or settings change, so a failure retries at the next match end or menu change; still one `Notice` per session.
 - **MUST** Versioned enum migration chain; fixture `v1.ron`; a test asserting fixture count equals current version. Done: tests pass.
 - **MUST** Guest built in, never written; a Guest side records nothing, the other side records normally. Done: test.
 - **SHOULD** Records written at `MatchEnded` only. Done: no write during play, by test.
