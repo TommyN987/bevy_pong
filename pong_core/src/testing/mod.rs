@@ -14,6 +14,8 @@
     reason = "test harness: a failed precondition stops the test with the reason"
 )]
 
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use bevy::MinimalPlugins;
@@ -32,6 +34,7 @@ use crate::app::CorePlugins;
 use crate::app::error_policy::{ErrorPolicy, ErrorPolicyPlugin};
 use crate::domain::{MatchConfig, Seat};
 use crate::features::ball::{Ball, Position, Velocity};
+use crate::features::persistence::io::SavePaths;
 use crate::features::seats::{PaddleIntent, SeatIntents};
 use crate::flow::phases::FixedStepPhase;
 use crate::flow::states::AppState;
@@ -348,6 +351,60 @@ pub fn unphased_fixed_step_systems(app: &mut App) -> Vec<String> {
         })
 }
 
+/// A fresh directory under the system temp directory, removed with
+/// everything in it when dropped: the temp-dir `SavePaths` fake (spec 1.5.1).
+/// Std only; no `tempfile` crate.
+#[derive(Debug)]
+pub struct TempSaveDir {
+    root: PathBuf,
+}
+
+impl TempSaveDir {
+    /// A new, empty directory no other `TempSaveDir` shares.
+    ///
+    /// # Panics
+    /// If the directory cannot be made.
+    #[must_use]
+    pub fn new() -> Self {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let n = NEXT.fetch_add(1, Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!("bevy_pong-test-{}-{n}", std::process::id()));
+        // A crashed run whose process id came round again may have left one.
+        if root.exists() {
+            std::fs::remove_dir_all(&root).expect("a stale test directory is removable");
+        }
+        std::fs::create_dir_all(&root).expect("the system temp directory is writable");
+        Self { root }
+    }
+
+    /// The directory itself.
+    #[must_use]
+    pub fn path(&self) -> &Path {
+        &self.root
+    }
+
+    /// Save paths inside it, settings and profiles in separate directories,
+    /// as the XDG config and data directories are. Neither exists yet.
+    #[must_use]
+    pub fn save_paths(&self) -> SavePaths {
+        SavePaths::new(self.root.join("config"), self.root.join("data"))
+    }
+}
+
+impl Drop for TempSaveDir {
+    /// Best effort: a directory left behind in the system temp directory
+    /// harms nothing, and a panic in `drop` would hide the test's own failure.
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
+}
+
+impl Default for TempSaveDir {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
@@ -361,7 +418,7 @@ mod tests {
 
     use bevy::MinimalPlugins;
 
-    use super::{FrameLength, boot_within, frame, headless_app, set_frame_length};
+    use super::{FrameLength, TempSaveDir, boot_within, frame, headless_app, set_frame_length};
     use crate::app::boot::BootPlugin;
     use crate::flow::FlowPlugin;
 
@@ -463,5 +520,22 @@ mod tests {
         let mut app = headless_app(0);
         app.add_systems(Update, failing_system);
         app.update();
+    }
+
+    #[test]
+    fn a_temp_save_dir_is_fresh_and_empty_and_gone_once_dropped() {
+        let held = TempSaveDir::new();
+        let other = TempSaveDir::new();
+        assert_ne!(held.path(), other.path());
+        let entries = std::fs::read_dir(held.path()).expect("the directory exists");
+        assert_eq!(entries.count(), 0);
+        std::fs::write(held.path().join("left.ron"), "()").expect("writable");
+        let path = held.path().to_owned();
+        drop(held);
+        assert!(
+            !path.exists(),
+            "{} outlived its TempSaveDir",
+            path.display()
+        );
     }
 }

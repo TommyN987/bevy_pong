@@ -7,7 +7,7 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) and [m1-plan.md](m1-plan.md
 
 | Item | Deviation | Recorded |
 |---|---|---|
-| 1.4.7 | "Heal re-serves and logs at error": the error-level line comes from Bevy's release error handler, which logs the sanity system's returned `SimFault` with its text, not from the heal. `pong_core` has no `bevy_log` feature, and adding it would pull `tracing` and `tracing-subscriber` into the core for one line the handler already writes (`bevy-api-check`, 2026-11-08). | Features README (sanity); spec 1.4.7 to amend at the record step. |
+| 1.4.7 | "Heal re-serves and logs at error": the error-level line comes from Bevy's release error handler, which logs the sanity system's returned `SimFault` with its text, not from the heal. `pong_core` has no `bevy_log` feature, and adding it would pull `tracing` and `tracing-subscriber` into the core for one line the handler already writes (`bevy-api-check`, 2026-11-08). | Features README (sanity); spec 1.4.7 amended 2026-11-08. |
 | 1.5.2, plan 3.19 | The soak no longer checks the invariants itself (plan 6.1 amendment); the sanity phase checks them after every step instead of every frame. Its bound past a goal line is one step at the speed cap, a little looser than the soak's one step at the ball's own speed, and is the bound the spec states. The soak asserts `SanityPlugin` is present, so it cannot go quiet. | `pong_core/tests/soak.rs`, testing README, 2026-11-08. |
 
 ## Decisions taken in this phase
@@ -23,4 +23,4 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) and [m1-plan.md](m1-plan.md
 
 ## Open findings
 
-- A fault the heal cannot cure, such as a second ball, faults on every step in release, and the heal restarts the countdown every frame: the match stalls in its countdown. In M1 only a code bug can spawn a ball, and dev panics on it first. Not handled; the user decides.
+- A fault the heal cannot cure, such as a second ball, faults on every step in release, and the heal restarts the countdown every frame: the match stalls in its countdown. In M1 only a code bug can spawn a ball, and dev panics on it first. Kept as is by the user, 2026-11-08, for a later milestone to revisit (C1's ball split is the first feature that spawns balls); recorded in spec 1.4.7, the features README, and the doc of `restart_rally_after_fault`.

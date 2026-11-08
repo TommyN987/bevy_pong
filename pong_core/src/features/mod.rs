@@ -22,3 +22,5 @@ pub mod rules;
 pub mod ai;
 
 pub mod sanity;
+
+pub mod persistence;

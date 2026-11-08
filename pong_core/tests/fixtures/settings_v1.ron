@@ -1,0 +1,8 @@
+// Released settings format, version 1 (spec 1.4.9). Never edit this file:
+// it is what a game of that version wrote, and every later game must still
+// read it. A new version gets its own fixture, settings_v<N>.ron.
+(
+    version: 1,
+    volume_percent: 60,
+    window_mode: Windowed,
+)
