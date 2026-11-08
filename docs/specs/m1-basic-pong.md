@@ -98,7 +98,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 
 ### 1.4.6 AI, mirror controller
 
-- **MUST** Reaction delay and prediction error from a difficulty entry; target from 1.2.6, recomputed when the ball turns toward the AI; error resampled per approach. Done: zero delay and zero error returns every ball; large error misses some over a seeded run.
+- **MUST** Reaction delay and prediction error from a difficulty entry; target from 1.2.6, recomputed when the ball turns toward the AI; error resampled per approach. Done: zero delay and zero error returns every ball; large error misses some over a seeded run. Amended 2026-11-08 ([phase 5 report](m1-phase5-report.md)): while the ball is not coming, or an approach has no crossing in the prediction's reach, the AI steers to the centre, and it steers between rallies too (ADR 0004); on a serve toward the AI the reaction may start one fixed step late, since the serve and the AI share the intent phase unordered (architecture rule 4).
 - **MUST** AI reads no future ball position beyond 1.2.6. Done: review item at milestone close.
 - **MUST** Three difficulty entries in tuning. Done: present.
 - **WONT** Adaptive difficulty.
