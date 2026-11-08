@@ -129,7 +129,7 @@ Realizes spec 1.4.9. Depends on 3; independent of 4 through 6.
 Realizes spec 1.6.3, settings mode in 1.6.6, 1.7.3. Depends on 4, 5, 7.
 
 - **8.1 MUST** All screens per spec 1.6.3 including seat cue, key filter, text entry with filter suspension, name cap, notice line, settings. Done: full keyboard-only flow; filter and name tests green. Amended 2026-11-08 ([phase 7 report](m1-phase7-report.md)): persistence writes only at match end (7.2), so the settings and profile screens add their own save trigger, or a change is lost if the game closes before a match; the notice line replaces the dev entry's notice log. Amended 2026-11-08 (ADR 0008): the menu builds `MatchConfig.players` from each seat's pick and does not offer one profile to both seats. Amended 2026-11-08 ([phase 8 report](m1-phase8-report.md)): paddles take their players' profile colours (spec 1.6.2), which no item had named.
-- **8.2 SHOULD** Rename and delete. Done: reachable.
+- **8.2 SHOULD** Rename and delete. Done: reachable. Done 2026-11-08 ([phase 8 report](m1-phase8-report.md)): an Edit row on profile select, by test.
 - **8.3 MUST** Remove the dev entry from 4.5. Done: gone; ADR note. Amended 2026-11-07 (phase 4 report): after a focus loss the pause screen resumes play, since the dev entry's Escape was the only resume until then. Done 2026-11-08: removed with `just run`'s arguments; note in ADR 0003; the pause screen resumes after a focus loss, by test.
 - **8.4 SHOULD** Readability review. Done: reviewed against the frame.
 

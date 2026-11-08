@@ -11,8 +11,8 @@ use bevy::state::state_scoped::DespawnOnExit;
 use bevy::text::TextColor;
 use bevy::ui::widget::Text;
 use bevy::ui::{AlignItems, BorderColor, FlexDirection, JustifyContent, Node, UiRect, Val};
-use pong_core::domain::{Player, Seat};
-use pong_core::features::persistence::model::{Profiles, Settings, WindowMode};
+use pong_core::domain::{Player, ProfileId, Seat};
+use pong_core::features::persistence::model::{Profile, Profiles, Settings, WindowMode};
 use pong_core::features::tuning::{SeatKeys, Tuning};
 
 use super::name_entry::name_field;
@@ -29,6 +29,10 @@ pub struct MenuScreenRoot;
 /// One list row, by its index in [`MenuList::items`].
 #[derive(Component, Debug)]
 pub struct MenuRow(pub usize);
+
+/// The screen's heading.
+#[derive(Component, Debug, Default)]
+pub struct MenuHeading;
 
 /// The keys of the seat whose turn it is (spec 1.6.3, seat cue).
 #[derive(Component, Debug, Default)]
@@ -53,31 +57,45 @@ pub(super) fn label(item: MenuItem, profiles: &Profiles, settings: Settings) -> 
         MenuItem::Computer(difficulty) => white(&"★".repeat(usize::from(difficulty.stars()))),
         MenuItem::PointsToWin(points) => white(&points.to_string()),
         MenuItem::Player(Player::Guest) => white("Guest"),
-        MenuItem::Player(Player::Profile(id)) => profiles
-            .as_slice()
-            .iter()
-            .find(|profile| profile.id() == id)
+        MenuItem::Player(Player::Profile(id)) | MenuItem::EditProfile(id) => find(profiles, id)
             .map_or_else(
                 || white("?"),
                 |profile| (profile.name().as_str().to_owned(), profile.color()),
             ),
         MenuItem::NewProfile => white("New"),
         MenuItem::Color(color) => ("●●●".to_owned(), color),
+        MenuItem::EditProfiles => white("Edit"),
+        MenuItem::RenameProfile => white("Rename"),
+        MenuItem::DeleteProfile => white("Delete"),
+        MenuItem::KeepProfile => white("No"),
+        MenuItem::ConfirmDelete => white("Yes"),
     }
 }
 
-/// A screen's one-word heading.
-const fn heading(screen: MenuScreen) -> &'static str {
+fn find(profiles: &Profiles, id: ProfileId) -> Option<&Profile> {
+    profiles
+        .as_slice()
+        .iter()
+        .find(|profile| profile.id() == id)
+}
+
+/// A screen's heading: one word, or the question about the profile being
+/// edited.
+fn heading(screen: MenuScreen, editing: Option<&Profile>) -> String {
+    let name = editing.map_or("?", |profile| profile.name().as_str());
     match screen {
-        MenuScreen::Main => TITLE,
-        MenuScreen::Settings => "Settings",
-        MenuScreen::Volume => "Volume",
-        MenuScreen::WindowMode => "Screen",
-        MenuScreen::Opponent => "vs",
-        MenuScreen::PointsToWin => "Points",
-        MenuScreen::PickProfile(_) => "Who?",
-        MenuScreen::NameProfile(_) => "Name",
-        MenuScreen::PickColor(_) => "Color",
+        MenuScreen::Main => TITLE.to_owned(),
+        MenuScreen::Settings => "Settings".to_owned(),
+        MenuScreen::Volume => "Volume".to_owned(),
+        MenuScreen::WindowMode => "Screen".to_owned(),
+        MenuScreen::Opponent => "vs".to_owned(),
+        MenuScreen::PointsToWin => "Points".to_owned(),
+        MenuScreen::PickProfile(_) => "Who?".to_owned(),
+        MenuScreen::NameProfile(_) | MenuScreen::RenameProfile(_) => "Name".to_owned(),
+        MenuScreen::PickColor(_) => "Color".to_owned(),
+        MenuScreen::EditProfiles(_) => "Edit".to_owned(),
+        MenuScreen::ProfileActions(_) => name.to_owned(),
+        MenuScreen::DeleteProfile(_) => format!("Delete {name}?"),
     }
 }
 
@@ -144,8 +162,10 @@ pub(super) fn show_screen(
             DespawnOnExit(screen),
         ))
         .with_children(|root| {
+            let editing = draft.editing.and_then(|id| find(&profiles, id));
             root.spawn((
-                Text::new(heading(screen)),
+                MenuHeading,
+                Text::new(heading(screen, editing)),
                 font(9.0),
                 TextColor(Color::WHITE),
             ));
@@ -157,8 +177,14 @@ pub(super) fn show_screen(
                     TextColor(DIM),
                 ));
             }
-            if let MenuScreen::NameProfile(_) = screen {
-                root.spawn(name_field(draft.new_name.as_ref()));
+            match screen {
+                MenuScreen::NameProfile(_) => {
+                    root.spawn(name_field(draft.new_name.as_ref()));
+                }
+                MenuScreen::RenameProfile(_) => {
+                    root.spawn(name_field(editing.map(Profile::name)));
+                }
+                _ => {}
             }
             for (index, &item) in list.items().iter().enumerate() {
                 let (text, color) = label(item, &profiles, *settings);
@@ -215,6 +241,12 @@ mod tests {
             (MenuItem::Player(Player::Guest), "Guest"),
             (MenuItem::Player(Player::Profile(ProfileId(4))), "Mia"),
             (MenuItem::NewProfile, "New"),
+            (MenuItem::EditProfiles, "Edit"),
+            (MenuItem::EditProfile(ProfileId(4)), "Mia"),
+            (MenuItem::RenameProfile, "Rename"),
+            (MenuItem::DeleteProfile, "Delete"),
+            (MenuItem::KeepProfile, "No"),
+            (MenuItem::ConfirmDelete, "Yes"),
         ] {
             assert_eq!(label(item, &mia(), settings).0, expected, "{item:?}");
         }

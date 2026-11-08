@@ -136,7 +136,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 ## 1.5 Core testing
 
 - **1.5.1 MUST** `testing` module behind a cargo feature: `MinimalPlugins` plus chosen core plugins, fake intents, temp-dir `SavePaths`, fixed seed. Done: used by every headless test.
-- **1.5.2 MUST** Soak: scripted match with random intents for both seats over at least 100,000 fixed steps, panic handler on, no fault; nextest per-test timeout of thirty seconds fails the run. Done: passes in CI. Amended 2026-11-04 (plan 3.19): the 100,000 steps are counted in `Playing`.
+- **1.5.2 MUST** Soak: scripted match with random intents for both seats over at least 100,000 fixed steps, panic handler on, no fault; nextest per-test timeout of thirty seconds fails the run. Done: passes in CI. Amended 2026-11-04 (plan 3.19): the 100,000 steps are counted in `Playing`. Amended 2026-11-08 ([phase 8 report](m1-phase8-report.md)): the thirty seconds bind every test but the two crash-file tests, which get ninety: each writes a full backtrace from a large test binary, which on the first run after a rebuild is read cold.
 - **1.5.3 SHOULD** Schedule randomization on in tests. Done: tests pass with it enabled.
 
 ## 1.6 Shell
