@@ -23,15 +23,15 @@ use bevy::state::state_scoped::DespawnOnExit;
 use bevy::text::TextColor;
 use bevy::ui::widget::Text;
 use bevy::ui::{AlignItems, BackgroundColor, FlexDirection, JustifyContent, Node, Val};
-use pong_core::domain::{Controller, MatchConfig, Player, ProfileId};
+use pong_core::domain::{Controller, MatchConfig, Player, ProfileId, Seat};
 use pong_core::features::persistence::model::{Profile, Profiles, Records};
 use pong_core::features::rules::Score;
-use pong_core::features::tuning::Tuning;
+use pong_core::features::tuning::{BindingsTuning, Tuning};
 use pong_core::flow::states::{AppState, MatchState};
 use pong_core::kernel::geometry::Side;
 
-use crate::ui::menu_input::{MenuDrivers, MenuKey, MenuPress, menu_press};
-use crate::ui::style::font;
+use crate::ui::menu_input::{MenuDrivers, MenuKey, MenuPress, key_doing, menu_press};
+use crate::ui::style::{font, hint};
 
 /// The match over screen.
 ///
@@ -123,6 +123,7 @@ fn show_match_over(
     score: Res<Score>,
     profiles: Res<Profiles>,
     at_start: Res<RecordsAtMatchStart>,
+    tuning: Res<Tuning>,
 ) -> Result<(), BevyError> {
     let winner = score
         .winner(config.points_to_win)
@@ -174,8 +175,16 @@ fn show_match_over(
                     TextColor(Color::from(color)),
                 ));
             }
+            screen.spawn(hint(&confirm_hint(tuning.bindings())));
         });
     Ok(())
+}
+
+/// Either seat's confirm key, which leaves (plan 8.4): "D✓ →✓".
+fn confirm_hint(bindings: BindingsTuning) -> String {
+    [Seat::Left, Seat::Right]
+        .map(|seat| key_doing(bindings.seat(seat).action(), "✓"))
+        .join(" ")
 }
 
 fn leave_finished_match(

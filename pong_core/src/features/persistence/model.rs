@@ -135,19 +135,10 @@ impl Profile {
         color: Srgba,
         records: Records,
     ) -> Result<Self, InvalidSaveData> {
-        for (channel, value) in [
-            ("red", color.red),
-            ("green", color.green),
-            ("blue", color.blue),
-        ] {
-            if !(value.is_finite() && value >= 0.0) {
-                return Err(InvalidSaveData::ColorChannel { channel, value });
-            }
-        }
         Ok(Self {
             id,
             name,
-            color: color.with_alpha(1.0),
+            color: profile_color(color)?,
             records,
         })
     }
@@ -175,6 +166,24 @@ impl Profile {
     pub const fn records(&self) -> Records {
         self.records
     }
+}
+
+/// `color` as a profile keeps it: opaque, if its channels are finite and not
+/// negative, as the palette's are (spec 1.4.8).
+///
+/// # Errors
+/// [`InvalidSaveData::ColorChannel`] naming the first bad channel.
+fn profile_color(color: Srgba) -> Result<Srgba, InvalidSaveData> {
+    for (channel, value) in [
+        ("red", color.red),
+        ("green", color.green),
+        ("blue", color.blue),
+    ] {
+        if !(value.is_finite() && value >= 0.0) {
+            return Err(InvalidSaveData::ColorChannel { channel, value });
+        }
+    }
+    Ok(color.with_alpha(1.0))
 }
 
 /// Every profile on this device, in the order they were made. Invariant: no
@@ -232,6 +241,25 @@ impl Profiles {
     pub fn rename(&mut self, id: ProfileId, name: ProfileName) -> Option<ProfileName> {
         let profile = self.0.iter_mut().find(|profile| profile.id == id)?;
         Some(std::mem::replace(&mut profile.name, name))
+    }
+
+    /// Gives the profile with `id` `color`, opaque, and returns its old
+    /// colour; `Ok(None)`, changing nothing, if no profile has `id`. Its id,
+    /// name, records, and place stay.
+    ///
+    /// # Errors
+    /// [`InvalidSaveData::ColorChannel`] as [`Profile::new`]; nothing changes.
+    pub fn recolor(
+        &mut self,
+        id: ProfileId,
+        color: Srgba,
+    ) -> Result<Option<Srgba>, InvalidSaveData> {
+        let color = profile_color(color)?;
+        Ok(self
+            .0
+            .iter_mut()
+            .find(|profile| profile.id == id)
+            .map(|profile| std::mem::replace(&mut profile.color, color)))
     }
 
     /// Takes the profile with `id` out and hands it back; `None`, changing
@@ -517,12 +545,52 @@ mod tests {
         assert_eq!(ids, [ProfileId(1), ProfileId(3)]);
     }
 
+    /// Plan 8.4 (the user's addition to spec 1.6.3): change a profile's
+    /// colour; its id, name, records, and place stay.
     #[test]
-    fn an_unknown_id_renames_and_removes_nothing() {
+    fn a_recoloured_profile_keeps_its_id_name_records_and_place_and_turns_opaque() {
+        let mut profiles = mia_and_max();
+        profiles
+            .records_mut(ProfileId(1))
+            .expect("Mia exists")
+            .add_win();
+        assert_eq!(
+            profiles.recolor(ProfileId(1), Srgba::new(0.0, 1.0, 0.0, 0.5)),
+            Ok(Some(Srgba::RED))
+        );
+        let [mia, max] = profiles.as_slice() else {
+            panic!("expected two profiles, got {profiles:?}");
+        };
+        assert_eq!(
+            (
+                mia.id(),
+                mia.name().as_str(),
+                mia.color(),
+                mia.records().wins
+            ),
+            (ProfileId(1), "Mia", Srgba::GREEN, 1)
+        );
+        assert_eq!(max.color(), Srgba::BLUE);
+    }
+
+    #[test]
+    fn a_colour_the_model_refuses_changes_nothing() {
+        let mut profiles = mia_and_max();
+        let before = profiles.clone();
+        assert!(matches!(
+            profiles.recolor(ProfileId(1), Srgba::new(f32::NAN, 0.0, 0.0, 1.0)),
+            Err(InvalidSaveData::ColorChannel { channel: "red", .. })
+        ));
+        assert_eq!(profiles, before);
+    }
+
+    #[test]
+    fn an_unknown_id_renames_recolours_and_removes_nothing() {
         let mut profiles = mia_and_max();
         let before = profiles.clone();
         assert_eq!(profiles.rename(ProfileId(9), named("Zoë")), None);
         assert_eq!(profiles.remove(ProfileId(9)), None);
+        assert_eq!(profiles.recolor(ProfileId(9), Srgba::GREEN), Ok(None));
         assert_eq!(profiles, before);
     }
 

@@ -5,7 +5,6 @@
 use bevy::color::{Color, Srgba};
 use bevy::ecs::component::Component;
 use bevy::ecs::system::{Commands, Query, Res};
-use bevy::input::keyboard::KeyCode;
 use bevy::state::state::State;
 use bevy::state::state_scoped::DespawnOnExit;
 use bevy::text::TextColor;
@@ -17,8 +16,8 @@ use pong_core::features::tuning::{SeatKeys, Tuning};
 
 use super::name_entry::name_field;
 use super::{MatchDraft, MenuItem, MenuList, MenuScreen};
-use crate::ui::menu_input::MenuDrivers;
-use crate::ui::style::{DIM, cursor_frame, font, row};
+use crate::ui::menu_input::{MenuDrivers, key_doing};
+use crate::ui::style::{DIM, cursor_frame, font, hint, row};
 use crate::window::TITLE;
 
 /// Marks a screen's outermost node; despawned, with all it holds, when the
@@ -66,6 +65,7 @@ pub(super) fn label(item: MenuItem, profiles: &Profiles, settings: Settings) -> 
         MenuItem::Color(color) => ("●●●".to_owned(), color),
         MenuItem::EditProfiles => white("Edit"),
         MenuItem::RenameProfile => white("Rename"),
+        MenuItem::RecolorProfile => white("Color"),
         MenuItem::DeleteProfile => white("Delete"),
         MenuItem::KeepProfile => white("No"),
         MenuItem::ConfirmDelete => white("Yes"),
@@ -92,35 +92,23 @@ fn heading(screen: MenuScreen, editing: Option<&Profile>) -> String {
         MenuScreen::PointsToWin => "Points".to_owned(),
         MenuScreen::PickProfile(_) => "Who?".to_owned(),
         MenuScreen::NameProfile(_) | MenuScreen::RenameProfile(_) => "Name".to_owned(),
-        MenuScreen::PickColor(_) => "Color".to_owned(),
+        MenuScreen::PickColor(_) | MenuScreen::RecolorProfile(_) => "Color".to_owned(),
         MenuScreen::EditProfiles(_) => "Edit".to_owned(),
         MenuScreen::ProfileActions(_) => name.to_owned(),
         MenuScreen::DeleteProfile(_) => format!("Delete {name}?"),
     }
 }
 
-/// A key as printed on it: letters and digits bare, arrows as arrows.
-fn key_label(key: KeyCode) -> String {
-    match key {
-        KeyCode::ArrowUp => "↑".to_owned(),
-        KeyCode::ArrowDown => "↓".to_owned(),
-        KeyCode::ArrowLeft => "←".to_owned(),
-        KeyCode::ArrowRight => "→".to_owned(),
-        other => {
-            let name = format!("{other:?}");
-            name.strip_prefix("Key")
-                .or_else(|| name.strip_prefix("Digit"))
-                .map_or_else(|| name.clone(), str::to_owned)
-        }
-    }
-}
-
-/// The seat cue: the seat's up, down, and confirm keys.
+/// The seat cue: the seat's up, down, and confirm keys, each with what it
+/// does (plan 8.4): "W↑ S↓ D✓", or "↑ ↓ →✓" where a key is its arrow.
 fn seat_cue(keys: SeatKeys) -> String {
-    [keys.up(), keys.down(), keys.action()]
-        .map(key_label)
+    [(keys.up(), "↑"), (keys.down(), "↓"), (keys.action(), "✓")]
+        .map(|(key, meaning)| key_doing(key, meaning))
         .join(" ")
 }
+
+/// Under the name field: how a name is taken (plan 8.4).
+const NAME_HINT: &str = "Enter ✓";
 
 /// Shows the screen just entered: its heading, the seat cue while one seat's
 /// keys drive it, the name field on a name screen, and its rows. A screen
@@ -177,14 +165,14 @@ pub(super) fn show_screen(
                     TextColor(DIM),
                 ));
             }
-            match screen {
-                MenuScreen::NameProfile(_) => {
-                    root.spawn(name_field(draft.new_name.as_ref()));
-                }
-                MenuScreen::RenameProfile(_) => {
-                    root.spawn(name_field(editing.map(Profile::name)));
-                }
-                _ => {}
+            let typed = match screen {
+                MenuScreen::NameProfile(_) => Some(draft.new_name.as_ref()),
+                MenuScreen::RenameProfile(_) => Some(editing.map(Profile::name)),
+                _ => None,
+            };
+            if let Some(typed) = typed {
+                root.spawn(name_field(typed));
+                root.spawn(hint(NAME_HINT));
             }
             for (index, &item) in list.items().iter().enumerate() {
                 let (text, color) = label(item, &profiles, *settings);

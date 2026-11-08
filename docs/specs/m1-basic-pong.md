@@ -156,12 +156,12 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 
 ### 1.6.3 UI
 
-- **MUST** Screens: boot, main menu (play, settings, quit), mode select (vs human, vs computer, difficulty stars, points-to-win), profile select per seat with seat cue, match HUD with score, pause, match over with winner and records delta, notice line. Done: full flow playable keyboard-only.
+- **MUST** Screens: boot, main menu (play, settings, quit), mode select (vs human, vs computer, difficulty stars, points-to-win), profile select per seat with seat cue, match HUD with score, pause, match over with winner and records delta, notice line. Done: full flow playable keyboard-only. Amended 2026-11-08 (plan 8.4, [phase 8 report](m1-phase8-report.md)): the HUD shows the countdown's whole seconds; the seat cue shows what each key does; the name screens and match over show which key goes on.
 - **MUST** During a seat's turn only that seat's keys move the cursor; D/Right confirms; A/Left and Escape back out. Done: the other seat's keys do nothing, by test.
 - **MUST** Profile creation: typed name, color from the palette. Done: new profile appears in the file.
 - **MUST** Seat key filter suspended during text entry. Done: a name using letters from both key sets is enterable.
 - **MUST** Name cap twelve characters; duplicates allowed. Done: thirteenth character rejected; two identical names coexist, by test.
-- **SHOULD** Rename and delete a profile. Done: both reachable from profile select.
+- **SHOULD** Rename and delete a profile. Done: both reachable from profile select. Amended 2026-11-08 (plan 8.4, the user's addition): also change its colour, from the same place.
 - **SHOULD** Text limited to single words or icons where a 9-year-old must read. Done: review at milestone close.
 - **MUST** Settings screen: volume, window mode only. Done: both change and persist.
 
@@ -178,7 +178,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 
 ### 1.6.6 Window
 
-- **MUST** Title; default borderless fullscreen; mode from settings. Done: first start fullscreen; after toggling, windowed on next start.
+- **MUST** Title; default borderless fullscreen; mode from settings. Done: first start fullscreen; after toggling, windowed on next start. Amended 2026-11-08 ([phase 8 report](m1-phase8-report.md)): the title is "Rusty Pong", chosen by the user; the app ID stays `bevy_pong`.
 - **MAY** Alt+Enter toggles mode. Done: works.
 
 ## 1.7 Error policy wiring

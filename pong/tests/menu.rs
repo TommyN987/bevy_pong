@@ -22,6 +22,7 @@ use common::tap;
 use pong::ui::menu::name_entry::NameField;
 use pong::ui::menu::view::{MenuHeading, MenuRow, MenuScreenRoot, SeatCue};
 use pong::ui::menu::{MenuItem, MenuList, MenuPlugin, MenuScreen};
+use pong::ui::style::KeyHint;
 use pong_core::domain::{
     Controller, Difficulty, MatchConfig, Player, ProfileId, Seat, SeatPlayers,
 };
@@ -595,10 +596,10 @@ fn a_seats_screen_sits_on_its_half_under_its_keys() {
     assert_eq!(screen_alignment(&mut app), AlignItems::Center);
     pick(&mut app, MenuItem::Friend, LEFT);
     pick(&mut app, MenuItem::PointsToWin(points(10)), LEFT);
-    assert_eq!(seat_cue(&mut app), ["W S D"]);
+    assert_eq!(seat_cue(&mut app), ["W↑ S↓ D✓"]);
     assert_eq!(screen_alignment(&mut app), AlignItems::FlexStart);
     pick(&mut app, MenuItem::Player(Player::Guest), LEFT);
-    assert_eq!(seat_cue(&mut app), ["↑ ↓ →"]);
+    assert_eq!(seat_cue(&mut app), ["↑ ↓ →✓"]);
     assert_eq!(screen_alignment(&mut app), AlignItems::FlexEnd);
 }
 
@@ -629,7 +630,11 @@ fn to_the_actions_for(app: &mut App, id: ProfileId) {
     assert_eq!(screen(app), MenuScreen::ProfileActions(Seat::Left));
     assert_eq!(
         list(app).items(),
-        [MenuItem::RenameProfile, MenuItem::DeleteProfile]
+        [
+            MenuItem::RenameProfile,
+            MenuItem::RecolorProfile,
+            MenuItem::DeleteProfile
+        ]
     );
 }
 
@@ -748,4 +753,85 @@ fn the_other_seats_pick_cannot_be_edited() {
     assert_eq!(list(&app).items(), [MenuItem::EditProfile(MAX)]);
     tap(&mut app, KeyCode::ArrowLeft);
     assert_eq!(screen(&app), MenuScreen::PickProfile(Seat::Right));
+}
+
+fn color_of(app: &App, id: ProfileId) -> Srgba {
+    app.world()
+        .resource::<Profiles>()
+        .as_slice()
+        .iter()
+        .find(|profile| profile.id() == id)
+        .expect("the profile")
+        .color()
+}
+
+fn palette(app: &App) -> Vec<Srgba> {
+    app.world().resource::<Tuning>().palette().to_vec()
+}
+
+/// Plan 8.4 (the user's addition to spec 1.6.3): a profile's colour changes
+/// from profile select too.
+#[test]
+fn a_profile_recoloured_from_profile_select_shows_there_and_is_saved() {
+    let mut app = menu_app_with_zoe_and_max();
+    let palette = palette(&app);
+    to_the_actions_for(&mut app, MAX);
+    pick(&mut app, MenuItem::RecolorProfile, LEFT);
+    assert_eq!(screen(&app), MenuScreen::RecolorProfile(Seat::Left));
+    assert_eq!(
+        list(&app).items(),
+        palette
+            .iter()
+            .map(|&c| MenuItem::Color(c))
+            .collect::<Vec<_>>()
+    );
+    pick(&mut app, MenuItem::Color(palette[2]), LEFT);
+    assert_eq!(screen(&app), MenuScreen::PickProfile(Seat::Left));
+    assert_eq!(under_cursor(&app), MenuItem::Player(Player::Profile(MAX)));
+    assert_eq!(color_of(&app, MAX), palette[2]);
+    frame(&mut app);
+    let file = app.world().resource::<SavePaths>().profiles_file();
+    let saved = decode_profiles(&std::fs::read_to_string(file).expect("profiles written"))
+        .expect("decodes");
+    assert_eq!(saved.as_slice()[1].color(), palette[2]);
+
+    pick(&mut app, MenuItem::EditProfiles, LEFT);
+    pick(&mut app, MenuItem::EditProfile(MAX), LEFT);
+    pick(&mut app, MenuItem::RecolorProfile, LEFT);
+    assert_eq!(
+        under_cursor(&app),
+        MenuItem::Color(palette[2]),
+        "the current colour"
+    );
+}
+
+#[test]
+fn back_from_the_colours_keeps_the_colour() {
+    let mut app = menu_app_with_zoe_and_max();
+    to_the_actions_for(&mut app, MAX);
+    pick(&mut app, MenuItem::RecolorProfile, LEFT);
+    tap(&mut app, LEFT_DOWN);
+    tap(&mut app, KeyCode::Escape);
+    assert_eq!(screen(&app), MenuScreen::ProfileActions(Seat::Left));
+    assert_eq!(color_of(&app, MAX), Srgba::RED);
+}
+
+/// Plan 8.4 (R2): the name screens say how a name is taken.
+#[test]
+fn the_name_screens_hint_that_enter_takes_the_name() {
+    let mut app = menu_app_with_zoe_and_max();
+    to_the_actions_for(&mut app, MAX);
+    pick(&mut app, MenuItem::RenameProfile, LEFT);
+    assert_eq!(texts_of::<KeyHint>(&mut app), ["Enter ✓"]);
+    tap(&mut app, KeyCode::Escape);
+    tap(&mut app, KeyCode::Escape);
+    tap(&mut app, KeyCode::Escape);
+    pick(&mut app, MenuItem::NewProfile, LEFT);
+    assert_eq!(screen(&app), MenuScreen::NameProfile(Seat::Left));
+    assert_eq!(texts_of::<KeyHint>(&mut app), ["Enter ✓"]);
+}
+
+fn texts_of<C: Component>(app: &mut App) -> Vec<String> {
+    let mut query = app.world_mut().query_filtered::<&Text, With<C>>();
+    query.iter(app.world()).map(|text| text.0.clone()).collect()
 }

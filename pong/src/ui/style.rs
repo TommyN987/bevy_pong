@@ -4,6 +4,7 @@
 use bevy::color::Color;
 use bevy::ecs::bundle::Bundle;
 use bevy::ecs::children;
+use bevy::ecs::component::Component;
 use bevy::text::{FontSize, TextColor, TextFont};
 use bevy::ui::widget::Text;
 use bevy::ui::{BorderColor, Node, UiRect, Val};
@@ -18,6 +19,16 @@ pub fn font(viewport_percent: f32) -> TextFont {
         font_size: FontSize::Vh(viewport_percent),
         ..TextFont::default()
     }
+}
+
+/// Marks a hint: which key does what, in small dim text (plan 8.4).
+#[derive(Component, Debug, Default)]
+pub struct KeyHint;
+
+/// A hint line: `text` small and dim.
+#[must_use]
+pub fn hint(text: &str) -> impl Bundle {
+    (KeyHint, Text::new(text), font(4.0), TextColor(DIM))
 }
 
 /// A row's frame: white while the cursor is on it, none otherwise.

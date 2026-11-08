@@ -47,6 +47,35 @@ impl MenuDrivers {
     }
 }
 
+/// A key as printed on it: letters and digits bare, arrows as arrows.
+#[must_use]
+pub fn key_label(key: KeyCode) -> String {
+    match key {
+        KeyCode::ArrowUp => "↑".to_owned(),
+        KeyCode::ArrowDown => "↓".to_owned(),
+        KeyCode::ArrowLeft => "←".to_owned(),
+        KeyCode::ArrowRight => "→".to_owned(),
+        other => {
+            let name = format!("{other:?}");
+            name.strip_prefix("Key")
+                .or_else(|| name.strip_prefix("Digit"))
+                .map_or_else(|| name.clone(), str::to_owned)
+        }
+    }
+}
+
+/// `key` with what it does, as an icon: "W↑", "D✓"; the icon alone where
+/// the key is printed with it, as ↑ is.
+#[must_use]
+pub fn key_doing(key: KeyCode, meaning: &str) -> String {
+    let label = key_label(key);
+    if label == meaning {
+        label
+    } else {
+        format!("{label}{meaning}")
+    }
+}
+
 /// The press `drivers` may make this frame: a key pressed this frame, not
 /// one held from before, so a held key moves the cursor once. Escape first,
 /// then the left seat's keys, then the right's, each in up, down, confirm,
