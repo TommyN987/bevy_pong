@@ -226,6 +226,23 @@ impl Profiles {
         Ok(id)
     }
 
+    /// Names the profile with `id` `name` and returns its old name; `None`,
+    /// changing nothing, if no profile has `id`. Its id, colour, records, and
+    /// place stay.
+    pub fn rename(&mut self, id: ProfileId, name: ProfileName) -> Option<ProfileName> {
+        let profile = self.0.iter_mut().find(|profile| profile.id == id)?;
+        Some(std::mem::replace(&mut profile.name, name))
+    }
+
+    /// Takes the profile with `id` out and hands it back; `None`, changing
+    /// nothing, if no profile has `id`. The others keep their order. The id
+    /// is free again: [`create`](Self::create) reuses it if it was the
+    /// highest, which nothing outside this list notices in M1.
+    pub fn remove(&mut self, id: ProfileId) -> Option<Profile> {
+        let index = self.0.iter().position(|profile| profile.id == id)?;
+        Some(self.0.remove(index))
+    }
+
     /// The records of the profile with `id`, to change; `None` if no profile
     /// has it. Ids cannot change through this, so they stay unique.
     pub fn records_mut(&mut self, id: ProfileId) -> Option<&mut Records> {
@@ -450,6 +467,62 @@ mod tests {
             profiles.create(named("Mia"), Srgba::BLUE),
             Err(InvalidSaveData::NoProfileIdLeft)
         );
+        assert_eq!(profiles, before);
+    }
+
+    fn mia_and_max() -> Profiles {
+        let mut profiles = Profiles::default();
+        profiles.create(named("Mia"), Srgba::RED).expect("created");
+        profiles.create(named("Max"), Srgba::BLUE).expect("created");
+        profiles
+    }
+
+    /// Spec 1.6.3 SHOULD: rename a profile; its id, colour, and records stay.
+    #[test]
+    fn a_renamed_profile_keeps_its_id_colour_records_and_place() {
+        let mut profiles = mia_and_max();
+        profiles
+            .records_mut(ProfileId(1))
+            .expect("Mia exists")
+            .add_win();
+        assert_eq!(
+            profiles.rename(ProfileId(1), named("Zoë")),
+            Some(named("Mia"))
+        );
+        let [zoe, max] = profiles.as_slice() else {
+            panic!("expected two profiles, got {profiles:?}");
+        };
+        assert_eq!(
+            (
+                zoe.id(),
+                zoe.name().as_str(),
+                zoe.color(),
+                zoe.records().wins
+            ),
+            (ProfileId(1), "Zoë", Srgba::RED, 1)
+        );
+        assert_eq!(max.name().as_str(), "Max");
+    }
+
+    /// Spec 1.6.3 SHOULD: delete a profile; the others keep their order.
+    #[test]
+    fn a_removed_profile_is_handed_back_and_the_rest_keep_their_order() {
+        let mut profiles = mia_and_max();
+        profiles
+            .create(named("Ida"), Srgba::GREEN)
+            .expect("created");
+        let removed = profiles.remove(ProfileId(2)).expect("Max exists");
+        assert_eq!(removed.name().as_str(), "Max");
+        let ids: Vec<ProfileId> = profiles.as_slice().iter().map(Profile::id).collect();
+        assert_eq!(ids, [ProfileId(1), ProfileId(3)]);
+    }
+
+    #[test]
+    fn an_unknown_id_renames_and_removes_nothing() {
+        let mut profiles = mia_and_max();
+        let before = profiles.clone();
+        assert_eq!(profiles.rename(ProfileId(9), named("Zoë")), None);
+        assert_eq!(profiles.remove(ProfileId(9)), None);
         assert_eq!(profiles, before);
     }
 

@@ -11,6 +11,10 @@
 //! computer, the seat that confirmed the computer plays on its own side and
 //! makes every later pick. New on a profile list leads to `NameProfile`, then
 //! `PickColor`, and back to the list with the new profile under the cursor.
+//! Edit on it (spec 1.6.3 SHOULD) lists the profiles the seat may pick; one
+//! of them leads to `ProfileActions`: `RenameProfile`, back to the list with
+//! it under the cursor, or `DeleteProfile`, which asks first with No under
+//! the cursor.
 
 use std::num::NonZeroU8;
 
@@ -94,13 +98,27 @@ pub enum MenuScreen {
     NameProfile(Seat),
     /// The seat picks the new profile's colour from the palette.
     PickColor(Seat),
+    /// The profiles the seat may rename or delete.
+    EditProfiles(Seat),
+    /// Rename or delete the profile picked to edit.
+    ProfileActions(Seat),
+    /// The seat retypes the profile's name.
+    RenameProfile(Seat),
+    /// Whether to delete the profile, for good.
+    DeleteProfile(Seat),
 }
 
 impl MenuScreen {
     /// The seat whose turn the screen is, if it belongs to one.
     const fn seat(self) -> Option<Seat> {
         match self {
-            Self::PickProfile(seat) | Self::NameProfile(seat) | Self::PickColor(seat) => Some(seat),
+            Self::PickProfile(seat)
+            | Self::NameProfile(seat)
+            | Self::PickColor(seat)
+            | Self::EditProfiles(seat)
+            | Self::ProfileActions(seat)
+            | Self::RenameProfile(seat)
+            | Self::DeleteProfile(seat) => Some(seat),
             Self::Main
             | Self::Settings
             | Self::Volume
@@ -140,6 +158,18 @@ pub enum MenuItem {
     NewProfile,
     /// A seat's colour list: the new profile's colour.
     Color(Srgba),
+    /// A seat's profile list: rename or delete one.
+    EditProfiles,
+    /// The edit list: this profile.
+    EditProfile(ProfileId),
+    /// A profile's actions: retype its name.
+    RenameProfile,
+    /// A profile's actions: delete it, after asking.
+    DeleteProfile,
+    /// The delete question: no, keep it.
+    KeepProfile,
+    /// The delete question: yes, delete it.
+    ConfirmDelete,
 }
 
 /// The current screen's rows and the cursor. Invariant: the cursor is on a
@@ -265,8 +295,11 @@ struct MatchDraft {
     players: SeatPlayers,
     /// The name typed for the profile being made.
     new_name: Option<ProfileName>,
-    /// The profile made last, for the cursor on the return to the list.
-    created: Option<ProfileId>,
+    /// The profile to put the cursor on when the seat's list shows next: the
+    /// one just made or renamed.
+    cursor_profile: Option<ProfileId>,
+    /// The profile being renamed or deleted.
+    editing: Option<ProfileId>,
 }
 
 impl Default for MatchDraft {
@@ -276,7 +309,8 @@ impl Default for MatchDraft {
             points_to_win: None,
             players: SeatPlayers::GUESTS,
             new_name: None,
-            created: None,
+            cursor_profile: None,
+            editing: None,
         }
     }
 }
@@ -326,6 +360,30 @@ impl MatchDraft {
         }
     }
 
+    /// The saved profiles `seat` may pick, rename, or delete: all but the one
+    /// [`withheld_from`](Self::withheld_from) it.
+    fn offered_profiles<'p>(
+        &self,
+        seat: Seat,
+        profiles: &'p Profiles,
+    ) -> impl Iterator<Item = ProfileId> + 'p {
+        let withheld = self.withheld_from(seat);
+        profiles
+            .as_slice()
+            .iter()
+            .map(Profile::id)
+            .filter(move |&id| Some(id) != withheld)
+    }
+
+    /// The profile being edited.
+    ///
+    /// # Errors
+    /// None is: the edit list was skipped.
+    fn editing(&self) -> Result<ProfileId, BevyError> {
+        self.editing
+            .ok_or_else(|| BevyError::from("a profile action with no profile picked to edit"))
+    }
+
     /// Whose keys drive `screen`; `None` while a name is typed, so seat keys
     /// type letters instead (spec 1.6.3).
     fn drivers(&self, screen: MenuScreen) -> Option<MenuDrivers> {
@@ -339,10 +397,12 @@ impl MatchDraft {
                 self.opponent
                     .map_or(MenuDrivers::EitherSeat, Opponent::drivers),
             ),
-            MenuScreen::PickProfile(seat) | MenuScreen::PickColor(seat) => {
-                Some(MenuDrivers::Seat(seat))
-            }
-            MenuScreen::NameProfile(_) => None,
+            MenuScreen::PickProfile(seat)
+            | MenuScreen::PickColor(seat)
+            | MenuScreen::EditProfiles(seat)
+            | MenuScreen::ProfileActions(seat)
+            | MenuScreen::DeleteProfile(seat) => Some(MenuDrivers::Seat(seat)),
+            MenuScreen::NameProfile(_) | MenuScreen::RenameProfile(_) => None,
         }
     }
 
@@ -357,8 +417,14 @@ impl MatchDraft {
                 .opponent
                 .and_then(|opponent| opponent.seat_before(seat))
                 .map_or(MenuScreen::PointsToWin, MenuScreen::PickProfile),
-            MenuScreen::NameProfile(seat) => MenuScreen::PickProfile(seat),
+            MenuScreen::NameProfile(seat) | MenuScreen::EditProfiles(seat) => {
+                MenuScreen::PickProfile(seat)
+            }
             MenuScreen::PickColor(seat) => MenuScreen::NameProfile(seat),
+            MenuScreen::ProfileActions(seat) => MenuScreen::EditProfiles(seat),
+            MenuScreen::RenameProfile(seat) | MenuScreen::DeleteProfile(seat) => {
+                MenuScreen::ProfileActions(seat)
+            }
         })
     }
 }
@@ -413,24 +479,38 @@ fn list_for(
             )
         }
         MenuScreen::PickProfile(seat) => {
-            let withheld = draft.withheld_from(seat);
-            let saved = profiles
-                .as_slice()
-                .iter()
-                .map(Profile::id)
-                .filter(|&id| Some(id) != withheld)
-                .map(|id| MenuItem::Player(Player::Profile(id)));
+            let saved: Vec<MenuItem> = draft
+                .offered_profiles(seat, profiles)
+                .map(|id| MenuItem::Player(Player::Profile(id)))
+                .collect();
+            let edit = (!saved.is_empty()).then_some(MenuItem::EditProfiles);
             MenuList::new(
                 std::iter::once(MenuItem::Player(Player::Guest))
                     .chain(saved)
                     .chain(std::iter::once(MenuItem::NewProfile))
+                    .chain(edit)
                     .collect(),
                 draft
-                    .created
+                    .cursor_profile
                     .map(|id| MenuItem::Player(Player::Profile(id))),
             )
         }
-        MenuScreen::NameProfile(_) => MenuList::new(Vec::new(), None),
+        MenuScreen::EditProfiles(seat) => MenuList::new(
+            draft
+                .offered_profiles(seat, profiles)
+                .map(MenuItem::EditProfile)
+                .collect(),
+            draft.editing.map(MenuItem::EditProfile),
+        ),
+        MenuScreen::ProfileActions(_) => {
+            MenuList::new(vec![MenuItem::RenameProfile, MenuItem::DeleteProfile], None)
+        }
+        MenuScreen::DeleteProfile(_) => {
+            MenuList::new(vec![MenuItem::KeepProfile, MenuItem::ConfirmDelete], None)
+        }
+        MenuScreen::NameProfile(_) | MenuScreen::RenameProfile(_) => {
+            MenuList::new(Vec::new(), None)
+        }
         MenuScreen::PickColor(_) => MenuList::new(
             tuning
                 .palette()
@@ -559,7 +639,7 @@ fn choose(
                 .opponent
                 .ok_or_else(|| BevyError::from("a profile picked before the opponent"))?;
             draft.set_player(seat, player);
-            draft.created = None;
+            draft.cursor_profile = None;
             match opponent.seat_after(seat) {
                 Some(next) => Outcome::Show(MenuScreen::PickProfile(next)),
                 None => Outcome::Play(draft.match_config()?),
@@ -572,7 +652,27 @@ fn choose(
                 .new_name
                 .take()
                 .ok_or_else(|| BevyError::from("a colour picked before a name was typed"))?;
-            draft.created = Some(profiles.create(name, color)?);
+            draft.cursor_profile = Some(profiles.create(name, color)?);
+            Outcome::Show(MenuScreen::PickProfile(seat))
+        }
+        MenuItem::EditProfiles => Outcome::Show(MenuScreen::EditProfiles(seat()?)),
+        MenuItem::EditProfile(id) => {
+            draft.editing = Some(id);
+            Outcome::Show(MenuScreen::ProfileActions(seat()?))
+        }
+        MenuItem::RenameProfile => Outcome::Show(MenuScreen::RenameProfile(seat()?)),
+        MenuItem::DeleteProfile => Outcome::Show(MenuScreen::DeleteProfile(seat()?)),
+        MenuItem::KeepProfile => Outcome::Show(MenuScreen::ProfileActions(seat()?)),
+        MenuItem::ConfirmDelete => {
+            let seat = seat()?;
+            let id = draft.editing()?;
+            profiles
+                .remove(id)
+                .ok_or_else(|| BevyError::from(format!("deleting {id:?}, which no profile has")))?;
+            draft.editing = None;
+            if draft.cursor_profile == Some(id) {
+                draft.cursor_profile = None;
+            }
             Outcome::Show(MenuScreen::PickProfile(seat))
         }
     })

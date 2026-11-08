@@ -20,7 +20,7 @@ use bevy::ui::widget::Text;
 use bevy::ui::{AlignItems, BorderColor, Node};
 use common::tap;
 use pong::ui::menu::name_entry::NameField;
-use pong::ui::menu::view::{MenuRow, MenuScreenRoot, SeatCue};
+use pong::ui::menu::view::{MenuHeading, MenuRow, MenuScreenRoot, SeatCue};
 use pong::ui::menu::{MenuItem, MenuList, MenuPlugin, MenuScreen};
 use pong_core::domain::{
     Controller, Difficulty, MatchConfig, Player, ProfileId, Seat, SeatPlayers,
@@ -241,6 +241,7 @@ fn the_right_seat_is_not_offered_the_left_seats_profile_and_both_get_it_in_the_m
             MenuItem::Player(Player::Profile(ZOE)),
             MenuItem::Player(Player::Profile(MAX)),
             MenuItem::NewProfile,
+            MenuItem::EditProfiles,
         ]
     );
     pick(&mut app, MenuItem::Player(Player::Profile(ZOE)), LEFT);
@@ -250,6 +251,7 @@ fn the_right_seat_is_not_offered_the_left_seats_profile_and_both_get_it_in_the_m
             MenuItem::Player(Player::Guest),
             MenuItem::Player(Player::Profile(MAX)),
             MenuItem::NewProfile,
+            MenuItem::EditProfiles,
         ]
     );
     pick(&mut app, MenuItem::Player(Player::Profile(MAX)), RIGHT);
@@ -608,4 +610,142 @@ fn the_name_screen_sits_on_its_seats_half_without_a_key_cue() {
     to_the_left_name_screen(&mut app);
     assert_eq!(screen_alignment(&mut app), AlignItems::FlexStart);
     assert_eq!(seat_cue(&mut app), Vec::<String>::new());
+}
+
+/// From the main menu to the left seat's profile list, against the computer.
+fn to_the_left_profile_list(app: &mut App) {
+    pick(app, MenuItem::Play, LEFT);
+    pick(app, MenuItem::Computer(Difficulty::OneStar), LEFT);
+    pick(app, MenuItem::PointsToWin(points(10)), LEFT);
+    assert_eq!(screen(app), MenuScreen::PickProfile(Seat::Left));
+}
+
+/// From the left seat's profile list to the choice of what to do with `id`.
+fn to_the_actions_for(app: &mut App, id: ProfileId) {
+    to_the_left_profile_list(app);
+    pick(app, MenuItem::EditProfiles, LEFT);
+    assert_eq!(screen(app), MenuScreen::EditProfiles(Seat::Left));
+    pick(app, MenuItem::EditProfile(id), LEFT);
+    assert_eq!(screen(app), MenuScreen::ProfileActions(Seat::Left));
+    assert_eq!(
+        list(app).items(),
+        [MenuItem::RenameProfile, MenuItem::DeleteProfile]
+    );
+}
+
+fn profile_names(app: &App) -> Vec<String> {
+    app.world()
+        .resource::<Profiles>()
+        .as_slice()
+        .iter()
+        .map(|profile| profile.name().as_str().to_owned())
+        .collect()
+}
+
+fn saved_profile_names(app: &App) -> Vec<String> {
+    let file = app.world().resource::<SavePaths>().profiles_file();
+    decode_profiles(&std::fs::read_to_string(file).expect("profiles written"))
+        .expect("decodes")
+        .as_slice()
+        .iter()
+        .map(|profile| profile.name().as_str().to_owned())
+        .collect()
+}
+
+fn heading(app: &mut App) -> Vec<String> {
+    let mut query = app.world_mut().query_filtered::<&Text, With<MenuHeading>>();
+    query.iter(app.world()).map(|text| text.0.clone()).collect()
+}
+
+/// Spec 1.6.3 SHOULD: rename and delete reachable from profile select.
+#[test]
+fn edit_is_offered_below_new_only_when_the_seat_has_a_profile_to_edit() {
+    let mut app = menu_app();
+    to_the_left_profile_list(&mut app);
+    assert_eq!(
+        list(&app).items(),
+        [MenuItem::Player(Player::Guest), MenuItem::NewProfile]
+    );
+}
+
+#[test]
+fn a_profile_renamed_from_profile_select_shows_there_and_is_saved() {
+    let mut app = menu_app_with_zoe_and_max();
+    to_the_actions_for(&mut app, MAX);
+    pick(&mut app, MenuItem::RenameProfile, LEFT);
+    assert_eq!(screen(&app), MenuScreen::RenameProfile(Seat::Left));
+    assert_eq!(name_field(&mut app).value().to_string(), "Max");
+    type_name(&mut app, "Maxi");
+    tap(&mut app, KeyCode::Enter);
+    assert_eq!(screen(&app), MenuScreen::PickProfile(Seat::Left));
+    assert_eq!(under_cursor(&app), MenuItem::Player(Player::Profile(MAX)));
+    assert_eq!(profile_names(&app), ["Zoë", "Maxi"]);
+    frame(&mut app);
+    assert_eq!(saved_profile_names(&app), ["Zoë", "Maxi"]);
+}
+
+#[test]
+fn escape_while_renaming_keeps_the_name() {
+    let mut app = menu_app_with_zoe_and_max();
+    to_the_actions_for(&mut app, MAX);
+    pick(&mut app, MenuItem::RenameProfile, LEFT);
+    type_name(&mut app, "Maxi");
+    tap(&mut app, KeyCode::Escape);
+    assert_eq!(screen(&app), MenuScreen::ProfileActions(Seat::Left));
+    assert_eq!(profile_names(&app), ["Zoë", "Max"]);
+}
+
+/// Decision 2: a habit of confirming loses nothing.
+#[test]
+fn delete_asks_first_with_no_under_the_cursor_and_no_or_back_keeps_the_profile() {
+    let mut app = menu_app_with_zoe_and_max();
+    to_the_actions_for(&mut app, MAX);
+    pick(&mut app, MenuItem::DeleteProfile, LEFT);
+    assert_eq!(screen(&app), MenuScreen::DeleteProfile(Seat::Left));
+    assert_eq!(heading(&mut app), ["Delete Max?"]);
+    assert_eq!(
+        list(&app).items(),
+        [MenuItem::KeepProfile, MenuItem::ConfirmDelete]
+    );
+    assert_eq!(under_cursor(&app), MenuItem::KeepProfile);
+    tap(&mut app, LEFT_CONFIRM);
+    assert_eq!(screen(&app), MenuScreen::ProfileActions(Seat::Left));
+    pick(&mut app, MenuItem::DeleteProfile, LEFT);
+    tap(&mut app, LEFT_BACK);
+    assert_eq!(screen(&app), MenuScreen::ProfileActions(Seat::Left));
+    assert_eq!(profile_names(&app), ["Zoë", "Max"]);
+}
+
+#[test]
+fn a_profile_deleted_after_yes_is_gone_from_the_list_and_the_file() {
+    let mut app = menu_app_with_zoe_and_max();
+    to_the_actions_for(&mut app, MAX);
+    pick(&mut app, MenuItem::DeleteProfile, LEFT);
+    pick(&mut app, MenuItem::ConfirmDelete, LEFT);
+    assert_eq!(screen(&app), MenuScreen::PickProfile(Seat::Left));
+    assert_eq!(
+        list(&app).items(),
+        [
+            MenuItem::Player(Player::Guest),
+            MenuItem::Player(Player::Profile(ZOE)),
+            MenuItem::NewProfile,
+            MenuItem::EditProfiles,
+        ]
+    );
+    frame(&mut app);
+    assert_eq!(saved_profile_names(&app), ["Zoë"]);
+}
+
+/// Decision 5: the right seat cannot edit the left seat's pick.
+#[test]
+fn the_other_seats_pick_cannot_be_edited() {
+    let mut app = menu_app_with_zoe_and_max();
+    pick(&mut app, MenuItem::Play, LEFT);
+    pick(&mut app, MenuItem::Friend, LEFT);
+    pick(&mut app, MenuItem::PointsToWin(points(10)), LEFT);
+    pick(&mut app, MenuItem::Player(Player::Profile(ZOE)), LEFT);
+    pick(&mut app, MenuItem::EditProfiles, RIGHT);
+    assert_eq!(list(&app).items(), [MenuItem::EditProfile(MAX)]);
+    tap(&mut app, KeyCode::ArrowLeft);
+    assert_eq!(screen(&app), MenuScreen::PickProfile(Seat::Right));
 }

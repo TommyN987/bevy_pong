@@ -3,6 +3,17 @@
 [profile.default]
 slow-timeout = { period = "30s", terminate-after = 1 }
 
+# The crash tests force a panic whose hook writes a full backtrace, read from a
+# 500 MB test binary; on the first run after a rebuild that read is cold and has
+# passed 30 s twice (phase 8 report). They get 90 s; the soak keeps its 30 s.
+[[profile.default.overrides]]
+filter = "binary_id(pong::crash)"
+slow-timeout = { period = "30s", terminate-after = 3 }
+
 [profile.ci]
 fail-fast = false
 slow-timeout = { period = "30s", terminate-after = 1 }
+
+[[profile.ci.overrides]]
+filter = "binary_id(pong::crash)"
+slow-timeout = { period = "30s", terminate-after = 3 }
