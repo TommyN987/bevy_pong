@@ -15,7 +15,7 @@ use bevy::state::condition::in_state;
 use bevy::state::state::{NextState, OnEnter, OnTransition, State};
 use bevy::time::{Time, Timer, TimerMode};
 
-use crate::domain::{MatchConfig, MatchEnded, PointScored, Random, Serve, SimFault};
+use crate::domain::{BallHitPaddle, MatchConfig, MatchEnded, PointScored, Random, Serve, SimFault};
 use crate::features::ball::{Ball, Position};
 use crate::features::tuning::Tuning;
 use crate::flow::phases::{BallInPlay, FixedStepPhase};
@@ -35,6 +35,7 @@ impl Plugin for RulesPlugin {
             // reader here, as ball registers the `Serve` that rules writes.
             .add_message::<SimFault>()
             .init_resource::<Score>()
+            .init_resource::<Rally>()
             .init_resource::<MatchControl>()
             .add_systems(OnEnter(AppState::InMatch), begin_match)
             .add_systems(OnEnter(MatchState::Countdown), begin_countdown)
@@ -67,7 +68,7 @@ impl Plugin for RulesPlugin {
             )
             .add_systems(
                 FixedUpdate,
-                (score_goal_crossings, end_match_at_target)
+                (count_rally_hits, score_goal_crossings, end_match_at_target)
                     .chain()
                     .in_set(FixedStepPhase::Rules)
                     .in_set(BallInPlay),
@@ -121,8 +122,14 @@ impl MatchControl {
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 struct PausedFrom(MatchState);
 
-fn begin_match(mut commands: Commands, mut random: ResMut<Random>, mut score: ResMut<Score>) {
+fn begin_match(
+    mut commands: Commands,
+    mut random: ResMut<Random>,
+    mut score: ResMut<Score>,
+    mut rally: ResMut<Rally>,
+) {
     *score = Score::default();
+    *rally = Rally::default();
     let toward = if random.next_f32_in(0.0, 1.0) < 0.5 {
         Side::Left
     } else {
@@ -131,7 +138,11 @@ fn begin_match(mut commands: Commands, mut random: ResMut<Random>, mut score: Re
     commands.insert_resource(NextServeToward(toward));
 }
 
-fn begin_countdown(mut commands: Commands, tuning: Res<Tuning>) {
+/// Every serve follows a countdown, the heal's restart included (spec
+/// 1.4.7), so a new rally starts here. A resumed countdown also lands here;
+/// its ball is back on the centre spot, so no rally was under way.
+fn begin_countdown(mut commands: Commands, tuning: Res<Tuning>, mut rally: ResMut<Rally>) {
+    rally.hits = 0;
     commands.insert_resource(StateTimer(Timer::new(
         tuning.match_flow().countdown(),
         TimerMode::Once,
@@ -279,6 +290,7 @@ fn score_goal_crossings(
 fn end_match_at_target(
     config: Res<MatchConfig>,
     score: Res<Score>,
+    rally: Res<Rally>,
     mut ended: MessageWriter<MatchEnded>,
     mut next: ResMut<NextState<MatchState>>,
 ) {
@@ -286,8 +298,47 @@ fn end_match_at_target(
         return;
     }
     if let Some(winner) = score.winner(config.points_to_win) {
-        ended.write(MatchEnded { winner });
+        ended.write(MatchEnded {
+            winner,
+            longest_rally: rally.longest,
+        });
         next.set(MatchState::MatchOver);
+    }
+}
+
+/// Paddle hits in the rally in play, and the most in any rally this match
+/// (plan 7.4): the "longest rally" record (spec 1.4.9) and, at C1, the
+/// meter's driver. A rally runs from a serve to the point that ends it;
+/// wall bounces do not count.
+///
+/// Invariant: `longest >= hits`. Both stop at `u32::MAX` rather than wrap.
+#[derive(Resource, Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct Rally {
+    hits: u32,
+    longest: u32,
+}
+
+impl Rally {
+    /// Paddle hits in the rally in play, or in the one just finished until
+    /// the next countdown.
+    #[must_use]
+    pub const fn hits(self) -> u32 {
+        self.hits
+    }
+
+    /// The most paddle hits in any rally of this match.
+    #[must_use]
+    pub const fn longest(self) -> u32 {
+        self.longest
+    }
+}
+
+/// Counts this step's paddle hits, before scoring, so a hit in the step that
+/// ends the match is in the longest rally the match reports.
+fn count_rally_hits(mut hits: MessageReader<BallHitPaddle>, mut rally: ResMut<Rally>) {
+    for _ in hits.read() {
+        rally.hits = rally.hits.saturating_add(1);
+        rally.longest = rally.longest.max(rally.hits);
     }
 }
 
@@ -335,16 +386,18 @@ mod tests {
     use bevy::ecs::message::Messages;
     use bevy::math::Vec2;
 
-    use super::{MatchControl, MatchState, Score};
+    use super::{MatchControl, MatchState, Rally, Score};
     use crate::domain::{
-        Controller, MatchConfig, MatchEnded, PointScored, Seat, SeatPlayers, Serve, SimFault,
+        BallHitPaddle, BallHitWall, Controller, MatchConfig, MatchEnded, PointScored, Seat,
+        SeatPlayers, Serve, SimFault,
     };
     use crate::features::tuning::Tuning;
     use crate::kernel::geometry::Side;
     use crate::kernel::test_support::assert_vec_near;
     use crate::testing::{
         FrameLength, ball_state, boot, enter_match, fixed_timestep, frame, headless_app,
-        match_state, place_ball, record, run_until, set_frame_length, start_match, take_recorded,
+        leave_match, match_state, place_ball, record, run_until, set_frame_length, start_match,
+        take_recorded,
     };
 
     /// The most whole fixed steps one frame can run at 60 Hz (see
@@ -442,7 +495,10 @@ mod tests {
         frame(&mut app);
         assert_eq!(
             take_recorded::<MatchEnded>(&mut app),
-            vec![MatchEnded { winner: Side::Left }]
+            vec![MatchEnded {
+                winner: Side::Left,
+                longest_rally: 0
+            }]
         );
         frame(&mut app);
         assert_eq!(match_state(&app), MatchState::MatchOver);
@@ -502,7 +558,10 @@ mod tests {
         assert_eq!(match_state(&app), MatchState::MatchOver);
         assert_eq!(
             take_recorded::<MatchEnded>(&mut app),
-            vec![MatchEnded { winner: Side::Left }]
+            vec![MatchEnded {
+                winner: Side::Left,
+                longest_rally: 0
+            }]
         );
         take_recorded::<Serve>(&mut app);
         for _ in 0..200 {
@@ -718,5 +777,129 @@ mod tests {
         frame(&mut app);
         frame(&mut app);
         assert_eq!(match_state(&app), MatchState::MatchOver);
+    }
+
+    /// Paddle hits as physics reports them, without a ball having to make them.
+    fn report_paddle_hits(app: &mut App, sides: &[Side]) {
+        let mut hits = app.world_mut().resource_mut::<Messages<BallHitPaddle>>();
+        for &side in sides {
+            hits.write(BallHitPaddle { side });
+        }
+    }
+
+    fn rally(app: &App) -> Rally {
+        *app.world().resource::<Rally>()
+    }
+
+    /// Plan 7.4: a rally counts paddle hits, not wall bounces.
+    #[test]
+    fn a_rally_counts_paddle_hits_and_not_wall_bounces() {
+        let mut app = recording_app(1);
+        start_match(&mut app, two_humans_to(ten()));
+        report_paddle_hits(&mut app, &[Side::Left, Side::Right]);
+        app.world_mut()
+            .resource_mut::<Messages<BallHitWall>>()
+            .write(BallHitWall);
+        frame(&mut app);
+        assert_eq!((rally(&app).hits(), rally(&app).longest()), (2, 2));
+    }
+
+    #[test]
+    fn a_countdown_starts_a_new_rally_and_the_longest_is_kept() {
+        let mut app = recording_app(1);
+        start_match(&mut app, two_humans_to(ten()));
+        report_paddle_hits(&mut app, &[Side::Left, Side::Right, Side::Left]);
+        frame(&mut app);
+        ball_out_past_the_right_goal(&mut app);
+        run_until(
+            &mut app,
+            |app| match_state(app) == MatchState::Countdown,
+            1_000,
+            "no countdown after the point",
+        );
+        assert_eq!((rally(&app).hits(), rally(&app).longest()), (0, 3));
+        run_until(&mut app, playing, 1_000, "the countdown never ended");
+        report_paddle_hits(&mut app, &[Side::Right]);
+        frame(&mut app);
+        assert_eq!((rally(&app).hits(), rally(&app).longest()), (1, 3));
+    }
+
+    #[test]
+    fn a_pause_and_resume_keeps_the_rally_going() {
+        let mut app = recording_app(1);
+        start_match(&mut app, two_humans_to(ten()));
+        report_paddle_hits(&mut app, &[Side::Left, Side::Right]);
+        frame(&mut app);
+        app.world_mut()
+            .resource_mut::<MatchControl>()
+            .request_pause();
+        run_until(
+            &mut app,
+            |app| match_state(app) == MatchState::Paused,
+            10,
+            "never paused",
+        );
+        app.world_mut()
+            .resource_mut::<MatchControl>()
+            .request_resume();
+        run_until(&mut app, playing, 10, "never resumed");
+        assert_eq!(rally(&app).hits(), 2);
+    }
+
+    #[test]
+    fn a_new_match_starts_with_no_rallies() {
+        let mut app = recording_app(1);
+        start_match(&mut app, two_humans_to(ten()));
+        report_paddle_hits(&mut app, &[Side::Left, Side::Right]);
+        frame(&mut app);
+        leave_match(&mut app);
+        enter_match(&mut app, two_humans_to(ten()));
+        assert_eq!(rally(&app), Rally::default());
+    }
+
+    /// Plan 7.4 done-condition: the longest rally is readable when
+    /// `MatchEnded` fires, a hit in the winning step included.
+    #[test]
+    fn a_hit_in_the_step_that_wins_counts_in_the_longest_rally_the_match_reports() {
+        let mut app = recording_app(1);
+        start_match(&mut app, two_humans_to(one()));
+        report_paddle_hits(
+            &mut app,
+            &[Side::Left, Side::Right, Side::Left, Side::Right],
+        );
+        ball_out_past_the_right_goal(&mut app);
+        frame(&mut app);
+        assert_eq!(
+            take_recorded::<MatchEnded>(&mut app),
+            vec![MatchEnded {
+                winner: Side::Left,
+                longest_rally: 4
+            }]
+        );
+    }
+
+    /// The same, with paddle hits physics makes: the one rally of a match
+    /// to one point is its longest.
+    #[test]
+    fn the_longest_rally_a_match_reports_is_its_paddle_hits() {
+        let mut app = recording_app(1);
+        record::<BallHitPaddle>(&mut app);
+        start_match(&mut app, two_humans_to(one()));
+        take_recorded::<BallHitPaddle>(&mut app);
+        // Into the right paddle, a little above its centre: it comes back at
+        // an angle, and the idle paddles miss it sooner or later.
+        place_ball(&mut app, Vec2::new(72.0, 2.0), Vec2::new(200.0, 0.0));
+        run_until(
+            &mut app,
+            |app| match_state(app) == MatchState::MatchOver,
+            10_000,
+            "the match never ended",
+        );
+        let hits = u32::try_from(take_recorded::<BallHitPaddle>(&mut app).len())
+            .expect("a count of hits fits in u32");
+        assert!(hits >= 1, "no paddle was hit");
+        let ended = take_recorded::<MatchEnded>(&mut app);
+        assert_eq!(ended.len(), 1);
+        assert_eq!(ended[0].longest_rally, hits);
     }
 }

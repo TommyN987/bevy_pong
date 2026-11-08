@@ -225,7 +225,8 @@ fn load_saves(
 }
 
 /// Credits a finished match to the profiles that played it (spec 1.4.9): a
-/// win to the winning side's player, a loss to the losing side's. A Guest or
+/// win to the winning side's player, a loss to the losing side's, and to
+/// both the match's longest rally if it beats their record (plan 7.4). A Guest or
 /// a computer side records nothing; one profile on both seats records
 /// nothing at all (decided 2026-11-08). Runs before the match-end write, so
 /// the file holds the result.
@@ -239,7 +240,11 @@ fn record_match_result(
     config: Option<Res<MatchConfig>>,
     mut profiles: ResMut<Profiles>,
 ) -> Result<(), BevyError> {
-    let Some(&MatchEnded { winner }) = ended.read().last() else {
+    let Some(&MatchEnded {
+        winner,
+        longest_rally,
+    }) = ended.read().last()
+    else {
         return Ok(());
     };
     let Some(config) = config else {
@@ -264,9 +269,11 @@ fn record_match_result(
     }
     if let Some(records) = winner_id.and_then(|id| profiles.records_mut(id)) {
         records.add_win();
+        records.record_rally(longest_rally);
     }
     if let Some(records) = loser_id.and_then(|id| profiles.records_mut(id)) {
         records.add_loss();
+        records.record_rally(longest_rally);
     }
     Ok(())
 }
@@ -312,13 +319,15 @@ mod tests {
 
     use bevy::app::App;
     use bevy::color::Srgba;
+    use bevy::ecs::message::Messages;
     use bevy::math::Vec2;
 
     use super::document::{decode_profiles, decode_settings, encode_profiles};
     use super::io::SavePaths;
     use super::model::{Profile, ProfileName, Profiles, Records, Settings, Volume, WindowMode};
     use crate::domain::{
-        Controller, Difficulty, MatchConfig, Notice, Player, ProfileId, Seat, SeatPlayers,
+        BallHitPaddle, Controller, Difficulty, MatchConfig, Notice, Player, ProfileId, Seat,
+        SeatPlayers,
     };
     use crate::features::tuning::Tuning;
     use crate::flow::states::{AppState, MatchState};
@@ -350,6 +359,17 @@ mod tests {
     /// One match to a single point that the left side wins, from the menu
     /// back to the menu.
     fn left_side_wins(app: &mut App, left: Controller, right: Controller, players: SeatPlayers) {
+        left_side_wins_after_a_rally_of(app, 0, (left, right), players);
+    }
+
+    /// As [`left_side_wins`], the match's one rally `hits` paddle hits long,
+    /// reported as physics reports them.
+    fn left_side_wins_after_a_rally_of(
+        app: &mut App,
+        hits: u32,
+        (left, right): (Controller, Controller),
+        players: SeatPlayers,
+    ) {
         start_match(
             app,
             MatchConfig {
@@ -359,6 +379,10 @@ mod tests {
                 points_to_win: NonZeroU8::MIN,
             },
         );
+        let mut reported = app.world_mut().resource_mut::<Messages<BallHitPaddle>>();
+        for _ in 0..hits {
+            reported.write(BallHitPaddle { side: Side::Left });
+        }
         let goal = app.world().resource::<Tuning>().arena().goal_x(Side::Right);
         place_ball(app, Vec2::new(goal + 2.0, 0.0), Vec2::new(60.0, 0.0));
         run_until(
@@ -708,5 +732,47 @@ mod tests {
             Controller::Human(Seat::Right),
             seats(Player::Profile(ZOE), Player::Profile(ProfileId(9))),
         );
+    }
+
+    /// Spec 1.4.9 "longest rally": both children kept the rally going.
+    #[test]
+    fn both_players_keep_the_matchs_longest_rally_and_a_shorter_one_never_lowers_it() {
+        let mut app = zoe_and_max();
+        let humans = (
+            Controller::Human(Seat::Left),
+            Controller::Human(Seat::Right),
+        );
+        let zoe_vs_max = seats(Player::Profile(ZOE), Player::Profile(MAX));
+        left_side_wins_after_a_rally_of(&mut app, 5, humans, zoe_vs_max);
+        assert_eq!(records(&app, ZOE).longest_rally, 5);
+        assert_eq!(records(&app, MAX).longest_rally, 5);
+        left_side_wins_after_a_rally_of(&mut app, 3, humans, zoe_vs_max);
+        assert_eq!(records(&app, ZOE).longest_rally, 5);
+        assert_eq!(records(&app, MAX).longest_rally, 5);
+    }
+
+    #[test]
+    fn a_rally_against_a_guest_or_the_computer_counts_for_the_child_alone() {
+        let mut app = zoe_and_max();
+        left_side_wins_after_a_rally_of(
+            &mut app,
+            4,
+            (
+                Controller::Human(Seat::Left),
+                Controller::Human(Seat::Right),
+            ),
+            seats(Player::Profile(ZOE), Player::Guest),
+        );
+        left_side_wins_after_a_rally_of(
+            &mut app,
+            6,
+            (
+                Controller::Ai(Difficulty::OneStar),
+                Controller::Human(Seat::Right),
+            ),
+            seats(Player::Guest, Player::Profile(MAX)),
+        );
+        assert_eq!(records(&app, ZOE).longest_rally, 4);
+        assert_eq!(records(&app, MAX).longest_rally, 6);
     }
 }

@@ -101,6 +101,13 @@ impl Records {
     pub const fn add_loss(&mut self) {
         self.losses = self.losses.saturating_add(1);
     }
+
+    /// Keeps the longer of the recorded rally and `hits`.
+    pub const fn record_rally(&mut self, hits: u32) {
+        if hits > self.longest_rally {
+            self.longest_rally = hits;
+        }
+    }
 }
 
 /// One child's profile. The colour is the value the child picked, not a
@@ -400,5 +407,15 @@ mod tests {
         full.add_win();
         full.add_loss();
         assert_eq!((full.wins, full.losses), (u32::MAX, u32::MAX));
+    }
+
+    #[test]
+    fn a_rally_record_keeps_the_longer_rally() {
+        let mut records = Records::default();
+        records.record_rally(5);
+        records.record_rally(3);
+        assert_eq!(records.longest_rally, 5);
+        records.record_rally(8);
+        assert_eq!(records.longest_rally, 8);
     }
 }

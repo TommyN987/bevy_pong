@@ -38,7 +38,7 @@ One emitter means one place to look when a message appears.
 | `BallHitPaddle { side }` | physics | The ball bounced off that side's paddle. |
 | `BallHitWall` | physics | The ball bounced off the top or bottom wall. |
 | `PointScored { scorer }` | rules | A goal line was crossed. |
-| `MatchEnded { winner }` | rules | A side reached the target. |
+| `MatchEnded { winner, longest_rally }` | rules | A side reached the target; `longest_rally` is the match's most paddle hits in one rally, taken then (plan 7.4). |
 | `SimFault` | sanity | An invariant broke; rules restarts the rally (spec 1.4.7). Registered by rules, its reader. |
 | `Notice { text }` | tuning, persistence | One sentence for the shell's notice line. |
 
