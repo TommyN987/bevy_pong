@@ -141,7 +141,7 @@ Owns every `MatchState` transition (ADR 0003): scoring, serve timing, pause, mat
 | `request_serve` | `OnTransition { Countdown → Playing }` | Writes `Serve`. |
 | `restart_rally_after_fault` | `Update`, after the timers, while the paddles move | On any `SimFault`, requests `Countdown` unless the match is already ending. |
 | `apply_pause_requests` | `Update`, after the timers and the heal | Acts on `MatchControl`. |
-| `score_goal_crossings` → `end_match_at_target` | Rules, chained | Award the point, write `PointScored`, request `PointScored`; then, if `Score` changed and a side reached the target, write `MatchEnded` and request `MatchOver`. The later `set` wins. |
+| `count_rally_hits` → `score_goal_crossings` → `end_match_at_target` | Rules, chained | Count this step's `BallHitPaddle` into `Rally`; award the point, write `PointScored`, request `PointScored`; then, if `Score` changed and a side reached the target, write `MatchEnded` with the match's longest rally and request `MatchOver`. The later `set` wins. Counting first puts a hit in the winning step into the reported rally. |
 
 Timers run in `Update` because the phases run only while `Playing`;
 a countdown must advance while not playing.
@@ -161,6 +161,10 @@ While a transition is pending, the request waits a frame.
 `Paused` with no `PausedFrom` is an error to the error handler: something else entered `Paused`.
 
 `Score` is public for the shell's display.
+
+`Rally` (plan 7.4) counts paddle hits from a serve to the point that ends it, and keeps the most in any rally of the match.
+Entering `Countdown` starts a new rally: every serve follows a countdown, the heal's restart included; a pause and resume does not.
+Entering a match clears both. It is public for C1's meter and a HUD; records read the snapshot in `MatchEnded`.
 
 ## ai
 
@@ -209,7 +213,7 @@ Profiles and settings kept between runs (spec 1.4.9); the file format is ADR 000
 | System | Runs | Does |
 |---|---|---|
 | `load_saves` | `OnEnter(Boot)` | Reads both files and inserts `Profiles`, `Settings`, and the private `SaveState`; the Boot gate waits for them (spec 1.4.10). |
-| `record_match_result` | `Update`, on `MatchEnded` | A win to the winning side's player, a loss to the loser's, through `MatchConfig::player_on` (ADR 0008). Guest and computer sides record nothing; one profile on both seats records nothing. An unknown profile id is an error. |
+| `record_match_result` | `Update`, on `MatchEnded` | A win to the winning side's player, a loss to the loser's, and to both the match's longest rally if it beats their record, through `MatchConfig::player_on` (ADR 0008). Guest and computer sides record nothing; one profile on both seats records nothing. An unknown profile id is an error. |
 | `write_saves_at_match_end` | `Update`, on `MatchEnded`, after `record_match_result` | Writes each writable file whose encoding differs from what it last wrote. |
 
 Load policy, per file: missing starts fresh; corrupt, newer, or unreadable is renamed to `<name>.<seconds>.bak` and the game starts fresh with one `Notice`;

@@ -194,6 +194,9 @@ pub struct PointScored {
 pub struct MatchEnded {
     /// The side that won the match.
     pub winner: Side,
+    /// The most paddle hits in any rally of the match (plan 7.4), taken when
+    /// the match ended, so a reader never depends on when it reads.
+    pub longest_rally: u32,
 }
 
 /// The sanity phase found the simulation broken (spec 1.4.7). Emitted by
@@ -298,8 +301,14 @@ mod tests {
             vec![PointScored { scorer: Side::Left }]
         );
         assert_eq!(
-            round_trip(MatchEnded { winner: Side::Left }),
-            vec![MatchEnded { winner: Side::Left }]
+            round_trip(MatchEnded {
+                winner: Side::Left,
+                longest_rally: 7
+            }),
+            vec![MatchEnded {
+                winner: Side::Left,
+                longest_rally: 7
+            }]
         );
         assert_eq!(
             round_trip(Notice {

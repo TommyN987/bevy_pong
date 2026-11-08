@@ -13,6 +13,7 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) and [m1-plan.md](m1-plan.md
 | plan 7.2, tdd | The green step for the first-start test built the whole load policy (set-aside, stuck, no `SavePaths`), not only what that test needed. Their tests followed, each checked against a deliberate break: no notice on set-aside, no notice without `SavePaths`, a stuck file treated as writable, and a notice on every failed write each fail their test. | This report. |
 | plan 7.2 | The dev entry's `log_notices` has no test, like its `log_score`: it only logs, and it leaves with the dev entry in plan 8.3. | This report. |
 | 1.3.3, 1.4.5, ADR 0002 | `MatchConfig` carries who each seat plays as; `ProfileId` moved to domain with `Player` and `SeatPlayers`; identifier types are outside the vocabulary cap. Chosen by the user over a separate persistence resource and over `Controller::Human { seat, player }`. | ADR 0008; ADR 0002, spec 1.3.3 and 1.4.5, architecture.md amended 2026-11-08. |
+| 1.3.2 | `MatchEnded` carries `longest_rally`, a snapshot of the match's longest rally, so its readers never depend on when they read the live `Rally` resource. Chosen by the user (2026-11-08). | Spec 1.3.2 amended 2026-11-08. |
 | CLAUDE.md non-negotiable 1 | `Alpha::with_alpha` (bevy_color) was written without a `bevy-api-check` round; the crate compiled against the pinned 0.20.1 source. | This report. |
 
 ## Decisions taken in this phase
@@ -30,3 +31,6 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) and [m1-plan.md](m1-plan.md
 - The read-only-directory tests rely on Unix permissions; run as root they would pass without testing anything. Nothing here runs tests as root.
 - Plan 7.3 (2026-11-08): results are recorded on `MatchEnded`, before the match-end write: a win for the winning side's player, a loss for the loser's; Guest and computer sides record nothing; one profile on both seats records nothing (the user's call); an unknown profile id is the system's error, so dev panics and nothing is recorded. Counts saturate at their maximum.
 - The approved "reset players to Guest on leaving a match" was dropped with the separate resource it guarded (ADR 0008).
+- Plan 7.4 (2026-11-08, approved by the user): rules owns `Rally { hits, longest }`, counting `BallHitPaddle` in the Rules phase before scoring; entering `Countdown` starts a new rally, entering a match clears both; counts saturate. A pause and resume keeps the rally.
+- Both players' `longest_rally` records take the match's longest rally if it beats theirs: both children kept it going. Guest and computer sides record nothing; one profile on both seats records nothing, as for wins and losses.
+- A paddle hit and a goal cannot happen in one step with real physics, so the test of a hit in the winning step reports hits directly; a second test checks the reported rally against hits physics made.
