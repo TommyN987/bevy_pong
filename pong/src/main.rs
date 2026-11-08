@@ -6,7 +6,6 @@ use bevy::app::{App, AppExit, PluginGroup};
 use bevy::log::{info, warn};
 use bevy::window::WindowPlugin;
 use pong::crash::{self, CrashContext};
-use pong::dev_entry::{self, DevEntryPlugin};
 use pong::ports::{PortsPlugin, save_paths};
 use pong::ui::ScreensPlugin;
 use pong::views::ViewsPlugin;
@@ -20,23 +19,6 @@ compile_error!(
 );
 
 fn main() -> AppExit {
-    // Read before anything is built: building `DefaultPlugins` already opens
-    // the display and the GPU, and the log does not exist yet.
-    let dev_entry = if cfg!(feature = "dev") {
-        let args: Vec<String> = std::env::args_os()
-            .skip(1)
-            .map(|arg| arg.to_string_lossy().into_owned())
-            .collect();
-        match dev_entry::dev_match(&args) {
-            Ok(config) => Some(DevEntryPlugin { config }),
-            Err(error) => {
-                eprintln!("bevy_pong: {error}");
-                return AppExit::error();
-            }
-        }
-    } else {
-        None
-    };
     let seed = pong::seed::from_entropy();
     let dirs = AppDirs::from_env();
     let paths = dirs.as_ref().ok().map(save_paths::from_app_dirs);
@@ -69,10 +51,5 @@ fn main() -> AppExit {
         ScreensPlugin,
         WindowModePlugin,
     ));
-    // Compiled in every build, so lint and tests see it; added only in dev
-    // builds until the match screens replace it (plan 8.3).
-    if let Some(plugin) = dev_entry {
-        app.add_plugins(plugin);
-    }
     app.run()
 }

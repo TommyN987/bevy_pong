@@ -11,14 +11,13 @@ use bevy::input::ButtonInput;
 use bevy::input::keyboard::KeyCode;
 use bevy::input_focus::AutoFocus;
 use bevy::state::state::{NextState, State};
-use bevy::text::{
-    EditableText, EditableTextFilter, FontSize, TextColor, TextCursorStyle, TextFont,
-};
+use bevy::text::{EditableText, EditableTextFilter, TextColor, TextCursorStyle};
 use bevy::ui::{BorderColor, Node, UiRect, Val};
 use bevy::ui_widgets::TextInput;
 use pong_core::features::persistence::model::ProfileName;
 
 use super::{MatchDraft, MenuScreen};
+use crate::ui::style::font;
 
 /// Marks the name screen's text field.
 #[derive(Component, Debug, Default)]
@@ -47,10 +46,7 @@ pub(super) fn name_field(typed: Option<&ProfileName>) -> impl Bundle {
             ..Node::default()
         },
         BorderColor::all(Color::WHITE),
-        TextFont {
-            font_size: FontSize::Vh(6.0),
-            ..TextFont::default()
-        },
+        font(6.0),
         TextColor(Color::WHITE),
         TextInput,
         EditableText {

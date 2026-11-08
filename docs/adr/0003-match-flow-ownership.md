@@ -53,3 +53,4 @@ Amended by ADR 0004 (2026-11-07): the phases also run in `Countdown` and `PointS
 - Tuning validation can check `speed_cap / FIXED_HZ < arena.height − 2·radius` (plan 3.17).
 - Plan 3.12 through 3.14 implement this; plan 4.1 routes focus loss through `MatchControl`.
 - Amends `docs/architecture.md` (Simulation model, Boundaries, States) and spec 1.4.5 and 1.6.1.
+- Plan 8.3 (2026-11-08): the dev entry is gone, and the shell's pause screen asks through `MatchControl`. Escape pauses wherever the paddles move; Escape, the back key, or Play resumes, after a focus loss too. Its keys are read before the fixed steps, as the focus adapter's are, so rules acts on a request within the frame. Leaving a match, from the pause screen or `MatchOver`, is the shell's `AppState` transition to `Menu`; a match left early sends no `MatchEnded`, so nothing is recorded.

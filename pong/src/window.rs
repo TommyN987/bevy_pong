@@ -14,9 +14,9 @@ use bevy::ecs::query::With;
 use bevy::ecs::schedule::common_conditions::{resource_exists, resource_exists_and_changed};
 use bevy::ecs::schedule::{IntoScheduleConfigs, SystemCondition};
 use bevy::ecs::system::{Query, Res, ResMut};
-use bevy::input::ButtonInput;
 use bevy::input::common_conditions::input_just_pressed;
 use bevy::input::keyboard::KeyCode;
+use bevy::input::ButtonInput;
 use bevy::window::{CursorOptions, MonitorSelection, PrimaryWindow, Window, WindowMode};
 use pong_core::features::persistence::document::decode_settings;
 use pong_core::features::persistence::io::SavePaths;
@@ -24,7 +24,7 @@ use pong_core::features::persistence::load::peek;
 use pong_core::features::persistence::model::{Settings, WindowMode as SavedWindowMode};
 
 /// The window's title. A placeholder until the game has a name.
-pub const TITLE: &str = "bevy_pong";
+pub const TITLE: &str = "Rusty Pong";
 
 /// The application ID on Wayland and `WM_CLASS` on X11, which compositors
 /// match window rules against. Fixed at window creation.
@@ -150,7 +150,7 @@ mod tests {
 
     use pong_core::features::persistence::model::Settings;
 
-    use super::{APP_ID, TITLE, mode_to_apply, primary_cursor_options, primary_window, toggled};
+    use super::{mode_to_apply, primary_cursor_options, primary_window, toggled, APP_ID, TITLE};
 
     #[test]
     fn the_first_start_is_borderless_fullscreen_titled_and_without_a_pointer() {

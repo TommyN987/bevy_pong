@@ -4,7 +4,6 @@
 //! (docs/architecture.md, "Intra-crate structure": the shell mirrors core).
 
 pub mod crash;
-pub mod dev_entry;
 pub mod ports;
 pub mod seed;
 pub mod ui;

@@ -15,11 +15,13 @@ use bevy::ecs::schedule::common_conditions::resource_changed;
 use bevy::ecs::system::{Commands, Query, Res, ResMut};
 use bevy::state::state::OnEnter;
 use bevy::state::state_scoped::DespawnOnExit;
-use bevy::text::{FontSize, TextColor, TextFont};
+use bevy::text::TextColor;
 use bevy::ui::widget::Text;
 use bevy::ui::{JustifyContent, Node, PositionType, Val};
 use pong_core::domain::Notice;
 use pong_core::flow::states::AppState;
+
+use crate::ui::style::font;
 
 /// Collects every `Notice`, shows them on the menu, and forgets them when a
 /// match starts.
@@ -85,10 +87,7 @@ fn spawn_notice_line(mut commands: Commands, line: Res<NoticeLine>) {
         children![(
             NoticeText,
             Text::new(line.text()),
-            TextFont {
-                font_size: FontSize::Vh(3.0),
-                ..TextFont::default()
-            },
+            font(3.0),
             TextColor(NOTICE_COLOR),
         )],
     ));
