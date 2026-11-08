@@ -110,7 +110,7 @@ Exit: two people play Pong to ten on screen.
 Realizes spec 1.4.6. Depends on 3; parallel with 4.
 
 - **5.1 MUST** Mirror controller, three tuning entries. Done: zero-error returns every ball; large error misses over a seeded run.
-- **5.2 MUST** Dev entry gains a vs-computer variant. Done: a human beats one star and loses to three stars in a manual session.
+- **5.2 MUST** Dev entry gains a vs-computer variant. Done: a human beats one star and loses to three stars in a manual session. Manual session passed 2026-11-08: `just run --vs 1` won, `just run --vs 3` lost ([phase 5 report](m1-phase5-report.md)).
 
 ### 6. Sanity and heal
 Realizes spec 1.4.7. Depends on 3 and 5.

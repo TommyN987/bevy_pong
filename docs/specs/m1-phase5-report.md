@@ -27,4 +27,4 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) and [m1-plan.md](m1-plan.md
 
 ## Open findings outside phase 5
 
-- `kernel::collide::swept_circle_rect` (spec 1.2.3) reports a hit at time zero for a ball that starts exactly touching a face while moving away from it: `t_exit == 0` passes the `t_exit < 0.0` rejection. Found when a test placed the ball on the idle left paddle's contact line. In play this needs a step that ends exactly at contact, so it is unlikely. If it happened, the ball would register a second hit, gain speed twice, and get a new angle. Not changed; the user decides.
+- `kernel::collide::swept_circle_rect` (spec 1.2.3) reports a hit at time zero for a ball that starts exactly touching a face while moving away from it: `t_exit == 0` passes the `t_exit < 0.0` rejection. Found when a test placed the ball on the idle left paddle's contact line. In play this needs a step that ends exactly at contact, so it is unlikely. If it happened, the ball would register a second hit, gain speed twice, and get a new angle. Accepted as is by the user, 2026-11-08: the touching start is the documented case of a paddle moving onto the ball.
