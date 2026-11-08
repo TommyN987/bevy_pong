@@ -13,7 +13,7 @@ Obligation levels: MUST, SHOULD, MAY, WONT. Every item carries a done-condition.
 - A window focus event exists. [probable]
 - Bevy 0.19 ships an `EditableText` component for text entry. [confirmed] Amended 2026-11-08 (`bevy-api-check`, [phase 8 report](m1-phase8-report.md)): at 0.20.1 it takes keys only with the `TextInput` marker and input focus, and it does not hide them from `ButtonInput<KeyCode>`.
 - Bevy's built-in font draws printable ASCII only. [confirmed 2026-11-08, [phase 8 report](m1-phase8-report.md): the game embeds DejaVu Sans Bold]
-- Bevy's audio accepts an in-memory source built from bytes or a custom decodable source. [probable; verify in the first audio task]
+- Bevy's audio accepts an in-memory source built from bytes or a custom decodable source. [confirmed 2026-11-08, `bevy-api-check`, [phase 9 report](m1-phase9-report.md): the game's own `Decodable` asset hands rodio its samples; no file format, no new dependency]
 - cargo-nextest does not run doctests. [confirmed]
 - nextest supports per-test timeouts that fail the run. [probable]
 - GitHub Actions needs Ubuntu build dependencies for Bevy: pkg-config, libx11-dev, libasound2-dev, libudev-dev, libxkbcommon-x11-0, libwayland-dev. [confirmed, research]
@@ -163,7 +163,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 - **MUST** Name cap twelve characters; duplicates allowed. Done: thirteenth character rejected; two identical names coexist, by test.
 - **SHOULD** Rename and delete a profile. Done: both reachable from profile select. Amended 2026-11-08 (plan 8.4, the user's addition): also change its colour, from the same place.
 - **SHOULD** Text limited to single words or icons where a 9-year-old must read. Done: review at milestone close.
-- **MUST** Settings screen: volume, window mode only. Done: both change and persist.
+- **MUST** Settings screen: volume, window mode only. Done: both change and persist. Amended 2026-11-08 ([phase 9 report](m1-phase9-report.md)): every menu list shows at most six rows, following the cursor, with ▲ and ▼ where rows are hidden; at eleven rows, volume ran off the screen.
 
 ### 1.6.4 Audio
 

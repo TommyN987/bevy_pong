@@ -5,6 +5,8 @@ use bevy::DefaultPlugins;
 use bevy::app::{App, AppExit, PluginGroup};
 use bevy::log::{info, warn};
 use bevy::window::WindowPlugin;
+use pong::audio::SoundsPlugin;
+use pong::audio::synth::Synth;
 use pong::crash::{self, CrashContext};
 use pong::ports::{PortsPlugin, save_paths};
 use pong::ui::ScreensPlugin;
@@ -44,8 +46,11 @@ fn main() -> AppExit {
     }
     // Logged so a launch can be replayed from its seed.
     info!("core seed {seed}");
+    // `SoundsPlugin` after `DefaultPlugins`: it plays only if it finds Bevy's
+    // `AudioPlugin` already added.
     app.add_plugins((
         CorePlugins { seed },
+        SoundsPlugin(Synth),
         PortsPlugin,
         ViewsPlugin,
         ScreensPlugin,

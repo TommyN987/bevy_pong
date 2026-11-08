@@ -17,6 +17,7 @@
 //! asks first with No under the cursor.
 
 use std::num::NonZeroU8;
+use std::ops::Range;
 
 use bevy::app::{App, AppExit, Plugin, Update};
 use bevy::color::Srgba;
@@ -67,7 +68,7 @@ impl Plugin for MenuPlugin {
                     navigate_menu,
                     name_entry::confirm_name,
                     act_on_choice,
-                    view::mark_cursor.run_if(resource_changed::<MenuList>),
+                    view::follow_cursor.run_if(resource_changed::<MenuList>),
                 )
                     .chain()
                     .run_if(in_state(AppState::Menu)),
@@ -177,22 +178,35 @@ pub enum MenuItem {
     ConfirmDelete,
 }
 
-/// The current screen's rows and the cursor. Invariant: the cursor is on a
-/// row, or 0 on a screen without rows.
+/// The most rows a screen shows at once: each takes about a tenth of the
+/// screen's height, under the heading and the seat cue.
+pub const SHOWN_ROWS: usize = 6;
+
+/// The current screen's rows and the cursor. Invariants: the cursor is on a
+/// row, or 0 on a screen without rows; it is among the shown rows, which
+/// start at `first`.
 #[derive(Resource, Debug, Clone, PartialEq, Default)]
 pub struct MenuList {
     items: Vec<MenuItem>,
     cursor: usize,
+    first: usize,
 }
 
 impl MenuList {
     /// `items` with the cursor on `preselected`, or on the first row if it
-    /// is absent.
+    /// is absent; the shown rows put it in the middle, short of either end.
     fn new(items: Vec<MenuItem>, preselected: Option<MenuItem>) -> Self {
         let cursor = preselected
             .and_then(|wanted| items.iter().position(|&item| item == wanted))
             .unwrap_or(0);
-        Self { items, cursor }
+        let first = cursor
+            .saturating_sub(SHOWN_ROWS / 2)
+            .min(items.len().saturating_sub(SHOWN_ROWS));
+        Self {
+            items,
+            cursor,
+            first,
+        }
     }
 
     /// The rows, top to bottom.
@@ -207,16 +221,32 @@ impl MenuList {
         self.cursor
     }
 
-    /// The cursor one row up; it stays on the first row.
+    /// The cursor one row up; it stays on the first row. The shown rows
+    /// follow it one row up when it would leave them.
     const fn up(&mut self) {
         self.cursor = self.cursor.saturating_sub(1);
+        if self.cursor < self.first {
+            self.first = self.cursor;
+        }
     }
 
-    /// The cursor one row down; it stays on the last row.
+    /// The cursor one row down; it stays on the last row. The shown rows
+    /// follow it one row down when it would leave them.
     const fn down(&mut self) {
         if self.cursor + 1 < self.items.len() {
             self.cursor += 1;
         }
+        if self.cursor >= self.first + SHOWN_ROWS {
+            self.first = self.cursor + 1 - SHOWN_ROWS;
+        }
+    }
+
+    /// The rows on screen, top to bottom: at most [`SHOWN_ROWS`], the
+    /// cursor's among them.
+    #[must_use]
+    pub fn shown(&self) -> Range<usize> {
+        let end = self.items.len().min(self.first + SHOWN_ROWS);
+        self.first..end
     }
 
     fn under_cursor(&self) -> Option<MenuItem> {
