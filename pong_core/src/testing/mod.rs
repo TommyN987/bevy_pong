@@ -17,7 +17,7 @@
 use std::time::{Duration, Instant};
 
 use bevy::MinimalPlugins;
-use bevy::app::{App, FixedPostUpdate, FixedUpdate, PluginGroup};
+use bevy::app::{App, FixedPostUpdate, FixedUpdate, PluginGroup, PluginGroupBuilder};
 use bevy::asset::AssetPlugin;
 use bevy::ecs::message::{Message, MessageReader};
 use bevy::ecs::query::With;
@@ -44,11 +44,26 @@ use crate::flow::states::MatchState;
 ///
 /// Bevy's first frame has zero delta, so the first [`frame`] runs no fixed step.
 pub fn headless_app(seed: u64) -> App {
+    headless_app_with(seed, |core| core)
+}
+
+/// [`headless_app`] with the core plugin group adjusted before it is added:
+/// `|core| core.set(ErrorPolicyPlugin(ErrorPolicy::Release))` tests the
+/// release error policy; `|core| core.disable::<SanityPlugin>()` lets a test
+/// break an invariant on purpose. `adjust` receives the group with the dev
+/// policy already set.
+///
+/// # Panics
+/// If `adjust` sets or disables a plugin the group does not hold.
+pub fn headless_app_with(
+    seed: u64,
+    adjust: impl FnOnce(PluginGroupBuilder) -> PluginGroupBuilder,
+) -> App {
     let mut app = App::new();
     app.add_plugins((
         MinimalPlugins,
         AssetPlugin::default(),
-        CorePlugins { seed }.set(ErrorPolicyPlugin(ErrorPolicy::Dev)),
+        adjust(CorePlugins { seed }.set(ErrorPolicyPlugin(ErrorPolicy::Dev))),
     ));
     set_frame_length(&mut app, FrameLength::Steps(1));
     // Spec 1.5.3: systems with conflicting access and no declared order run in

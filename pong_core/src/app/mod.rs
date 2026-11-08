@@ -10,6 +10,7 @@ use crate::features::ball::BallPlugin;
 use crate::features::paddle::PaddlePlugin;
 use crate::features::physics::PhysicsPlugin;
 use crate::features::rules::RulesPlugin;
+use crate::features::sanity::SanityPlugin;
 use crate::features::seats::SeatsPlugin;
 use crate::features::tuning::TuningPlugin;
 use crate::flow::FlowPlugin;
@@ -53,6 +54,7 @@ impl PluginGroup for CorePlugins {
             .add(PhysicsPlugin)
             .add(RulesPlugin)
             .add(AiPlugin)
+            .add(SanityPlugin)
     }
 }
 
@@ -83,6 +85,7 @@ mod tests {
     use crate::features::paddle::PaddlePlugin;
     use crate::features::physics::PhysicsPlugin;
     use crate::features::rules::RulesPlugin;
+    use crate::features::sanity::SanityPlugin;
     use crate::features::seats::SeatsPlugin;
     use crate::features::tuning::TuningPlugin;
     use crate::flow::FlowPlugin;
@@ -120,6 +123,7 @@ mod tests {
         assert!(app.is_plugin_added::<PhysicsPlugin>());
         assert!(app.is_plugin_added::<RulesPlugin>());
         assert!(app.is_plugin_added::<AiPlugin>());
+        assert!(app.is_plugin_added::<SanityPlugin>());
     }
 
     #[test]

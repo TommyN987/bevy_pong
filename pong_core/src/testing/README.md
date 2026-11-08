@@ -18,6 +18,10 @@ Every helper that cannot do what a test asked panics with the reason.
 The shuffle seed and the executor reach only schedules that exist after the core plugins build.
 Bevy's first update has zero delta, so the first frame runs no fixed step.
 
+`headless_app_with(seed, adjust)` hands the core group, dev policy already set, to `adjust` first:
+`|core| core.set(ErrorPolicyPlugin(ErrorPolicy::Release))` tests the release path (spec 1.4.7);
+`PluginGroupBuilder::disable::<SanityPlugin>` lets a test break an invariant on purpose, as the two-ball physics test does.
+
 ## Helpers
 
 | Helper | Does |
@@ -37,7 +41,6 @@ under nextest's 30-second slow-timeout.
 Each seat tracks the ball with `kernel::predict::crossing_y`, off by a seeded aim error of up to ±9 per approach,
 and presses a random key one step in four.
 Each frame's length is drawn from half a step, one, two, or four.
-After every frame it asserts the ball is finite, inside the walls, and at most one step past a goal line,
-and both paddles are inside the walls;
-these checks move to the Sanity phase at plan 6.1.
+The invariants are the Sanity phase's, checked after every step; under the dev policy a fault panics the run.
+The soak asserts that `SanityPlugin` is present, so it cannot go quiet.
 At the end it asserts at least one match ended, the speed cap was reached, and at least 1,000 paddle hits.

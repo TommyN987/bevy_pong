@@ -6,7 +6,7 @@ use std::num::NonZeroU8;
 use bevy::app::{App, FixedUpdate, Plugin, Update};
 use bevy::ecs::change_detection::DetectChanges;
 use bevy::ecs::error::BevyError;
-use bevy::ecs::message::MessageWriter;
+use bevy::ecs::message::{MessageReader, MessageWriter};
 use bevy::ecs::query::With;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
@@ -15,11 +15,11 @@ use bevy::state::condition::in_state;
 use bevy::state::state::{NextState, OnEnter, OnTransition, State};
 use bevy::time::{Time, Timer, TimerMode};
 
-use crate::domain::{MatchConfig, MatchEnded, PointScored, Random, Serve};
+use crate::domain::{MatchConfig, MatchEnded, PointScored, Random, Serve, SimFault};
 use crate::features::ball::{Ball, Position};
 use crate::features::tuning::Tuning;
 use crate::flow::phases::{BallInPlay, FixedStepPhase};
-use crate::flow::states::{AppState, MatchState};
+use crate::flow::states::{AppState, MatchState, paddles_move};
 use crate::kernel::geometry::Side;
 
 /// Match flow: owns every [`MatchState`] transition (ADR 0003), scoring, serve
@@ -31,6 +31,9 @@ impl Plugin for RulesPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<PointScored>()
             .add_message::<MatchEnded>()
+            // Written by sanity, later in the feature order; registered by its
+            // reader here, as ball registers the `Serve` that rules writes.
+            .add_message::<SimFault>()
             .init_resource::<Score>()
             .init_resource::<MatchControl>()
             .add_systems(OnEnter(AppState::InMatch), begin_match)
@@ -48,11 +51,18 @@ impl Plugin for RulesPlugin {
                 (
                     advance_countdown.run_if(in_state(MatchState::Countdown)),
                     advance_point_pause.run_if(in_state(MatchState::PointScored)),
-                    // After the timers, so a timer's transition in the same
-                    // frame defers the request rather than being overwritten.
-                    apply_pause_requests
+                    // After the timers, so its countdown overrides theirs.
+                    restart_rally_after_fault
+                        .run_if(paddles_move)
                         .after(advance_countdown)
                         .after(advance_point_pause),
+                    // After the timers and the heal, so their transition in
+                    // the same frame defers the request rather than being
+                    // overwritten.
+                    apply_pause_requests
+                        .after(advance_countdown)
+                        .after(advance_point_pause)
+                        .after(restart_rally_after_fault),
                 ),
             )
             .add_systems(
@@ -187,6 +197,32 @@ fn apply_pause_requests(
     Ok(())
 }
 
+/// The release answer to a [`SimFault`] (spec 1.4.7): a fresh rally. Entering
+/// `Countdown` puts the ball back on the centre spot and restarts the timer,
+/// from `Countdown` itself too, since `set` re-enters the current state; the
+/// countdown's end serves as after any point, so `Serve` keeps one emitter
+/// (ADR 0002). The score stands.
+///
+/// A match already ending is left to end. Under the dev error policy the
+/// sanity phase panics first and this never runs. Logging is the error
+/// handler's: the sanity system returned the fault as its error.
+fn restart_rally_after_fault(
+    mut faults: MessageReader<SimFault>,
+    mut next: ResMut<NextState<MatchState>>,
+) {
+    if faults.read().count() == 0 {
+        return;
+    }
+    let match_ending = matches!(
+        *next,
+        NextState::Pending(MatchState::MatchOver)
+            | NextState::PendingIfDifferent(MatchState::MatchOver)
+    );
+    if !match_ending {
+        next.set(MatchState::Countdown);
+    }
+}
+
 fn begin_point_pause(mut commands: Commands, tuning: Res<Tuning>) {
     commands.insert_resource(StateTimer(Timer::new(
         tuning.match_flow().point_pause(),
@@ -291,10 +327,11 @@ mod tests {
 
     use bevy::app::App;
     use bevy::ecs::change_detection::Mut;
+    use bevy::ecs::message::Messages;
     use bevy::math::Vec2;
 
     use super::{MatchControl, MatchState, Score};
-    use crate::domain::{Controller, MatchConfig, MatchEnded, PointScored, Seat, Serve};
+    use crate::domain::{Controller, MatchConfig, MatchEnded, PointScored, Seat, Serve, SimFault};
     use crate::features::tuning::Tuning;
     use crate::kernel::geometry::Side;
     use crate::kernel::test_support::assert_vec_near;
@@ -614,5 +651,64 @@ mod tests {
         assert_eq!(score.winner(two()), None);
         score.award(Side::Left);
         assert_eq!(score.winner(two()), Some(Side::Left));
+    }
+
+    /// What the sanity phase writes; any variant serves here.
+    fn report_fault(app: &mut App) {
+        app.world_mut()
+            .resource_mut::<Messages<SimFault>>()
+            .write(SimFault::BallCount { count: 2 });
+    }
+
+    /// Spec 1.4.7, ADR 0002: the release answer to a fault is a fresh rally,
+    /// served by rules as every rally is.
+    #[test]
+    fn a_fault_in_play_restarts_the_rally_from_a_countdown_that_ends_in_a_serve() {
+        let mut app = recording_app(1);
+        start_match(&mut app, two_humans_to(ten()));
+        take_recorded::<Serve>(&mut app);
+        place_ball(&mut app, Vec2::new(30.0, 10.0), Vec2::new(60.0, 0.0));
+        report_fault(&mut app);
+        frame(&mut app);
+        frame(&mut app);
+        assert_eq!(match_state(&app), MatchState::Countdown);
+        let (position, velocity) = ball_state(&mut app);
+        assert_vec_near(position, Vec2::ZERO, 1e-6);
+        assert_vec_near(velocity, Vec2::ZERO, 1e-6);
+        assert_eq!(*app.world().resource::<Score>(), Score::default());
+        run_until(&mut app, playing, 1_000, "the countdown never ended");
+        frame(&mut app);
+        assert_eq!(take_recorded::<Serve>(&mut app).len(), 1);
+    }
+
+    #[test]
+    fn a_fault_during_the_countdown_starts_the_countdown_over() {
+        let mut app = recording_app(1);
+        enter_match(&mut app, two_humans_to(ten()));
+        let countdown = frames(
+            &app,
+            app.world().resource::<Tuning>().match_flow().countdown(),
+        );
+        for _ in 0..countdown / 2 {
+            frame(&mut app);
+        }
+        report_fault(&mut app);
+        frame(&mut app);
+        // More than the half that was left: a timer that went on would be done.
+        for _ in 0..countdown * 3 / 4 {
+            frame(&mut app);
+        }
+        assert_eq!(match_state(&app), MatchState::Countdown);
+    }
+
+    #[test]
+    fn a_fault_in_the_frame_that_ends_the_match_does_not_undo_its_end() {
+        let mut app = recording_app(1);
+        start_match(&mut app, two_humans_to(one()));
+        ball_out_past_the_right_goal(&mut app);
+        report_fault(&mut app);
+        frame(&mut app);
+        frame(&mut app);
+        assert_eq!(match_state(&app), MatchState::MatchOver);
     }
 }

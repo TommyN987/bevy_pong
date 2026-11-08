@@ -8,8 +8,8 @@
 //! frame runs half a step, one, two, or four, so the step gate (ADR 0003) and
 //! the intent latch are exercised as on real displays.
 //!
-//! Until the sanity phase exists (plan 6.1), the test checks the invariants
-//! itself after every frame.
+//! The invariants are the sanity phase's to check, after every fixed step
+//! (plan 6.1); under the harness's dev error policy a fault panics the run.
 
 use std::num::NonZeroU8;
 
@@ -19,6 +19,7 @@ use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::ResMut;
 use pong_core::domain::{BallHitPaddle, Controller, MatchConfig, Seat};
 use pong_core::features::paddle::Paddle;
+use pong_core::features::sanity::SanityPlugin;
 use pong_core::features::seats::PaddleIntent;
 use pong_core::features::tuning::Tuning;
 use pong_core::flow::phases::{BallInPlay, FixedStepPhase};
@@ -158,10 +159,11 @@ fn a_hundred_thousand_live_steps_with_mixed_intents_and_frame_lengths_raise_no_f
     let config = two_humans_to(5);
     enter_match(&mut app, config);
 
+    assert!(
+        app.is_plugin_added::<SanityPlugin>(),
+        "the soak relies on the sanity phase to check every step"
+    );
     let tuning = app.world().resource::<Tuning>().clone();
-    let half = tuning.arena().half_extents();
-    let radius = tuning.ball().radius();
-    let limit_y = tuning.arena().center_limit_y(radius);
     let cap = tuning.ball().speed_rule().cap();
     let dt = fixed_timestep(&app).as_secs_f32();
 
@@ -198,29 +200,7 @@ fn a_hundred_thousand_live_steps_with_mixed_intents_and_frame_lengths_raise_no_f
         frame(&mut app);
         paddle_hits += take_recorded::<BallHitPaddle>(&mut app).len();
 
-        let (position, velocity) = ball_state(&mut app);
-        assert!(
-            position.is_finite() && velocity.is_finite(),
-            "frame {frames}: ball at {position} moving {velocity}"
-        );
-        assert!(
-            position.y.abs() <= limit_y + 1e-3,
-            "frame {frames}: ball through a wall at {position}"
-        );
-        // The step that scores is the last of its frame (the step gate), so a
-        // scored ball is no farther past the goal than one step's travel.
-        let step_travel = velocity.length() * dt;
-        assert!(
-            position.x.abs() <= half.x + radius.value() + step_travel + 1e-3,
-            "frame {frames}: ball far beyond the goal at {position}"
-        );
-        for side in [Side::Left, Side::Right] {
-            let rect = paddle(&mut app, side).rect(&tuning);
-            assert!(
-                rect.min.y >= -half.y - 1e-4 && rect.max.y <= half.y + 1e-4,
-                "frame {frames}: {side:?} paddle through a wall: {rect:?}"
-            );
-        }
+        let (_, velocity) = ball_state(&mut app);
         top_speed = top_speed.max(velocity.length());
     }
 
