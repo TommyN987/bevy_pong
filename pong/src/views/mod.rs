@@ -17,12 +17,14 @@ pub mod ball;
 pub mod camera;
 pub mod motion;
 pub mod paddle;
+pub mod trail;
 
 /// Draw order, back to front.
 mod layer {
     pub const ARENA: f32 = 0.0;
     pub const CENTRE_LINE: f32 = 0.5;
     pub const PADDLE: f32 = 1.0;
+    pub const TRAIL: f32 = 1.5;
     pub const BALL: f32 = 2.0;
 }
 
@@ -36,6 +38,7 @@ impl Plugin for ViewsPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, create_unit_meshes).add_plugins((
             motion::MotionPlugin,
+            trail::TrailPlugin,
             camera::CameraPlugin,
             arena::ArenaViewPlugin,
             ball::BallViewPlugin,
