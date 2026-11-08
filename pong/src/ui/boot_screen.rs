@@ -8,11 +8,12 @@ use bevy::ecs::component::Component;
 use bevy::ecs::system::Commands;
 use bevy::state::state::OnEnter;
 use bevy::state::state_scoped::DespawnOnExit;
-use bevy::text::{FontSize, TextColor, TextFont};
+use bevy::text::TextColor;
 use bevy::ui::widget::Text;
 use bevy::ui::{AlignItems, JustifyContent, Node, Val};
 use pong_core::flow::states::AppState;
 
+use crate::ui::style::font;
 use crate::window::TITLE;
 
 /// Shows the title on entering `Boot`; it goes when `Boot` does.
@@ -41,13 +42,6 @@ fn show_boot_screen(mut commands: Commands) {
             ..Node::default()
         },
         DespawnOnExit(AppState::Boot),
-        children![(
-            Text::new(TITLE),
-            TextFont {
-                font_size: FontSize::Vh(9.0),
-                ..TextFont::default()
-            },
-            TextColor(Color::WHITE),
-        )],
+        children![(Text::new(TITLE), font(9.0), TextColor(Color::WHITE),)],
     ));
 }

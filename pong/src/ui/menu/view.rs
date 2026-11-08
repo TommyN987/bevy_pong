@@ -3,13 +3,12 @@
 //! marked. A seat's screens sit on that seat's half of the screen.
 
 use bevy::color::{Color, Srgba};
-use bevy::ecs::children;
 use bevy::ecs::component::Component;
 use bevy::ecs::system::{Commands, Query, Res};
 use bevy::input::keyboard::KeyCode;
 use bevy::state::state::State;
 use bevy::state::state_scoped::DespawnOnExit;
-use bevy::text::{FontSize, TextColor, TextFont};
+use bevy::text::TextColor;
 use bevy::ui::widget::Text;
 use bevy::ui::{AlignItems, BorderColor, FlexDirection, JustifyContent, Node, UiRect, Val};
 use pong_core::domain::{Player, Seat};
@@ -19,6 +18,7 @@ use pong_core::features::tuning::{SeatKeys, Tuning};
 use super::name_entry::name_field;
 use super::{MatchDraft, MenuItem, MenuList, MenuScreen};
 use crate::ui::menu_input::MenuDrivers;
+use crate::ui::style::{DIM, cursor_frame, font, row};
 use crate::window::TITLE;
 
 /// Marks a screen's outermost node; despawned, with all it holds, when the
@@ -33,18 +33,6 @@ pub struct MenuRow(pub usize);
 /// The keys of the seat whose turn it is (spec 1.6.3, seat cue).
 #[derive(Component, Debug, Default)]
 pub struct SeatCue;
-
-/// The cursor's mark: a white frame around its row.
-const CURSOR: Color = Color::WHITE;
-
-const DIM: Color = Color::srgb(0.6, 0.6, 0.7);
-
-fn font(viewport_percent: f32) -> TextFont {
-    TextFont {
-        font_size: FontSize::Vh(viewport_percent),
-        ..TextFont::default()
-    }
-}
 
 /// A row's words and colour.
 pub(super) fn label(item: MenuItem, profiles: &Profiles, settings: Settings) -> (String, Srgba) {
@@ -176,26 +164,16 @@ pub(super) fn show_screen(
                 let (text, color) = label(item, &profiles, *settings);
                 root.spawn((
                     MenuRow(index),
-                    Node {
-                        padding: UiRect::axes(Val::Vh(2.0), Val::Vh(0.5)),
-                        border: UiRect::all(Val::Vh(0.4)),
-                        ..Node::default()
-                    },
-                    BorderColor::all(row_border(index, list.cursor())),
-                    children![(Text::new(text), font(6.0), TextColor(Color::from(color)))],
+                    row(text, Color::from(color), index == list.cursor()),
                 ));
             }
         });
 }
 
-fn row_border(index: usize, cursor: usize) -> Color {
-    if index == cursor { CURSOR } else { Color::NONE }
-}
-
 /// Moves the cursor's mark to the cursor's row.
 pub(super) fn mark_cursor(list: Res<MenuList>, mut rows: Query<(&MenuRow, &mut BorderColor)>) {
     for (row, mut border) in &mut rows {
-        *border = BorderColor::all(row_border(row.0, list.cursor()));
+        *border = cursor_frame(row.0 == list.cursor());
     }
 }
 
