@@ -82,6 +82,16 @@ pub fn load<M>(
     }
 }
 
+/// The model in the save file at `path`, if it holds a usable one. Reads
+/// only: a missing or unusable file gives `None` and stays as it is, with no
+/// notice, since the load policy is [`load`]'s. The shell opens its window
+/// in the saved mode with this, before `Boot` loads the settings.
+pub fn peek<M>(path: &Path, decode: impl FnOnce(&str) -> Result<M, DecodeError>) -> Option<M> {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|text| decode(&text).ok())
+}
+
 /// Where an unusable file is set aside: `<name>.<seconds>.bak` beside it, or
 /// `<name>.<seconds>-1.bak`, `-2`, and so on if that is taken, so two
 /// failures in one second keep both files. `seconds` is Unix time.
@@ -106,7 +116,7 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
     use std::path::{Path, PathBuf};
 
-    use super::{LoadError, Loaded, backup_path, load};
+    use super::{LoadError, Loaded, backup_path, load, peek};
     use crate::features::persistence::document::{decode_profiles, encode_profiles};
     use crate::features::persistence::model::Profiles;
     use crate::testing::TempSaveDir;
@@ -132,6 +142,32 @@ mod tests {
         let mode = if read_only { 0o555 } else { 0o755 };
         std::fs::set_permissions(dir, std::fs::Permissions::from_mode(mode))
             .expect("the test owns the directory");
+    }
+
+    #[test]
+    fn a_peek_reads_a_valid_file() {
+        let saved = Profiles::default();
+        let (_temp, file) = profiles_file(&encode_profiles(&saved).expect("encodes"));
+        assert_eq!(peek(&file, decode_profiles), Some(saved));
+    }
+
+    /// The load policy is `load`'s alone: a peek moves nothing and tells
+    /// nobody.
+    #[test]
+    fn a_peek_at_a_missing_or_unusable_file_finds_nothing_and_leaves_it_in_place() {
+        let temp = TempSaveDir::new();
+        assert_eq!(
+            peek(&temp.path().join("profiles.ron"), decode_profiles),
+            None
+        );
+        for name in ["corrupt.ron", "newer_version.ron"] {
+            let text = fixture(name);
+            let (temp, file) = profiles_file(&text);
+            assert_eq!(peek(&file, decode_profiles), None, "{name}");
+            assert_eq!(std::fs::read_to_string(&file).expect("still there"), text);
+            let entries = std::fs::read_dir(temp.path()).expect("readable").count();
+            assert_eq!(entries, 1, "{name}: a backup was made");
+        }
     }
 
     #[test]

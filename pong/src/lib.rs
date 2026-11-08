@@ -7,6 +7,7 @@ pub mod crash;
 pub mod dev_entry;
 pub mod ports;
 pub mod seed;
+pub mod ui;
 pub mod views;
 pub mod window;
 pub mod xdg;

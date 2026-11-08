@@ -1,10 +1,9 @@
-//! Temporary dev entry (plans 4.5, 5.2): stands in for the menus until plan
-//! 8.3, which removes this module. Reaching the menu starts a match to ten at
-//! once: two humans, or with `--vs <stars>` on the command line
-//! (`just run --vs 3`) the left seat against the computer. Escape pauses,
-//! resumes, and starts the next match from `MatchOver`; the score goes to the
-//! log, as there is no score display yet, and so does every `Notice`, as
-//! there is no notice line yet.
+//! Temporary dev entry (plans 4.5, 5.2): stands in for the match screens
+//! until plan 8.3, which removes this module. With `--vs <stars>` on the
+//! command line (`just run --vs 3`), reaching the menu starts a match to ten,
+//! the left seat against the computer, at once; without it the menus show
+//! (plan 8.1). In a match, Escape pauses, resumes, and leaves from
+//! `MatchOver`; the score goes to the log, as there is no score display yet.
 //!
 //! Escape is the key the spec gives pause and back-out (1.6.1 keys), so the
 //! habit carries over to the real screens.
@@ -12,46 +11,46 @@
 use std::num::NonZeroU8;
 
 use bevy::app::{App, Plugin, Update};
-use bevy::ecs::message::MessageReader;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::common_conditions::resource_changed;
 use bevy::ecs::schedule::{IntoScheduleConfigs, SystemCondition};
 use bevy::ecs::system::{Commands, Res, ResMut};
 use bevy::input::common_conditions::input_just_pressed;
 use bevy::input::keyboard::KeyCode;
-use bevy::log::{info, warn};
+use bevy::log::info;
 use bevy::state::condition::in_state;
 use bevy::state::state::{NextState, OnEnter, State};
-use pong_core::domain::{Controller, Difficulty, MatchConfig, Notice, Seat, SeatPlayers};
+use pong_core::domain::{Controller, Difficulty, MatchConfig, Seat, SeatPlayers};
 use pong_core::features::rules::{MatchControl, Score};
 use pong_core::flow::states::{AppState, MatchState};
 use pong_core::kernel::geometry::Side;
 
-/// Skips the menu into [`config`](Self::config)'s match and gives Escape its
-/// match duties.
+/// Skips the menu into [`config`](Self::config)'s match, if one is given, and
+/// gives Escape its match duties.
 ///
 /// Preconditions: Bevy's `InputPlugin` (in `DefaultPlugins`) and the core
 /// plugin group.
 pub struct DevEntryPlugin {
-    /// The match every visit to the menu starts.
-    pub config: MatchConfig,
+    /// The match every visit to the menu starts; `None` leaves the menus to
+    /// the player.
+    pub config: Option<MatchConfig>,
 }
 
 impl Plugin for DevEntryPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(DevMatch(self.config))
-            .add_systems(OnEnter(AppState::Menu), start_dev_match)
-            .add_systems(
-                Update,
-                (
-                    escape.run_if(
-                        in_state(AppState::InMatch).and_then(input_just_pressed(KeyCode::Escape)),
-                    ),
-                    log_score
-                        .run_if(in_state(AppState::InMatch).and_then(resource_changed::<Score>)),
-                    log_notices,
+        if let Some(config) = self.config {
+            app.insert_resource(DevMatch(config))
+                .add_systems(OnEnter(AppState::Menu), start_dev_match);
+        }
+        app.add_systems(
+            Update,
+            (
+                escape.run_if(
+                    in_state(AppState::InMatch).and_then(input_just_pressed(KeyCode::Escape)),
                 ),
-            );
+                log_score.run_if(in_state(AppState::InMatch).and_then(resource_changed::<Score>)),
+            ),
+        );
     }
 }
 
@@ -113,20 +112,23 @@ pub enum DevArgsError {
 }
 
 /// The dev entry's match from the command-line words after the program name:
-/// none for [`two_humans_to_ten`]; `--vs <stars>` for the left seat against
-/// the computer on the right at 1, 2, or 3 stars, still to ten.
+/// none for no match, so the menus show; `--vs <stars>` for the left seat
+/// against the computer on the right at 1, 2, or 3 stars, to ten.
 ///
 /// # Errors
 /// Any word but `--vs` and its star count; see [`DevArgsError`].
-pub fn dev_match(args: &[String]) -> Result<MatchConfig, DevArgsError> {
-    let mut config = two_humans_to_ten();
+pub fn dev_match(args: &[String]) -> Result<Option<MatchConfig>, DevArgsError> {
+    let mut config = None;
     let mut words = args.iter();
     while let Some(word) = words.next() {
         if word != "--vs" {
             return Err(DevArgsError::UnknownArgument(word.clone()));
         }
         let stars = words.next().ok_or(DevArgsError::MissingStars)?;
-        config.right = Controller::Ai(difficulty_with(stars)?);
+        config = Some(MatchConfig {
+            right: Controller::Ai(difficulty_with(stars)?),
+            ..two_humans_to_ten()
+        });
     }
     Ok(config)
 }
@@ -138,14 +140,6 @@ fn difficulty_with(stars: &str) -> Result<Difficulty, DevArgsError> {
         "2" => Ok(Difficulty::TwoStars),
         "3" => Ok(Difficulty::ThreeStars),
         _ => Err(DevArgsError::UnknownStars(stars.to_owned())),
-    }
-}
-
-/// Until the notice line (plan 8.1), each `Notice` goes to the log, so a
-/// developer sees what the player would be told.
-fn log_notices(mut notices: MessageReader<Notice>) {
-    for notice in notices.read() {
-        warn!("notice: {}", notice.text);
     }
 }
 
