@@ -22,7 +22,12 @@ fn dev_app() -> App {
 
 fn dev_app_playing(config: MatchConfig) -> App {
     let mut app = headless_app(1);
-    app.add_plugins((InputPlugin, DevEntryPlugin { config }));
+    app.add_plugins((
+        InputPlugin,
+        DevEntryPlugin {
+            config: Some(config),
+        },
+    ));
     app
 }
 
@@ -72,8 +77,8 @@ fn the_dev_match_is_two_humans_to_ten() {
 }
 
 #[test]
-fn no_arguments_start_two_humans_to_ten() {
-    assert_eq!(dev_match(&args(&[])), Ok(two_humans_to_ten()));
+fn no_arguments_leave_the_player_at_the_menus() {
+    assert_eq!(dev_match(&args(&[])), Ok(None));
 }
 
 #[test]
@@ -85,10 +90,10 @@ fn vs_and_a_star_count_put_the_left_seat_against_the_computer_on_the_right() {
     ] {
         assert_eq!(
             dev_match(&args(&["--vs", stars])),
-            Ok(MatchConfig {
+            Ok(Some(MatchConfig {
                 right: Controller::Ai(difficulty),
                 ..two_humans_to_ten()
-            }),
+            })),
             "--vs {stars}"
         );
     }
@@ -167,4 +172,17 @@ fn reaching_the_menu_starts_the_match_the_plugin_was_given() {
     frame(&mut app);
     assert_eq!(app_state(&app), AppState::InMatch);
     assert_eq!(*app.world().resource::<MatchConfig>(), vs_three_stars);
+}
+
+/// Plan 8.1: without `--vs`, `just run` shows the menus; the dev entry
+/// keeps only Escape's duties in a match until plan 8.3.
+#[test]
+fn without_a_dev_match_the_menu_stays() {
+    let mut app = headless_app(1);
+    app.add_plugins((InputPlugin, DevEntryPlugin { config: None }));
+    boot(&mut app);
+    for _ in 0..3 {
+        frame(&mut app);
+    }
+    assert_eq!(app_state(&app), AppState::Menu);
 }

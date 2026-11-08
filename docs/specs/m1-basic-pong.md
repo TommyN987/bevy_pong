@@ -12,6 +12,7 @@ Obligation levels: MUST, SHOULD, MAY, WONT. Every item carries a done-condition.
 - 2D bloom needs an HDR camera and colors above 1.0; TonyMcMapface tonemapping and deband dither recommended. [confirmed]
 - A window focus event exists. [probable]
 - Bevy 0.19 ships an `EditableText` component for text entry. [confirmed] Amended 2026-11-08 (`bevy-api-check`, [phase 8 report](m1-phase8-report.md)): at 0.20.1 it takes keys only with the `TextInput` marker and input focus, and it does not hide them from `ButtonInput<KeyCode>`.
+- Bevy's built-in font draws printable ASCII only. [confirmed 2026-11-08, [phase 8 report](m1-phase8-report.md): the game embeds DejaVu Sans Bold]
 - Bevy's audio accepts an in-memory source built from bytes or a custom decodable source. [probable; verify in the first audio task]
 - cargo-nextest does not run doctests. [confirmed]
 - nextest supports per-test timeouts that fail the run. [probable]
