@@ -2,4 +2,9 @@
 # A dated nightly: a floating one changes on every `rustup update`. Cranelift backs the dev
 # profile (.cargo/config.toml).
 channel = "nightly-2026-11-06"
-components = ["rustfmt", "clippy", "rustc-codegen-cranelift-preview"]
+components = [
+  "rustfmt",
+  "clippy",
+  "rustc-codegen-cranelift-preview",
+  "rust-analyzer",
+]

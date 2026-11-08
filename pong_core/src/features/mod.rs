@@ -18,3 +18,5 @@ pub mod paddle;
 pub mod physics;
 
 pub mod rules;
+
+pub mod ai;

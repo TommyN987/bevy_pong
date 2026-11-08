@@ -5,6 +5,7 @@
 use bevy::app::{App, Plugin, PluginGroup, PluginGroupBuilder};
 
 use crate::domain::Random;
+use crate::features::ai::AiPlugin;
 use crate::features::ball::BallPlugin;
 use crate::features::paddle::PaddlePlugin;
 use crate::features::physics::PhysicsPlugin;
@@ -51,6 +52,7 @@ impl PluginGroup for CorePlugins {
             .add(PaddlePlugin)
             .add(PhysicsPlugin)
             .add(RulesPlugin)
+            .add(AiPlugin)
     }
 }
 
@@ -76,6 +78,7 @@ mod tests {
     use super::boot::BootPlugin;
     use super::error_policy::ErrorPolicyPlugin;
     use crate::domain::Random;
+    use crate::features::ai::AiPlugin;
     use crate::features::ball::BallPlugin;
     use crate::features::paddle::PaddlePlugin;
     use crate::features::physics::PhysicsPlugin;
@@ -116,6 +119,7 @@ mod tests {
         assert!(app.is_plugin_added::<PaddlePlugin>());
         assert!(app.is_plugin_added::<PhysicsPlugin>());
         assert!(app.is_plugin_added::<RulesPlugin>());
+        assert!(app.is_plugin_added::<AiPlugin>());
     }
 
     #[test]
