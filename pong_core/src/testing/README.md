@@ -14,6 +14,7 @@ Every helper that cannot do what a test asked panics with the reason.
 | `TimeUpdateStrategy::ManualDuration` | No real clock: a frame advances exactly the length the test sets. |
 | `ScheduleBuildSettings { shuffle_seed }` | Systems that conflict with no declared order run in a seed-chosen order, so a test cannot pass by luck of order (spec 1.5.3). Needs Bevy's `debug` feature, which `testing` enables. |
 | `SingleThreadedExecutor` on every schedule | Cheaper per tiny frame; the only executor that keeps the shuffled order. |
+| A `TempSaveDir` resource and its `SavePaths` | Saves land in a directory of the app's own, removed with the app (spec 1.5.1). A test removes `SavePaths` before the first frame to play a machine with nowhere to save. |
 
 The shuffle seed and the executor reach only schedules that exist after the core plugins build.
 Bevy's first update has zero delta, so the first frame runs no fixed step.

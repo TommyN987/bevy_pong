@@ -8,6 +8,7 @@ use crate::domain::Random;
 use crate::features::ai::AiPlugin;
 use crate::features::ball::BallPlugin;
 use crate::features::paddle::PaddlePlugin;
+use crate::features::persistence::PersistencePlugin;
 use crate::features::physics::PhysicsPlugin;
 use crate::features::rules::RulesPlugin;
 use crate::features::sanity::SanityPlugin;
@@ -55,6 +56,7 @@ impl PluginGroup for CorePlugins {
             .add(RulesPlugin)
             .add(AiPlugin)
             .add(SanityPlugin)
+            .add(PersistencePlugin)
     }
 }
 
@@ -83,6 +85,7 @@ mod tests {
     use crate::features::ai::AiPlugin;
     use crate::features::ball::BallPlugin;
     use crate::features::paddle::PaddlePlugin;
+    use crate::features::persistence::PersistencePlugin;
     use crate::features::physics::PhysicsPlugin;
     use crate::features::rules::RulesPlugin;
     use crate::features::sanity::SanityPlugin;
@@ -124,6 +127,7 @@ mod tests {
         assert!(app.is_plugin_added::<RulesPlugin>());
         assert!(app.is_plugin_added::<AiPlugin>());
         assert!(app.is_plugin_added::<SanityPlugin>());
+        assert!(app.is_plugin_added::<PersistencePlugin>());
     }
 
     #[test]

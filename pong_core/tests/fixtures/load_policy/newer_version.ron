@@ -1,0 +1,7 @@
+// A save file from a future game (spec 1.4.9 load policy): version 99, with
+// fields this game has never heard of.
+(
+    version: 99,
+    profiles: [],
+    rooms: ["crypt"],
+)

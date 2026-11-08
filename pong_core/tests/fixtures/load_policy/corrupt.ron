@@ -1,0 +1,7 @@
+// A profiles file cut off mid-write by an older, non-atomic writer: not RON.
+(
+    version: 1,
+    profiles: [
+        (
+            id: 1,
+            name: "Zo

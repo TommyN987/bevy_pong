@@ -69,6 +69,10 @@ pub fn headless_app_with(
         adjust(CorePlugins { seed }.set(ErrorPolicyPlugin(ErrorPolicy::Dev))),
     ));
     set_frame_length(&mut app, FrameLength::Steps(1));
+    // Spec 1.5.1: saves go to a directory of this app's own, removed with it.
+    let saves = TempSaveDir::new();
+    app.insert_resource(saves.save_paths())
+        .insert_resource(saves);
     // Spec 1.5.3: systems with conflicting access and no declared order run in
     // an order the seed decides, so a test cannot pass by accident of order.
     app.configure_schedules(ScheduleBuildSettings {
@@ -353,8 +357,9 @@ pub fn unphased_fixed_step_systems(app: &mut App) -> Vec<String> {
 
 /// A fresh directory under the system temp directory, removed with
 /// everything in it when dropped: the temp-dir `SavePaths` fake (spec 1.5.1).
-/// Std only; no `tempfile` crate.
-#[derive(Debug)]
+/// Std only; no `tempfile` crate. [`headless_app`] keeps one as a resource,
+/// so its directory lives as long as the app.
+#[derive(Resource, Debug)]
 pub struct TempSaveDir {
     root: PathBuf,
 }

@@ -205,13 +205,26 @@ In M1 only a code bug can cause one, and dev panics on it first.
 ## persistence
 
 Profiles and settings kept between runs (spec 1.4.9); the file format is ADR 0007.
-No plugin yet: nothing runs in the app until plan 7.2 loads and writes.
+
+| System | Runs | Does |
+|---|---|---|
+| `load_saves` | `OnEnter(Boot)` | Reads both files and inserts `Profiles`, `Settings`, and the private `SaveState`; the Boot gate waits for them (spec 1.4.10). |
+| `write_saves_at_match_end` | `Update`, on `MatchEnded` | Writes each writable file whose encoding differs from what it last wrote. |
+
+Load policy, per file: missing starts fresh; corrupt, newer, or unreadable is renamed to `<name>.<seconds>.bak` and the game starts fresh with one `Notice`;
+if it cannot even be renamed, the game starts fresh and never writes that file this session ("never overwrite").
+Without `SavePaths` the game starts fresh, writes nothing, and says so once.
+
+Write policy: a failed write keeps the model in memory, and the next match end retries it, because `last_written` only moves on success.
+The first failure of a session sends one `Notice`.
+Writes happen only at match end; plan 8.1's settings and profile screens will need their own trigger.
 
 | Module | Holds |
 |---|---|
 | `model` | `Profiles`, `Profile`, `ProfileName`, `Records`, `Settings`, `Volume`, `WindowMode`. Constructors check every value, so a model in hand is valid. |
 | `document` | `encode_*` and `decode_*` per kind; the frozen `v1` shapes; the versioned enums and their migration chains. |
 | `io` | The `SavePaths` port and `write_atomically`. |
+| `load` | The per-file load policy: `load`, `Loaded`, `LoadError`, backup names. |
 
 Decoding reads the top-level `version` first, so a file from a newer game is `NewerVersion`, not `Corrupt`.
 A value a model refuses is `Corrupt`, as the error table says for invalid save data.
