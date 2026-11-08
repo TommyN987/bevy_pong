@@ -3,7 +3,8 @@
 //! once: two humans, or with `--vs <stars>` on the command line
 //! (`just run --vs 3`) the left seat against the computer. Escape pauses,
 //! resumes, and starts the next match from `MatchOver`; the score goes to the
-//! log, as there is no score display yet.
+//! log, as there is no score display yet, and so does every `Notice`, as
+//! there is no notice line yet.
 //!
 //! Escape is the key the spec gives pause and back-out (1.6.1 keys), so the
 //! habit carries over to the real screens.
@@ -11,16 +12,17 @@
 use std::num::NonZeroU8;
 
 use bevy::app::{App, Plugin, Update};
+use bevy::ecs::message::MessageReader;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::common_conditions::resource_changed;
 use bevy::ecs::schedule::{IntoScheduleConfigs, SystemCondition};
 use bevy::ecs::system::{Commands, Res, ResMut};
 use bevy::input::common_conditions::input_just_pressed;
 use bevy::input::keyboard::KeyCode;
-use bevy::log::info;
+use bevy::log::{info, warn};
 use bevy::state::condition::in_state;
 use bevy::state::state::{NextState, OnEnter, State};
-use pong_core::domain::{Controller, Difficulty, MatchConfig, Seat};
+use pong_core::domain::{Controller, Difficulty, MatchConfig, Notice, Seat};
 use pong_core::features::rules::{MatchControl, Score};
 use pong_core::flow::states::{AppState, MatchState};
 use pong_core::kernel::geometry::Side;
@@ -47,6 +49,7 @@ impl Plugin for DevEntryPlugin {
                     ),
                     log_score
                         .run_if(in_state(AppState::InMatch).and_then(resource_changed::<Score>)),
+                    log_notices,
                 ),
             );
     }
@@ -134,6 +137,14 @@ fn difficulty_with(stars: &str) -> Result<Difficulty, DevArgsError> {
         "2" => Ok(Difficulty::TwoStars),
         "3" => Ok(Difficulty::ThreeStars),
         _ => Err(DevArgsError::UnknownStars(stars.to_owned())),
+    }
+}
+
+/// Until the notice line (plan 8.1), each `Notice` goes to the log, so a
+/// developer sees what the player would be told.
+fn log_notices(mut notices: MessageReader<Notice>) {
+    for notice in notices.read() {
+        warn!("notice: {}", notice.text);
     }
 }
 

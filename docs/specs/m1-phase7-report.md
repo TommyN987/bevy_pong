@@ -9,7 +9,9 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) and [m1-plan.md](m1-plan.md
 |---|---|---|
 | 1.4.9, architecture "Persistence" | Each file kind has its own version chain and fixtures, `<kind>_v<N>.ron`, not one save version with `save_v<N>.ron`. The user chose it: settings and profiles change at different times. | ADR 0007; `.claude/rules/tests.md` and architecture.md amended 2026-11-08. |
 | 1.4.9 | The version is a top-level field read by a probe before the strict parse; the versioned enum is built after. A version only as the enum variant in the file would make a newer file indistinguishable from a corrupt one. | ADR 0007. |
-| architecture rule 7 | The persistence feature has no plugin in 7.1: nothing in it runs in the app yet. Plan 7.2 adds it with the load systems. | This report. |
+| architecture rule 7 | The persistence feature had no plugin in 7.1: nothing in it ran in the app yet. Plan 7.2 added `PersistencePlugin`. | This report; resolved 2026-11-08. |
+| plan 7.2, tdd | The green step for the first-start test built the whole load policy (set-aside, stuck, no `SavePaths`), not only what that test needed. Their tests followed, each checked against a deliberate break: no notice on set-aside, no notice without `SavePaths`, a stuck file treated as writable, and a notice on every failed write each fail their test. | This report. |
+| plan 7.2 | The dev entry's `log_notices` has no test, like its `log_score`: it only logs, and it leaves with the dev entry in plan 8.3. | This report. |
 | CLAUDE.md non-negotiable 1 | `Alpha::with_alpha` (bevy_color) was written without a `bevy-api-check` round; the crate compiled against the pinned 0.20.1 source. | This report. |
 
 ## Decisions taken in this phase
@@ -19,3 +21,9 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) and [m1-plan.md](m1-plan.md
 - Profile names are 1 to 12 characters, counted as characters; colours are finite and not negative, as the palette's; profile ids are unique; records are unsigned.
 - The parent directory is not synced after the rename (ADR 0007): atomicity holds without it, and an error after the rename would break the contract that an error leaves the old file.
 - Every test of behaviour built before it was checked against a deliberate break: byte-counted names, a sorted profile list, every unknown version as corrupt, a version 1 shape without `deny_unknown_fields`, and a write straight into the target file each fail their test.
+- Plan 7.2 (2026-11-08, approved by the user): load both files on entering `Boot`; the Boot gate waits for `Profiles` and `Settings` (spec 1.4.10). A file that cannot be used is renamed to `<name>.<unix-seconds>.bak` (`-1`, `-2` on a collision) and the game starts fresh with one `Notice`; a file that cannot be renamed is never written over this session. Without `SavePaths` the game starts fresh, writes nothing, and sends one `Notice`.
+- Writes happen on `MatchEnded` only, for each file whose encoding differs from what it last wrote; a failure keeps the model and retries at the next match end, with one `Notice` per session. Comparing against the last write, not Bevy's change detection, is what makes the retry automatic.
+- Plan 8.1 needs its own write trigger for the settings and profile screens: today a settings change waits for the next match end.
+- The core cannot log, so the `Notice` is the only report of a failed write; the error detail is dropped.
+- The dev entry logs every `Notice` at warn level until plan 8.1's notice line exists.
+- The read-only-directory tests rely on Unix permissions; run as root they would pass without testing anything. Nothing here runs tests as root.

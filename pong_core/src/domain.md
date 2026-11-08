@@ -35,7 +35,7 @@ One emitter means one place to look when a message appears.
 | `BallHitWall` | physics | The ball bounced off the top or bottom wall. |
 | `PointScored { scorer }` | rules | A goal line was crossed. |
 | `MatchEnded { winner }` | rules | A side reached the target. |
-| `Notice { text }` | tuning; later persistence | One sentence for the shell's notice line. |
+| `Notice { text }` | tuning, persistence | One sentence for the shell's notice line. |
 
 ## How Bevy carries a message
 

@@ -5,6 +5,7 @@
 use std::collections::HashSet;
 
 use bevy::color::{Alpha, Srgba};
+use bevy::ecs::resource::Resource;
 
 /// A save value a model refuses.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
@@ -157,8 +158,8 @@ impl Profile {
 }
 
 /// Every profile on this device, in the order they were made. Invariant: no
-/// two share an id.
-#[derive(Debug, Clone, PartialEq, Default)]
+/// two share an id. A resource from `Boot` on (plan 7.2).
+#[derive(Resource, Debug, Clone, PartialEq, Default)]
 pub struct Profiles(Vec<Profile>);
 
 impl Profiles {
@@ -217,7 +218,8 @@ pub enum WindowMode {
 }
 
 /// This device's settings (spec 1.4.9): master volume and window mode only.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// A resource from `Boot` on (plan 7.2).
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Settings {
     /// Master volume.
     pub volume: Volume,
