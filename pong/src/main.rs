@@ -6,7 +6,7 @@ use bevy::app::{App, AppExit, PluginGroup};
 use bevy::log::{info, warn};
 use bevy::window::WindowPlugin;
 use pong::crash::{self, CrashContext};
-use pong::dev_entry::DevEntryPlugin;
+use pong::dev_entry::{self, DevEntryPlugin};
 use pong::ports::PortsPlugin;
 use pong::views::ViewsPlugin;
 use pong::window::{WindowModePlugin, primary_cursor_options, primary_window};
@@ -19,6 +19,23 @@ compile_error!(
 );
 
 fn main() -> AppExit {
+    // Read before anything is built: building `DefaultPlugins` already opens
+    // the display and the GPU, and the log does not exist yet.
+    let dev_match = if cfg!(feature = "dev") {
+        let args: Vec<String> = std::env::args_os()
+            .skip(1)
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+        match dev_entry::dev_match(&args) {
+            Ok(config) => Some(config),
+            Err(error) => {
+                eprintln!("bevy_pong: {error}");
+                return AppExit::error();
+            }
+        }
+    } else {
+        None
+    };
     let seed = pong::seed::from_entropy();
     let mut app = App::new();
     app.add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -42,8 +59,8 @@ fn main() -> AppExit {
     ));
     // Compiled in every build, so lint and tests see it; added only in dev
     // builds until the menus replace it (plan 8.3).
-    if cfg!(feature = "dev") {
-        app.add_plugins(DevEntryPlugin);
+    if let Some(config) = dev_match {
+        app.add_plugins(DevEntryPlugin { config });
     }
     app.run()
 }

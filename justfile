@@ -85,9 +85,10 @@ dev-check: fmt arch-check lint test
 # Non-mutating gate for CI and the pre-push hook: format check, layering, lint, tests, deny.
 ci-check: fmt-check arch-check lint test deny
 
-# Run the game with the dev feature (dynamic linking).
-run:
-    BEVY_ASSET_ROOT={{dev_asset_root}} cargo run -p pong --features dev
+# Run the game with the dev feature (dynamic linking). Two humans, or `just run --vs 1`
+# (2, 3) for the left seat against the computer at that many stars (plan 5.2).
+run *args:
+    BEVY_ASSET_ROOT={{dev_asset_root}} cargo run -p pong --features dev -- {{args}}
 
 # Keyboard ghosting check (spec 1.8.2): the game with each change of held seat keys logged.
 # Hold W, S, D and Up, Down, Right together; the log should list six keys.

@@ -8,8 +8,8 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) and [m1-plan.md](m1-plan.md
 
 | Item | Deviation | Recorded |
 |---|---|---|
-| 1.4.6 | The spec does not say what the AI does while the ball is not coming. It steers to the centre, where the next serve starts; the user chose this over holding where the last hit left it (2026-11-08). The same rule covers an approach with no crossing in the prediction's reach. | `MirrorController::steer` docs; spec 1.4.6 to amend at the record step. |
-| 1.4.6 | On a serve toward the AI, the reaction may start one step (1/60 s) late. The serve and the AI both run in the intent phase with no order between them (architecture rule 4), so the AI sees the ball either still at rest or already served. Every other turn is caused by a collision in an earlier step and is seen at once. | `steer_ai_paddles` docs, features README; spec 1.4.6 to amend at the record step. |
+| 1.4.6 | The spec does not say what the AI does while the ball is not coming. It steers to the centre, where the next serve starts; the user chose this over holding where the last hit left it (2026-11-08). The same rule covers an approach with no crossing in the prediction's reach. | `MirrorController::steer` docs; spec 1.4.6 amended 2026-11-08. |
+| 1.4.6 | On a serve toward the AI, the reaction may start one step (1/60 s) late. The serve and the AI both run in the intent phase with no order between them (architecture rule 4), so the AI sees the ball either still at rest or already served. Every other turn is caused by a collision in an earlier step and is seen at once. | `steer_ai_paddles` docs, features README; spec 1.4.6 amended 2026-11-08. |
 | CLAUDE.md non-negotiable 1 | The controller spawn system (`OnEnter`, `Commands::spawn`, `DespawnOnExit`, `Component`) was written before the `bevy-api-check` report arrived, copying the pattern of `spawn_paddles`. The report then confirmed every item with no correction. | This report. |
 | tdd | `DespawnOnExit` went into the spawn system before its test. It was removed, the despawn test run red, and it was put back. | This report. |
 
@@ -23,6 +23,7 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) and [m1-plan.md](m1-plan.md
 - The aim error is uniform in `±prediction_error`, drawn from the core's `Random`.
 - The done-condition tests launch balls from one unit in front of the left paddle's contact line, at any height, at any angle up to the maximum deflection, and at any speed from the serve to the cap. The AI is recentred before each launch, as on the away leg of a real rally, which lasts at least 0.58 s and is enough to cross from either wall.
 - Both done-condition tests were checked against a deliberate break: aiming without the error fails the miss test, and aiming at the centre fails the return test.
+- Plan 5.2: the dev entry picks its match from the command line, `just run --vs <stars>`, rather than from keys in the running game: no screen before 8.1, and the parse is a plain function under test. The human plays the left seat (W/S) on the left side; the computer holds the right. Any other word refuses to start, naming it. `main` reads the arguments before building anything: building `DefaultPlugins` already opens the display and the GPU (`bevy-api-check`, 2026-11-08), so the refusal goes to stderr, not the log, and exits with code 1 before a window exists.
 
 ## Open findings outside phase 5
 
