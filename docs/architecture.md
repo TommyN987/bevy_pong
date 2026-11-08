@@ -51,7 +51,7 @@ Rules:
 
 1. **Feature-first, dependency-down.** Features depend on kernel, vocabulary, and flow. Kernel depends on nothing in the crate. Flow depends only on kernel and vocabulary. The app roof depends on everything; nothing depends on it. A feature may import the public components, resources, and messages of features earlier in the order declared in `features/mod.rs`, never their systems or plugin internals. Amended 2026-11-04 by ADR 0002.
 2. **The kernel is ECS-free.** `bevy_math` types are allowed; apps, worlds, systems, and schedules are not. Pure functions and plain data only.
-3. **Vocabulary stays tiny.** Only types used by two or more features: seat, side, effect identity, core events. A type used by one feature lives in that feature. If it passes a dozen types, it has become a god module. The dozen counts non-message types; each message has exactly one emitting feature, `Notice` excepted (ADR 0002).
+3. **Vocabulary stays tiny.** Only types used by two or more features: seat, side, effect identity, core events. A type used by one feature lives in that feature. If it passes a dozen types, it has become a god module. The dozen counts non-message types; each message has exactly one emitting feature, `Notice` excepted (ADR 0002). Identifier types are outside the dozen (ADR 0008).
 4. **Phases are declared once,** in `flow/` (ADR 0002). Fixed step runs named sets in order: intent, effects, integrate, collide, rules, sanity. Every `FixedUpdate` system names its phase. The step gate, in `FixedFirst`, decides whether the phases run and is the one fixed-step system outside them (ADR 0003). A system that serves, moves, collides, or judges the ball also joins `BallInPlay` (ADR 0004). No system orders itself relative to another feature's system.
 5. **Components own their invariants.** Mutation happens through the component's API from any feature. Cross-feature triggers are events, never direct calls.
 6. **Extension points are exhaustive enums.** Effect, boss, and item identities. Adding a variant makes the compiler enumerate every spawn table, cue map, and AI branch to extend.
@@ -129,7 +129,7 @@ Alternatives considered: flat feature files with a shared prelude (rejected: pre
 
 ## States
 
-Bevy `States` and `SubStates`: `Boot` (waits for settings, profiles, tuning), `Menu`, `InMatch` with substates `Countdown`, `Playing`, `Paused`, `PointScored`, `MatchOver`. Match mode, seat bindings, and score target live in a `MatchConfig` resource.
+Bevy `States` and `SubStates`: `Boot` (waits for settings, profiles, tuning), `Menu`, `InMatch` with substates `Countdown`, `Playing`, `Paused`, `PointScored`, `MatchOver`. Match mode, seat bindings, who each seat plays as (ADR 0008), and score target live in a `MatchConfig` resource.
 Rules owns every `MatchState` transition; the shell requests pause and resume through `MatchControl`, and resume returns to the substate paused from (ADR 0003).
 
 ## Persistence

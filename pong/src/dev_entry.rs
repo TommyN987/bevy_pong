@@ -22,7 +22,7 @@ use bevy::input::keyboard::KeyCode;
 use bevy::log::{info, warn};
 use bevy::state::condition::in_state;
 use bevy::state::state::{NextState, OnEnter, State};
-use pong_core::domain::{Controller, Difficulty, MatchConfig, Notice, Seat};
+use pong_core::domain::{Controller, Difficulty, MatchConfig, Notice, Seat, SeatPlayers};
 use pong_core::features::rules::{MatchControl, Score};
 use pong_core::flow::states::{AppState, MatchState};
 use pong_core::kernel::geometry::Side;
@@ -61,6 +61,7 @@ pub fn two_humans_to_ten() -> MatchConfig {
     MatchConfig {
         left: Controller::Human(Seat::Left),
         right: Controller::Human(Seat::Right),
+        players: SeatPlayers::GUESTS,
         points_to_win: NonZeroU8::MIN.saturating_add(9),
     }
 }

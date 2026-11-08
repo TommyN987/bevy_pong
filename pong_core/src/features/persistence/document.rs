@@ -15,9 +15,10 @@ use bevy::color::Srgba;
 use ron::ser::PrettyConfig;
 use serde::Deserialize;
 
+use crate::domain::ProfileId;
+
 use super::model::{
-    InvalidSaveData, Profile, ProfileId, ProfileName, Profiles, Records, Settings, Volume,
-    WindowMode,
+    InvalidSaveData, Profile, ProfileName, Profiles, Records, Settings, Volume, WindowMode,
 };
 
 /// The profiles file version this game writes.
@@ -290,9 +291,9 @@ mod tests {
     use super::{
         Corruption, DecodeError, decode_profiles, decode_settings, encode_profiles, encode_settings,
     };
+    use crate::domain::ProfileId;
     use crate::features::persistence::model::{
-        InvalidSaveData, Profile, ProfileId, ProfileName, Profiles, Records, Settings, Volume,
-        WindowMode,
+        InvalidSaveData, Profile, ProfileName, Profiles, Records, Settings, Volume, WindowMode,
     };
     use crate::features::tuning::{EMBEDDED_RON, Tuning};
 

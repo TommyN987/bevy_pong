@@ -62,7 +62,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 
 - **1.3.1 MUST** `Seat { Left, Right }`, `Controller { Human(Seat), Ai(Difficulty) }`. Done: each used by two or more features.
 - **1.3.2 MUST** Events: `BallHitPaddle { side }`, `BallHitWall`, `PointScored { scorer }`, `MatchEnded { winner }`, `Notice { text }`. Done: each emitted by exactly one feature, observed by the shell. Amended 2026-11-02 (phase 3 report): `BallHitPaddle` names the paddle's side, since an AI paddle has no seat; `PointScored` names the scorer, since "side" did not say scorer or conceder. Amended 2026-11-04 (ADR 0002): `Notice` is the one exception to "exactly one feature"; any feature with a player-actionable failure emits it.
-- **1.3.3 MUST** Vocabulary under a dozen types. Done: counted at milestone close. Amended 2026-11-04 (ADR 0002): the cap counts non-message types; messages fall under 1.3.2.
+- **1.3.3 MUST** Vocabulary under a dozen types. Done: counted at milestone close. Amended 2026-11-04 (ADR 0002): the cap counts non-message types; messages fall under 1.3.2. Amended 2026-11-08 (ADR 0008): identifier types such as `ProfileId` fall outside the cap.
 - **1.3.4 WONT** `EffectId`, `BossId`, `ItemId`.
 
 ## 1.4 Core features
@@ -88,7 +88,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 
 ### 1.4.5 Rules
 
-- **MUST** `MatchConfig { left, right, points_to_win }`. Done: built by the menu, read by rules.
+- **MUST** `MatchConfig { left, right, points_to_win }`. Done: built by the menu, read by rules. Amended 2026-11-08 (ADR 0008): `MatchConfig` also carries `players: SeatPlayers`, who each seat plays as; persistence reads it to record results.
 - **MUST** Substates `Countdown`, `Playing`, `PointScored`, `Paused`, `MatchOver` under `InMatch`. Done: a headless test walks the cycle to `MatchOver`. Amended 2026-11-04 (ADR 0003): rules owns every transition; the serve fires on `Countdown → Playing` only; entering `Countdown` re-centres the ball; pause and resume come through the `MatchControl` port, and resume returns to the substate paused from. Amended 2026-11-07 (ADR 0004): paddles move in `Countdown` and `PointScored` too; the ball moves, collides, and scores only in `Playing`.
 - **MUST** Score per side; `MatchEnded` at target. Done: test.
 - **MUST** Points-to-win options list and default in tuning. Done: menu offers the list, default preselected, match ends at the chosen value by test.

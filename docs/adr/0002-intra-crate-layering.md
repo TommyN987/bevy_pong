@@ -34,6 +34,7 @@ Add a `flow` layer between vocabulary and features, let features import data typ
   Messages have no cap; each has exactly one emitting feature.
   `Notice` is the exception: any feature with a player-actionable failure emits it.
 - Count on 2026-11-04: types 6 of 12 (`Side`, `Seat`, `Difficulty`, `Controller`, `MatchConfig`, `Random`); messages 6 (`Serve`, `BallHitPaddle`, `BallHitWall`, `PointScored`, `MatchEnded`, `Notice`).
+- Amended 2026-11-08 by ADR 0008: identifier types (`ProfileId`, later `EffectId`, `BossId`, `ItemId`) are outside the cap.
 
 ## Alternatives considered
 

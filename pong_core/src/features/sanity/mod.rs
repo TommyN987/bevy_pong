@@ -127,7 +127,7 @@ mod tests {
 
     use super::{check_ball, check_paddle};
     use crate::app::error_policy::{ErrorPolicy, ErrorPolicyPlugin};
-    use crate::domain::{Controller, MatchConfig, Seat, Serve, SimFault};
+    use crate::domain::{Controller, MatchConfig, Seat, SeatPlayers, Serve, SimFault};
     use crate::features::ball::{Ball, Position, Velocity};
     use crate::features::paddle::Paddle;
     use crate::features::rules::Score;
@@ -242,6 +242,7 @@ mod tests {
         MatchConfig {
             left: Controller::Human(Seat::Left),
             right: Controller::Human(Seat::Right),
+            players: SeatPlayers::GUESTS,
             points_to_win: NonZeroU8::new(10).expect("ten is non-zero"),
         }
     }

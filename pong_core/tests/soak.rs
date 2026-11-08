@@ -17,7 +17,7 @@ use bevy::app::{App, FixedUpdate};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::ResMut;
-use pong_core::domain::{BallHitPaddle, Controller, MatchConfig, Seat};
+use pong_core::domain::{BallHitPaddle, Controller, MatchConfig, Seat, SeatPlayers};
 use pong_core::features::paddle::Paddle;
 use pong_core::features::sanity::SanityPlugin;
 use pong_core::features::seats::PaddleIntent;
@@ -64,6 +64,7 @@ fn two_humans_to(points: u8) -> MatchConfig {
     MatchConfig {
         left: Controller::Human(Seat::Left),
         right: Controller::Human(Seat::Right),
+        players: SeatPlayers::GUESTS,
         points_to_win: NonZeroU8::new(points).expect("a positive target"),
     }
 }

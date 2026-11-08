@@ -10,7 +10,7 @@ use bevy::input::keyboard::{Key, KeyCode, KeyboardInput, NativeKey};
 use bevy::input::{ButtonState, InputPlugin};
 use bevy::state::state::NextState;
 use pong::dev_entry::{DevArgsError, DevEntryPlugin, dev_match, two_humans_to_ten};
-use pong_core::domain::{Controller, Difficulty, MatchConfig, Seat};
+use pong_core::domain::{Controller, Difficulty, MatchConfig, Seat, SeatPlayers};
 use pong_core::features::rules::Score;
 use pong_core::flow::states::{AppState, MatchState};
 use pong_core::kernel::geometry::Side;
@@ -64,6 +64,7 @@ fn the_dev_match_is_two_humans_to_ten() {
         MatchConfig {
             left: Controller::Human(Seat::Left),
             right: Controller::Human(Seat::Right),
+            players: SeatPlayers::GUESTS,
             points_to_win: config.points_to_win,
         }
     );
