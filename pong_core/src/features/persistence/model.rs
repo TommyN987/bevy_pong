@@ -37,6 +37,9 @@ pub enum InvalidSaveData {
         /// The id seen twice.
         id: u32,
     },
+    /// A new profile after one that holds the highest id there is.
+    #[error("every profile id is taken")]
+    NoProfileIdLeft,
     /// A master volume above full.
     #[error("volume {percent}% is above 100%")]
     VolumeAboveFull {
@@ -196,6 +199,31 @@ impl Profiles {
     #[must_use]
     pub fn as_slice(&self) -> &[Profile] {
         &self.0
+    }
+
+    /// Adds a profile named `name` in `color` with no records, last in the
+    /// order, and returns its id: one above the highest id held, or 1 for
+    /// the first profile.
+    ///
+    /// # Errors
+    /// [`InvalidSaveData::ColorChannel`] as [`Profile::new`], or
+    /// [`InvalidSaveData::NoProfileIdLeft`]; nothing is added then.
+    pub fn create(
+        &mut self,
+        name: ProfileName,
+        color: Srgba,
+    ) -> Result<ProfileId, InvalidSaveData> {
+        let id = match self.0.iter().map(Profile::id).max() {
+            None => ProfileId(1),
+            Some(ProfileId(highest)) => ProfileId(
+                highest
+                    .checked_add(1)
+                    .ok_or(InvalidSaveData::NoProfileIdLeft)?,
+            ),
+        };
+        self.0
+            .push(Profile::new(id, name, color, Records::default())?);
+        Ok(id)
     }
 
     /// The records of the profile with `id`, to change; `None` if no profile
@@ -366,6 +394,63 @@ mod tests {
             Profiles::new(vec![first, second]),
             Err(InvalidSaveData::DuplicateProfileId { id: 3 })
         );
+    }
+
+    fn named(name: &str) -> ProfileName {
+        ProfileName::new(name).expect("a valid name")
+    }
+
+    #[test]
+    fn the_first_profile_created_gets_id_one_with_no_records() {
+        let mut profiles = Profiles::default();
+        let id = profiles.create(named("Zoë"), Srgba::RED).expect("created");
+        assert_eq!(id, ProfileId(1));
+        let [zoe] = profiles.as_slice() else {
+            panic!("expected one profile, got {profiles:?}");
+        };
+        assert_eq!(
+            (zoe.id(), zoe.name().as_str(), zoe.color(), zoe.records()),
+            (ProfileId(1), "Zoë", Srgba::RED, Records::default())
+        );
+    }
+
+    /// Ids are never handed out twice while their profile exists, gaps or not.
+    #[test]
+    fn a_created_profile_gets_the_id_after_the_highest_and_goes_last() {
+        let mut profiles = Profiles::new(vec![
+            profile(5, Srgba::RED).expect("valid"),
+            profile(2, Srgba::BLUE).expect("valid"),
+        ])
+        .expect("distinct ids");
+        let id = profiles
+            .create(named("Max"), Srgba::GREEN)
+            .expect("created");
+        assert_eq!(id, ProfileId(6));
+        let ids: Vec<ProfileId> = profiles.as_slice().iter().map(Profile::id).collect();
+        assert_eq!(ids, [ProfileId(5), ProfileId(2), ProfileId(6)]);
+    }
+
+    #[test]
+    fn creating_with_a_bad_colour_is_refused_and_adds_nothing() {
+        let mut profiles = Profiles::default();
+        let refused = profiles.create(named("Mia"), Srgba::new(f32::INFINITY, 0.0, 0.0, 1.0));
+        assert!(matches!(
+            refused,
+            Err(InvalidSaveData::ColorChannel { channel: "red", .. })
+        ));
+        assert_eq!(profiles, Profiles::default());
+    }
+
+    #[test]
+    fn creating_after_the_highest_possible_id_is_refused_and_adds_nothing() {
+        let last = profile(u32::MAX, Srgba::RED).expect("valid");
+        let mut profiles = Profiles::new(vec![last]).expect("one profile");
+        let before = profiles.clone();
+        assert_eq!(
+            profiles.create(named("Mia"), Srgba::BLUE),
+            Err(InvalidSaveData::NoProfileIdLeft)
+        );
+        assert_eq!(profiles, before);
     }
 
     /// Spec 1.6.6: the first start is fullscreen.

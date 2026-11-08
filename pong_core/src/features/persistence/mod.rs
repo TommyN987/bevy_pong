@@ -11,12 +11,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::path::Path;
 
 use bevy::app::{App, Plugin, Update};
+use bevy::ecs::change_detection::DetectChanges;
 use bevy::ecs::error::BevyError;
 use bevy::ecs::message::{MessageReader, MessageWriter};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::schedule::common_conditions::resource_exists;
 use bevy::ecs::system::{Commands, Res, ResMut};
+use bevy::state::condition::in_state;
 use bevy::state::state::OnEnter;
 
 use self::document::{
@@ -34,7 +36,7 @@ pub mod load;
 pub mod model;
 
 /// Loads the settings and profiles on entering `Boot` and writes them when
-/// a match ends (spec 1.4.9).
+/// a match ends (spec 1.4.9) or when they change in the menu (plan 8.1).
 ///
 /// Load policy, per file: a missing file starts fresh; a file that cannot be
 /// used is set aside as `<name>.<seconds>.bak` and the game starts fresh with
@@ -50,8 +52,10 @@ impl Plugin for PersistencePlugin {
         app.add_systems(OnEnter(AppState::Boot), load_saves)
             .add_systems(
                 Update,
-                (record_match_result, write_saves_at_match_end)
-                    .chain()
+                (
+                    (record_match_result, write_saves_at_match_end).chain(),
+                    write_saves_after_menu_change.run_if(in_state(AppState::Menu)),
+                )
                     .run_if(resource_exists::<SaveState>),
             );
     }
@@ -124,7 +128,7 @@ impl FileState {
     }
 }
 
-const COULD_NOT_SAVE: &str = "The game could not save. It will try again after the next match.";
+const COULD_NOT_SAVE: &str = "The game could not save. It will try again.";
 
 const NOWHERE_TO_SAVE: &str =
     "There is nowhere to save on this computer, so nothing will be kept after the game closes.";
@@ -279,30 +283,60 @@ fn record_match_result(
 }
 
 /// Writes each writable file whose model changed since its last write, once
-/// per [`MatchEnded`] (spec 1.4.9: records are written at match end only). A
-/// failure keeps the model in memory and is retried at the next match end;
-/// the first failure of the session sends one [`Notice`].
+/// per [`MatchEnded`] (spec 1.4.9: during a match, records are written at its
+/// end only). See [`write_changed_saves`] for failures.
 fn write_saves_at_match_end(
     mut ended: MessageReader<MatchEnded>,
     paths: Option<Res<SavePaths>>,
     profiles: Res<Profiles>,
     settings: Res<Settings>,
     mut state: ResMut<SaveState>,
-    mut notices: MessageWriter<Notice>,
+    notices: MessageWriter<Notice>,
 ) {
     if ended.read().count() == 0 {
         return;
     }
+    write_changed_saves(paths.as_deref(), &profiles, *settings, &mut state, notices);
+}
+
+/// Writes as [`write_saves_at_match_end`] does, while in `Menu`, whenever
+/// [`Profiles`] or [`Settings`] changed since this last ran: the menu screens
+/// change them, and the game may close before another match ends (plan 8.1).
+/// A change made during a match that never ended is seen on the return to
+/// the menu, since this does not run in between.
+fn write_saves_after_menu_change(
+    paths: Option<Res<SavePaths>>,
+    profiles: Res<Profiles>,
+    settings: Res<Settings>,
+    mut state: ResMut<SaveState>,
+    notices: MessageWriter<Notice>,
+) {
+    if !(profiles.is_changed() || settings.is_changed()) {
+        return;
+    }
+    write_changed_saves(paths.as_deref(), &profiles, *settings, &mut state, notices);
+}
+
+/// Writes each writable file whose encoding differs from its last write. A
+/// failure keeps the model in memory, and the next call retries it; the first
+/// failure of the session sends one [`Notice`]. Without `paths` nothing is
+/// written.
+fn write_changed_saves(
+    paths: Option<&SavePaths>,
+    profiles: &Profiles,
+    settings: Settings,
+    state: &mut SaveState,
+    mut notices: MessageWriter<Notice>,
+) {
     let Some(paths) = paths else {
         return;
     };
-    let state = &mut *state;
     let profiles_failed = state
         .profiles
-        .write_if_changed(&paths.profiles_file(), encode_profiles(&profiles));
+        .write_if_changed(&paths.profiles_file(), encode_profiles(profiles));
     let settings_failed = state
         .settings
-        .write_if_changed(&paths.settings_file(), encode_settings(*settings));
+        .write_if_changed(&paths.settings_file(), encode_settings(settings));
     if (profiles_failed || settings_failed) && !state.write_failure_announced {
         state.write_failure_announced = true;
         notices.write(Notice {
@@ -337,7 +371,7 @@ mod tests {
         recorded, run_until, start_match, take_recorded,
     };
 
-    const COULD_NOT_SAVE: &str = "The game could not save. It will try again after the next match.";
+    const COULD_NOT_SAVE: &str = "The game could not save. It will try again.";
 
     fn set_read_only(dir: &Path, read_only: bool) {
         let mode = if read_only { 0o555 } else { 0o755 };
@@ -370,19 +404,31 @@ mod tests {
         (left, right): (Controller, Controller),
         players: SeatPlayers,
     ) {
-        start_match(
-            app,
-            MatchConfig {
-                left,
-                right,
-                players,
-                points_to_win: NonZeroU8::MIN,
-            },
-        );
+        start_match(app, to_one_point(left, right, players));
         let mut reported = app.world_mut().resource_mut::<Messages<BallHitPaddle>>();
         for _ in 0..hits {
             reported.write(BallHitPaddle { side: Side::Left });
         }
+        left_scores_the_winning_point(app);
+        leave_match(app);
+    }
+
+    const fn to_one_point(
+        left: Controller,
+        right: Controller,
+        players: SeatPlayers,
+    ) -> MatchConfig {
+        MatchConfig {
+            left,
+            right,
+            players,
+            points_to_win: NonZeroU8::MIN,
+        }
+    }
+
+    /// Puts the ball just past the right goal, flying on, and runs the
+    /// match to `MatchOver`. The match must be one to a single point.
+    fn left_scores_the_winning_point(app: &mut App) {
         let goal = app.world().resource::<Tuning>().arena().goal_x(Side::Right);
         place_ball(app, Vec2::new(goal + 2.0, 0.0), Vec2::new(60.0, 0.0));
         run_until(
@@ -391,7 +437,6 @@ mod tests {
             10,
             "the match never ended",
         );
-        leave_match(app);
     }
 
     fn windowed_at_thirty() -> Settings {
@@ -505,21 +550,28 @@ mod tests {
         );
     }
 
-    /// Spec 1.4.9 SHOULD: records are written at `MatchEnded` only.
+    /// Spec 1.4.9 SHOULD: during a match, records and settings are written
+    /// at `MatchEnded` only, never during play.
     #[test]
-    fn a_changed_model_is_written_when_the_match_ends_and_not_during_play() {
+    fn a_change_during_a_match_is_written_when_the_match_ends_and_not_during_play() {
         let mut app = booted();
         let paths = save_paths(&app);
+        start_match(
+            &mut app,
+            to_one_point(
+                Controller::Human(Seat::Left),
+                Controller::Human(Seat::Right),
+                SeatPlayers::GUESTS,
+            ),
+        );
         app.insert_resource(windowed_at_thirty());
         for _ in 0..30 {
             frame(&mut app);
         }
-        assert!(
-            !paths.settings_file().exists(),
-            "written before any match ended"
-        );
+        assert!(!paths.settings_file().exists(), "written during play");
 
-        play_a_match_to_its_end(&mut app);
+        left_scores_the_winning_point(&mut app);
+        frame(&mut app);
         let written = std::fs::read_to_string(paths.settings_file()).expect("written at match end");
         assert_eq!(
             decode_settings(&written).expect("decodes"),
@@ -555,6 +607,74 @@ mod tests {
             decode_settings(&written).expect("decodes"),
             windowed_at_thirty()
         );
+    }
+
+    /// Plan 8.1: the menu screens change profiles and settings, and the game
+    /// may close before another match ends.
+    #[test]
+    fn a_profile_created_in_the_menu_is_written_at_once() {
+        let mut app = booted();
+        let paths = save_paths(&app);
+        app.world_mut()
+            .resource_mut::<Profiles>()
+            .create(ProfileName::new("Mia").expect("valid"), Srgba::RED)
+            .expect("created");
+        frame(&mut app);
+        let written = std::fs::read_to_string(paths.profiles_file()).expect("written in the menu");
+        assert_eq!(
+            decode_profiles(&written).expect("decodes"),
+            *app.world().resource::<Profiles>()
+        );
+        assert!(
+            !paths.settings_file().exists(),
+            "unchanged settings were written"
+        );
+    }
+
+    #[test]
+    fn a_setting_changed_in_the_menu_is_written_at_once() {
+        let mut app = booted();
+        let paths = save_paths(&app);
+        app.insert_resource(windowed_at_thirty());
+        frame(&mut app);
+        let written = std::fs::read_to_string(paths.settings_file()).expect("written in the menu");
+        assert_eq!(
+            decode_settings(&written).expect("decodes"),
+            windowed_at_thirty()
+        );
+        assert!(
+            !paths.profiles_file().exists(),
+            "unchanged profiles were written"
+        );
+    }
+
+    /// One `Notice` per session (spec 1.4.9) across both write triggers.
+    #[test]
+    fn a_failed_write_in_the_menu_tells_once_and_retries_at_the_next_change() {
+        let mut app = booted();
+        take_recorded::<Notice>(&mut app);
+        let paths = save_paths(&app);
+        let dir = paths.settings_file().parent().expect("a parent").to_owned();
+        set_read_only(&dir, true);
+        app.insert_resource(windowed_at_thirty());
+        frame(&mut app);
+        // One more, so a fixed step has recorded the notice.
+        frame(&mut app);
+        assert_eq!(notices(&app), [COULD_NOT_SAVE]);
+        assert_eq!(*app.world().resource::<Settings>(), windowed_at_thirty());
+
+        play_a_match_to_its_end(&mut app);
+        assert_eq!(notices(&app), [COULD_NOT_SAVE], "told twice in one session");
+
+        set_read_only(&dir, false);
+        let louder = Settings {
+            volume: Volume::new(40).expect("in range"),
+            ..windowed_at_thirty()
+        };
+        app.insert_resource(louder);
+        frame(&mut app);
+        let written = std::fs::read_to_string(paths.settings_file()).expect("the retry wrote it");
+        assert_eq!(decode_settings(&written).expect("decodes"), louder);
     }
 
     /// "Never overwrite" (docs/architecture.md): a file that could not be
