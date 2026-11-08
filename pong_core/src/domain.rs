@@ -4,12 +4,13 @@
 //! `Side` is also vocabulary; it is defined in [`crate::kernel::geometry`]
 //! because geometry needs it first. Count (ADR 0002): six types of twelve
 //! (`Side`, `Seat`, `Difficulty`, `Controller`, `MatchConfig`, `Random`) and
-//! six messages, each with one emitting feature, `Notice` excepted.
+//! seven messages, each with one emitting feature, `Notice` excepted.
 
 use std::num::NonZeroU8;
 
 use bevy::ecs::message::Message;
 use bevy::ecs::resource::Resource;
+use bevy::math::Vec2;
 
 use crate::kernel::geometry::Side;
 use crate::kernel::random::Pcg32;
@@ -136,6 +137,42 @@ pub struct MatchEnded {
     pub winner: Side,
 }
 
+/// The sanity phase found the simulation broken (spec 1.4.7). Emitted by
+/// sanity; rules answers it by restarting the rally, so the serve keeps one
+/// emitter (ADR 0002). Each variant names what broke and the values seen.
+#[derive(Message, Debug, Clone, PartialEq, thiserror::Error)]
+pub enum SimFault {
+    /// M1 plays with exactly one ball.
+    #[error("{count} balls in the match; M1 plays with exactly one")]
+    BallCount {
+        /// How many balls the phase found.
+        count: usize,
+    },
+    /// A component of the ball's velocity is NaN or infinite.
+    #[error("ball velocity {velocity} is not finite")]
+    BallVelocityNotFinite {
+        /// The velocity seen.
+        velocity: Vec2,
+    },
+    /// The ball is through a wall, farther past a goal line than one step at
+    /// the speed cap, or at a position that is not finite.
+    #[error("ball at {position} is outside the arena")]
+    BallOutsideArena {
+        /// The position seen.
+        position: Vec2,
+    },
+    /// Part of the paddle is through a wall, or its centre is not finite.
+    #[error("{side:?} paddle centred at y = {center_y}, {height} tall, is outside the arena")]
+    PaddleOutsideArena {
+        /// Which paddle.
+        side: Side,
+        /// Its centre seen.
+        center_y: f32,
+        /// Its height seen.
+        height: f32,
+    },
+}
+
 /// One plain sentence the player can act on, shown by the shell's notice line
 /// (error policy, docs/architecture.md). Emitted by tuning, later persistence:
 /// the one message with several emitters (ADR 0002).
@@ -157,7 +194,7 @@ mod tests {
 
     use super::{
         BallHitPaddle, BallHitWall, Controller, Difficulty, MatchConfig, MatchEnded, Notice,
-        PointScored, Random, Seat, Serve,
+        PointScored, Random, Seat, Serve, SimFault,
     };
     use crate::kernel::geometry::Side;
 
@@ -242,6 +279,16 @@ mod tests {
             vec![Serve {
                 toward: Side::Right
             }]
+        );
+    }
+
+    #[test]
+    fn a_sim_fault_round_trips_as_a_message_and_reads_as_a_sentence() {
+        let fault = SimFault::BallCount { count: 2 };
+        assert_eq!(round_trip(fault.clone()), vec![fault.clone()]);
+        assert_eq!(
+            fault.to_string(),
+            "2 balls in the match; M1 plays with exactly one"
         );
     }
 

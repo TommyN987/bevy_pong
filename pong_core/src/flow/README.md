@@ -40,7 +40,7 @@ so `OnEnter(Countdown)` sees entities spawned in `OnEnter(InMatch)`.
 | `Integrate` | Paddles and ball move. |
 | `Collide` | Swept collisions, reflections, hit messages. |
 | `Rules` | Scoring and match end. |
-| `Sanity` | Invariant checks. Empty until plan 6.1. |
+| `Sanity` | Invariant checks; a fault panics in dev and restarts the rally in release (spec 1.4.7). |
 
 `configure` attaches the order and the gate to the sets, not to systems:
 

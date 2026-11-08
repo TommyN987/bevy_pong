@@ -139,7 +139,8 @@ Owns every `MatchState` transition (ADR 0003): scoring, serve timing, pause, mat
 | `begin_countdown`, `begin_point_pause` | `OnEnter(Countdown)`, `OnEnter(PointScored)` | Insert a `StateTimer` from tuning. |
 | `advance_countdown`, `advance_point_pause` | `Update`, in their state | Tick on virtual time; request `Playing` or `Countdown`. |
 | `request_serve` | `OnTransition { Countdown → Playing }` | Writes `Serve`. |
-| `apply_pause_requests` | `Update`, after the timers | Acts on `MatchControl`. |
+| `restart_rally_after_fault` | `Update`, after the timers, while the paddles move | On any `SimFault`, requests `Countdown` unless the match is already ending. |
+| `apply_pause_requests` | `Update`, after the timers and the heal | Acts on `MatchControl`. |
 | `score_goal_crossings` → `end_match_at_target` | Rules, chained | Award the point, write `PointScored`, request `PointScored`; then, if `Score` changed and a side reached the target, write `MatchEnded` and request `MatchOver`. The later `set` wins. |
 
 Timers run in `Update` because the phases run only while `Playing`;
@@ -184,3 +185,19 @@ When the ball is not coming it steers to the centre, where the next serve starts
 
 Steering is not in `BallInPlay`: the AI lines up between rallies as players do (ADR 0004).
 The serve shares the intent phase, unordered, so a reaction to a serve may start one step late.
+
+## sanity
+
+The last phase of every step in which the phases run checks that the simulation is sound (spec 1.4.7):
+exactly one ball; its velocity finite; its centre inside the walls and no farther past a goal line than one step at the speed cap;
+each paddle's centre finite and the whole paddle inside the walls.
+It runs between rallies too, not in `BallInPlay`: a ball resting past the goal after a point is within bounds (ADR 0004).
+
+One code path in both builds. A broken invariant is written as a `SimFault` and returned as the system's error;
+the error handler decides. Dev panics in that step.
+Release logs it at error level through Bevy's handler, and rules' `restart_rally_after_fault` restarts the rally from a countdown,
+whose end serves as after any point. `SimFault` is registered by rules, its reader and the earlier feature.
+`pong_core` cannot log itself (no `bevy_log` feature), so the handler's line is the log.
+
+A fault the heal cannot cure, such as a second ball, faults again every step in release.
+In M1 only a code bug can cause one, and dev panics on it first.

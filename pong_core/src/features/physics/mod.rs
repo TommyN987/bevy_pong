@@ -163,7 +163,7 @@ fn collide_ball_with_paddles(
 mod tests {
     use std::num::NonZeroU8;
 
-    use bevy::app::App;
+    use bevy::app::{App, PluginGroupBuilder};
     use bevy::ecs::entity::Entity;
     use bevy::ecs::query::With;
     use bevy::math::Vec2;
@@ -172,13 +172,14 @@ mod tests {
     use crate::domain::{BallHitPaddle, BallHitWall, Controller, MatchConfig, Seat};
     use crate::features::ball::{Ball, Position, Velocity};
     use crate::features::paddle::Paddle;
+    use crate::features::sanity::SanityPlugin;
     use crate::features::tuning::Tuning;
     use crate::kernel::geometry::Side;
     use crate::kernel::integrate::Motion;
     use crate::kernel::predict::crossing_y;
     use crate::kernel::test_support::assert_near;
     use crate::testing::{
-        ball_state, boot, frame, headless_app, place_ball, record, start_match, take_recorded,
+        ball_state, boot, frame, headless_app_with, place_ball, record, start_match, take_recorded,
     };
 
     fn two_humans() -> MatchConfig {
@@ -190,7 +191,11 @@ mod tests {
     }
 
     fn match_app() -> App {
-        let mut app = headless_app(1);
+        match_app_with(|core| core)
+    }
+
+    fn match_app_with(adjust: impl FnOnce(PluginGroupBuilder) -> PluginGroupBuilder) -> App {
+        let mut app = headless_app_with(1, adjust);
         record::<BallHitWall>(&mut app);
         record::<BallHitPaddle>(&mut app);
         boot(&mut app);
@@ -222,7 +227,9 @@ mod tests {
     /// each swept from their own start, exactly as if alone.
     #[test]
     fn two_balls_in_one_step_each_collide_exactly_as_if_alone() {
-        let mut app = match_app();
+        // M1 plays with one ball, and the sanity phase faults on a second
+        // (plan 6.1); this test is about step state, so it runs without it.
+        let mut app = match_app_with(PluginGroupBuilder::disable::<SanityPlugin>);
         place_ball(&mut app, INTO_RIGHT.0, INTO_RIGHT.1);
         let first = app
             .world_mut()
