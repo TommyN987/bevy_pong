@@ -150,6 +150,17 @@ impl Paddle {
             Vec2::new(shape.thickness() / 2.0, self.height / 2.0),
         )
     }
+
+    /// The x at which an incoming ball's centre touches this paddle's front
+    /// face, the face toward the centre line: one ball radius in front of it.
+    /// The AI aims its prediction at this line.
+    #[must_use]
+    pub fn contact_x(self, tuning: &Tuning) -> f32 {
+        let shape = tuning.paddle();
+        tuning.arena().goal_x(self.side)
+            - self.side.sign()
+                * (shape.inset() + shape.thickness() + tuning.ball().radius().value())
+    }
 }
 
 #[cfg(test)]
@@ -339,6 +350,14 @@ mod tests {
         assert_eq!(paddle().side(), Side::Right);
         let left = Paddle::new(Side::Left, tuning().paddle()).rect(&tuning());
         assert_near(left.center().x, -75.0, 1e-6);
+    }
+
+    #[test]
+    fn a_ball_touches_the_face_where_its_centre_is_one_radius_in_front_of_it() {
+        // Right face at x = 74, left face at -74; the ball's radius is 1.
+        assert_near(paddle().contact_x(&tuning()), 73.0, 1e-6);
+        let left = Paddle::new(Side::Left, tuning().paddle());
+        assert_near(left.contact_x(&tuning()), -73.0, 1e-6);
     }
 
     #[test]

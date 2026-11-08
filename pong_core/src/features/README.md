@@ -160,3 +160,27 @@ While a transition is pending, the request waits a frame.
 `Paused` with no `PausedFrom` is an error to the error handler: something else entered `Paused`.
 
 `Score` is public for the shell's display.
+
+## ai
+
+The mirror controller (spec 1.4.6): the computer's player writes the same `PaddleIntents` a seat does.
+
+| System | Runs | Does |
+|---|---|---|
+| `spawn_controllers` | `OnEnter(InMatch)` | One `MirrorController` entity per side held by `Controller::Ai`, despawned with the match. |
+| `steer_ai_paddles` | Intent | Each controller reads the ball now and its paddle, and writes its side's intent. |
+
+A controller is an entity of its own, not a component on the paddle:
+spawning it needs no order against the paddle's spawn, which belongs to another feature.
+Seats writes the human sides and the AI the others, so the two writers of `PaddleIntents` need no order.
+
+`MirrorController::steer` holds the decisions and is a plain method, tested without an `App`.
+When the ball turns toward its side, it predicts the crossing with the kernel's `crossing_y`,
+the same stepping the physics uses, adds an error drawn once from `±prediction_error`,
+and keeps that target for the approach.
+It holds still through `reaction_delay`, then steers to the target.
+When the ball is not coming it steers to the centre, where the next serve starts.
+`intent_toward` stops within half a step's travel of a target, so the paddle never jitters.
+
+Steering is not in `BallInPlay`: the AI lines up between rallies as players do (ADR 0004).
+The serve shares the intent phase, unordered, so a reaction to a serve may start one step late.
