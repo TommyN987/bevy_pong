@@ -12,6 +12,7 @@ use bevy::math::Vec2;
 use bevy::state::state::NextState;
 use bevy::transform::components::Transform;
 use pong::views::motion::MotionPlugin;
+use pong::views::trail::{GHOSTS, TrailGhost, TrailPlugin};
 use pong_core::domain::{Controller, MatchConfig, Seat, SeatPlayers};
 use pong_core::features::ball::{Ball, Snap};
 use pong_core::features::paddle::Paddle;
@@ -42,7 +43,7 @@ fn two_humans() -> MatchConfig {
 /// sample, so two whole-step frames pass before frames shrink to `length`.
 fn playing_app(length: FrameLength) -> App {
     let mut app = headless_app(1);
-    app.add_plugins(MotionPlugin);
+    app.add_plugins((MotionPlugin, TrailPlugin));
     boot(&mut app);
     start_match(&mut app, two_humans());
     place_ball(&mut app, Vec2::new(0.0, 30.0), Vec2::new(60.0, 0.0));
@@ -157,4 +158,78 @@ fn a_paddle_is_drawn_at_the_centre_of_its_rectangle() {
         count += 1;
     }
     assert_eq!(count, 2);
+}
+
+/// Each ghost's drawn centre, nearest the ball first.
+fn drawn_ghosts(app: &mut App) -> Vec<(u8, Vec2)> {
+    let mut query = app.world_mut().query::<(&TrailGhost, &Transform)>();
+    let mut ghosts: Vec<_> = query
+        .iter(app.world())
+        .map(|(ghost, transform)| (ghost.back(), transform.translation.truncate()))
+        .collect();
+    ghosts.sort_by_key(|&(back, _)| back);
+    ghosts
+}
+
+#[track_caller]
+fn assert_ghosts_on_the_ball(app: &mut App) {
+    let ball = drawn_ball(app);
+    let ghosts = drawn_ghosts(app);
+    assert_eq!(ghosts.len(), usize::from(GHOSTS));
+    for (_, at) in ghosts {
+        assert_vec_near(at, ball);
+    }
+}
+
+/// Spec 1.6.2 SHOULD: the ball trails ghosts, one per tick back, as smooth
+/// as the ball: at half steps too, each sits a whole step behind the next.
+#[test]
+fn a_moving_balls_ghosts_trail_it_one_step_apart_nearest_first() {
+    for length in [FrameLength::Steps(1), FrameLength::HalfStep] {
+        let mut app = playing_app(length);
+        for _ in 0..30 {
+            frame(&mut app);
+        }
+        let ball = drawn_ball(&mut app);
+        let ghosts = drawn_ghosts(&mut app);
+        assert_eq!(
+            ghosts.iter().map(|&(back, _)| back).collect::<Vec<_>>(),
+            (1..=GHOSTS).collect::<Vec<_>>(),
+            "{length:?}"
+        );
+        for (back, at) in ghosts {
+            assert_vec_near(at, ball - Vec2::new(f32::from(back), 0.0));
+        }
+    }
+}
+
+/// A teleport is a cut for the trail too: no streak from where the ball was.
+#[test]
+fn after_a_teleport_every_ghost_sits_on_the_ball() {
+    let mut app = playing_app(FrameLength::Steps(1));
+    for _ in 0..12 {
+        frame(&mut app);
+    }
+    app.world_mut()
+        .resource_mut::<NextState<MatchState>>()
+        .set(MatchState::Countdown);
+    frame(&mut app);
+    assert_vec_near(drawn_ball(&mut app), Vec2::ZERO);
+    assert_ghosts_on_the_ball(&mut app);
+}
+
+#[test]
+fn a_stopped_balls_ghosts_gather_into_it() {
+    let mut app = playing_app(FrameLength::Steps(1));
+    for _ in 0..12 {
+        frame(&mut app);
+    }
+    app.world_mut()
+        .resource_mut::<MatchControl>()
+        .request_pause();
+    for _ in 0..usize::from(GHOSTS) + 3 {
+        frame(&mut app);
+    }
+    assert_eq!(match_state(&app), MatchState::Paused);
+    assert_ghosts_on_the_ball(&mut app);
 }
