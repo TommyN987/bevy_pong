@@ -120,7 +120,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 
 - **MUST** `SavePaths` resource injected by the shell; core reads and writes with `std::fs`, atomic via temp file and rename. Done: an injected failing writer leaves the original intact.
 - **MUST** Profiles file v1: id, display name, color value, records (wins, losses, longest rally). Done: round-trip test.
-- **MUST** Settings file v1: master volume, window mode. Done: round-trip test.
+- **MUST** Settings file v1: master volume, window mode. Done: round-trip test. Amended 2026-11-09 (plan 10.2, [phase 10 report](m1-phase10-report.md)): settings file v2 adds the last points-to-win picked, or none; a v1 file migrates to v2 with none.
 - **MUST** Load policy: corrupt or newer version backs up with timestamp suffix, starts fresh, emits one `Notice`. Done: fixtures for corrupt and for version 99.
 - **MUST** Write policy: failure keeps the model in memory, retries at next match end, one `Notice` per session. Done: test with an unwritable path. Amended 2026-11-08 (plan 8.1, [phase 8 report](m1-phase8-report.md)): the game also writes in `Menu` whenever profiles or settings change, so a failure retries at the next match end or menu change; still one `Notice` per session.
 - **MUST** Versioned enum migration chain; fixture `v1.ron`; a test asserting fixture count equals current version. Done: tests pass.

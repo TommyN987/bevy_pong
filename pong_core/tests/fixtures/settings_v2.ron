@@ -1,0 +1,9 @@
+// Released settings format, version 2 (spec 1.4.9, plan 10.2): version 1
+// plus the last points-to-win picked. Never edit this file: it is what a game
+// of that version wrote, and every later game must still read it.
+(
+    version: 2,
+    volume_percent: 40,
+    window_mode: BorderlessFullscreen,
+    points_to_win: Picked(15),
+)

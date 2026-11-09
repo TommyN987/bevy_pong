@@ -3,6 +3,7 @@
 //! must still decode to the model it was written from; the count tests make
 //! a version bump without its fixture fail.
 
+use std::num::NonZeroU8;
 use std::path::PathBuf;
 
 use bevy::color::Srgba;
@@ -79,4 +80,13 @@ fn the_version_1_settings_fixture_still_decodes_to_its_settings() {
     let settings = decode_settings(&fixture("settings_v1.ron")).expect("fixture decodes");
     assert_eq!(settings.volume.percent(), 60);
     assert_eq!(settings.window_mode, WindowMode::Windowed);
+    assert_eq!(settings.points_to_win, None, "version 1 saved no pick");
+}
+
+#[test]
+fn the_version_2_settings_fixture_still_decodes_to_its_settings() {
+    let settings = decode_settings(&fixture("settings_v2.ron")).expect("fixture decodes");
+    assert_eq!(settings.volume.percent(), 40);
+    assert_eq!(settings.window_mode, WindowMode::BorderlessFullscreen);
+    assert_eq!(settings.points_to_win, NonZeroU8::new(15));
 }

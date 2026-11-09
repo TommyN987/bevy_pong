@@ -505,13 +505,19 @@ fn list_for(
             None,
         ),
         MenuScreen::PointsToWin => {
+            // The last pick, while tuning still offers it (plan 10.2).
             let flow = tuning.match_flow();
+            let options = flow.points_to_win_options();
+            let preselected = settings
+                .points_to_win
+                .filter(|points| options.contains(points))
+                .unwrap_or(flow.points_to_win_default());
             MenuList::new(
-                flow.points_to_win_options()
+                options
                     .iter()
                     .map(|&points| MenuItem::PointsToWin(points))
                     .collect(),
-                Some(MenuItem::PointsToWin(flow.points_to_win_default())),
+                Some(MenuItem::PointsToWin(preselected)),
             )
         }
         MenuScreen::PickProfile(seat) => {
@@ -686,6 +692,7 @@ fn choose(
                 .opponent
                 .ok_or_else(|| BevyError::from("points picked before the opponent"))?;
             draft.points_to_win = Some(points);
+            settings.points_to_win = Some(points);
             Outcome::Show(MenuScreen::PickProfile(opponent.first_seat()))
         }
         MenuItem::Player(player) => {

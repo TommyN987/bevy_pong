@@ -229,7 +229,7 @@ Nothing is written during a match: a change made in one is written at its end, o
 | Module | Holds |
 |---|---|
 | `model` | `Profiles`, `Profile`, `ProfileName`, `Records`, `Settings`, `Volume`, `WindowMode`. Constructors check every value, so a model in hand is valid. `Profiles::create` gives a new profile the id after the highest, so ids stay unique (plan 8.1); `rename`, `recolor`, and `remove` hand back what they replace or take (plans 8.2, 8.4). |
-| `document` | `encode_*` and `decode_*` per kind; the frozen `v1` shapes; the versioned enums and their migration chains. |
+| `document` | `encode_*` and `decode_*` per kind; the frozen `v1` and `v2` shapes; the versioned enums and their migration chains. Settings are at version 2 (the last points-to-win picked, plan 10.2), reached from version 1 by `From<v1::SettingsFile>`; profiles are at version 1. |
 | `io` | The `SavePaths` port and `write_atomically`. |
 | `load` | The per-file load policy: `load`, `Loaded`, `LoadError`, backup names. |
 
