@@ -5,6 +5,7 @@
 
 pub mod audio;
 pub mod crash;
+pub mod overlay;
 pub mod ports;
 pub mod seed;
 pub mod ui;

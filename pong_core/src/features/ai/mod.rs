@@ -117,18 +117,44 @@ enum Plan {
     /// The ball is not coming, or will never arrive: hold the centre, where
     /// the next serve starts.
     Centre,
-    /// The ball is coming: once `hold_for` has run out, meet it at `target_y`.
+    /// The ball is coming: once `hold_for` has run out, meet it at the aim's
+    /// target.
     Meet {
         /// The predicted crossing plus this approach's error. Fixed for the
         /// approach.
-        target_y: f32,
+        aim: Aim,
         /// What remains of the reaction delay. The paddle holds still while
         /// it is not zero; each held step spends one timestep of it.
         hold_for: Duration,
     },
 }
 
+/// Where a controller aims during an approach: read-only, for the overlay
+/// (plan 10.1).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Aim {
+    /// The y the paddle steers to: the predicted crossing plus `error`.
+    pub target_y: f32,
+    /// This approach's draw from `±prediction_error`.
+    pub error: f32,
+}
+
 impl MirrorController {
+    /// The side whose paddle this controller steers.
+    #[must_use]
+    pub const fn side(&self) -> Side {
+        self.side
+    }
+
+    /// This approach's aim; `None` while the paddle holds the centre.
+    #[must_use]
+    pub const fn aim(&self) -> Option<Aim> {
+        match self.plan {
+            Plan::Centre => None,
+            Plan::Meet { aim, .. } => Some(aim),
+        }
+    }
+
     /// A controller for the paddle on `side`, playing at `difficulty`, that
     /// has not yet seen the ball.
     #[must_use]
@@ -177,8 +203,8 @@ impl MirrorController {
         let step_travel = tuning.paddle().speed() * dt.as_secs_f32();
         match &mut self.plan {
             Plan::Centre => intent_toward(paddle, 0.0, step_travel),
-            Plan::Meet { target_y, hold_for } if hold_for.is_zero() => {
-                intent_toward(paddle, *target_y, step_travel)
+            Plan::Meet { aim, hold_for } if hold_for.is_zero() => {
+                intent_toward(paddle, aim.target_y, step_travel)
             }
             Plan::Meet { hold_for, .. } => {
                 *hold_for = hold_for.saturating_sub(dt);
@@ -210,8 +236,12 @@ impl MirrorController {
         };
         let handicap = tuning.ai().level(self.difficulty);
         let spread = handicap.prediction_error();
+        let error = random.next_f32_in(-spread, spread);
         Plan::Meet {
-            target_y: predicted_y + random.next_f32_in(-spread, spread),
+            aim: Aim {
+                target_y: predicted_y + error,
+                error,
+            },
             hold_for: handicap.reaction_delay(),
         }
     }
@@ -593,6 +623,39 @@ mod tests {
             highest - lowest > 1.5,
             "every approach aimed alike: {rests:?}"
         );
+    }
+
+    /// Plan 10.1: the overlay reads the aim; the target is the crossing plus
+    /// the error, which stays within the spread; no approach, no aim.
+    #[test]
+    fn an_approachs_aim_is_the_crossing_plus_its_error_and_none_without_one() {
+        let spread = 10.0;
+        let tuning = three_stars_with(0.0, spread);
+        let mut random = Random::seeded(7);
+        let mut ai = ai(Side::Right);
+        let paddle = paddle_at(Side::Right, 0.0, &tuning);
+        assert_eq!(ai.side(), Side::Right);
+        assert_eq!(ai.aim(), None, "a fresh controller holds the centre");
+        // Straight across: the crossing is at y = 0.
+        ai.steer(
+            ball(Vec2::ZERO, Vec2::new(60.0, 0.0)),
+            paddle,
+            &tuning,
+            step(),
+            &mut random,
+        );
+        let aim = ai.aim().expect("an approach aims");
+        assert_near(aim.target_y, aim.error, 1e-4);
+        assert!(aim.error.abs() <= spread, "{aim:?}");
+        assert!(aim.error != 0.0, "a drawn error, not none");
+        ai.steer(
+            ball(Vec2::ZERO, Vec2::new(-60.0, 0.0)),
+            paddle,
+            &tuning,
+            step(),
+            &mut random,
+        );
+        assert_eq!(ai.aim(), None, "the ball went back");
     }
 
     #[test]
