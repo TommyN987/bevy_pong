@@ -7,6 +7,7 @@ Status: accepted
 
 ADR 0003 opened the fixed step only while play is live, so nothing moved during a countdown or a point pause.
 The first two-human runs (plan 4.6, 2026-11-07) showed players waiting for the serve unable to line up their paddles.
+Amended 2026-11-09 at milestone close: the runs are recorded in the [phase 4 report](../specs/m1-phase4-report.md); plan 4.6 is the ghosting check.
 The user decided paddles should move in every wait between rallies.
 
 - The fixed step is one set of phases; every system names its phase (architecture rule 4).
@@ -20,6 +21,7 @@ A new `flow` system set, `BallInPlay`, narrows its members to `Playing` with no 
 
 - `MatchState::paddles_move` is the one rule; the gate and the shell's adapter both read it (`flow::states::paddles_move`).
 - Ball systems join `BallInPlay` beside their phase: `serve_on_request`, `integrate_ball`, `collide_ball_with_paddles`, `score_goal_crossings`, `end_match_at_target`.
+  Amended 2026-11-09 at milestone close (`pong_core/src/features/rules/mod.rs`, plan 7.4): `count_rally_hits` joins them, chained before `score_goal_crossings`.
 - Their gating is unchanged from ADR 0003, including the step that stops play finishing and later steps of its frame shutting.
 - `Paused` and `MatchOver` run no phase.
 - The keyboard adapter reports whenever the paddles move; a countdown tap now moves the paddle in the countdown.
@@ -37,3 +39,4 @@ A new `flow` system set, `BallInPlay`, narrows its members to `Playing` with no 
 - The soak test counts live steps in `BallInPlay`, not in a phase.
 - Sanity (plan 6.1) runs between rallies too; a ball resting past the goal line during `PointScored` is legal there.
 - AI (phase 5) positions between rallies as players do.
+- Amends ADR 0003 (step gate, focus-loss pause), spec 1.4.5 and 1.6.1, and `docs/architecture.md` rule 4, Simulation model, and Input (recorded 2026-11-09 at milestone close).

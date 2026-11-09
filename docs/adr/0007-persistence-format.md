@@ -21,8 +21,10 @@ RON, one file per kind, each kind on its own version chain; the version is a top
   a known version parses strictly as that version's frozen shape (`deny_unknown_fields`, no serde defaults),
   wraps in the kind's versioned enum (`ProfilesDocument::V1`, `SettingsDocument::V1`),
   and migrates one version at a time to the current model through its validating constructors.
+  Amended 2026-11-09 at milestone close (plan 10.2, `pong_core/src/features/persistence/document.rs`): settings are at version 2, `SettingsDocument::{V1, V2}`; profiles stay at version 1.
 - A version above the one this game writes is `NewerVersion`; anything else that fails, an unknown older version or a value the model refuses included, is `Corrupt`.
 - Each released version's file types live in their own module (`v1`) and never change; version 2 adds `v2`, a variant, and a `v1 → v2` step.
+  Amended 2026-11-09 at milestone close (plan 10.2): settings now have `v2`, which adds `points_to_win` as `Picked(n)` or `Unpicked`; a v1 file migrates to `Unpicked`.
 - Colours are stored as the game's own `(red, green, blue)`, not Bevy's colour serialization; profiles are opaque.
 - Volume is a whole percent, `0..=100`, default 80; window mode defaults to borderless fullscreen.
 - Fixtures: `pong_core/tests/fixtures/<kind>_v<N>.ron`, never edited once released; per kind, a test asserts the fixture versions are exactly `1..=current`.
@@ -44,3 +46,4 @@ RON, one file per kind, each kind on its own version chain; the version is a top
 - A format change means a new frozen module, a migration step, a version bump, and a fixture; the count test fails until the fixture exists.
 - The fixture naming in `.claude/rules/tests.md` changed from `save_v<N>.ron` to `<kind>_v<N>.ron`.
 - Hand-editing a save file is possible but unforgiving: an extra or missing field makes it corrupt.
+- Amends spec 1.4.9 (one fixture per kind and version, a count test per kind) and `.claude/rules/tests.md` (fixture naming) (recorded 2026-11-09 at milestone close).

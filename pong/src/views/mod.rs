@@ -1,5 +1,6 @@
 //! Views (spec 1.6.2): the core's bodies drawn as `Mesh2d` in arena units,
-//! one module per core feature (docs/architecture.md, rule 8).
+//! one module per core body, beside the presentation modules that serve them
+//! all: camera, motion, trail, shake (docs/architecture.md, rule 8).
 //!
 //! Where a body is drawn is [`motion`]'s, the same for every body and testable
 //! headless; how it looks is its own module's. Visuals are inserted onto the

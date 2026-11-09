@@ -36,8 +36,8 @@ If the core cannot be built render-free, the workspace collapses to a single cra
 
 Workspace with two crates.
 
-- **`pong_core`**: simulation, effects, AI, states, persistence, tuning types. Depends on `bevy` with default features off and only ECS, state, asset, reflect, and time features on. Never depends on render, window, audio, or UI.
-- **`pong`** (binary shell): window, rendering, view sync, input adapters, audio plugin, UI, overlay. Depends on `pong_core` and on `bevy` with `2d`, `ui`, `audio`.
+- **`pong_core`**: simulation, effects, AI, states, persistence, tuning types. Depends on `bevy` with default features off and only `std`, `async_executor`, `bevy_asset`, `bevy_state`, `bevy_color`, `keyboard`, and `serialize` on; ADR 0001 gates the list. Never depends on render, window, audio, or UI.
+- **`pong`** (shell, a library plus a binary): window, rendering, view sync, input adapters, audio plugin, UI, overlay. The library holds the plugins; `main.rs` assembles them and tests import them. Depends on `pong_core` and on `bevy` with `2d`, `2d_api`, `ui`, `audio`, `keyboard`, `tonemapping_luts`, `zstd_rust`.
 
 Modules are organized by feature as Bevy plugins, not by layer. The intra-crate guide below refines this.
 
@@ -51,12 +51,12 @@ Rules:
 
 1. **Feature-first, dependency-down.** Features depend on kernel, vocabulary, and flow. Kernel depends on nothing in the crate. Flow depends only on kernel and vocabulary. The app roof depends on everything; nothing depends on it. A feature may import the public components, resources, and messages of features earlier in the order declared in `features/mod.rs`, never their systems or plugin internals. Amended 2026-11-04 by ADR 0002.
 2. **The kernel is ECS-free.** `bevy_math` types are allowed; apps, worlds, systems, and schedules are not. Pure functions and plain data only.
-3. **Vocabulary stays tiny.** Only types used by two or more features: seat, side, effect identity, core events. A type used by one feature lives in that feature. If it passes a dozen types, it has become a god module. The dozen counts non-message types; each message has exactly one emitting feature, `Notice` excepted (ADR 0002). Identifier types are outside the dozen (ADR 0008).
+3. **Vocabulary stays tiny.** Only types used by two or more features: seat, side, effect identity, core events. `Side` is defined in `kernel::geometry`, which needs it first (`pong_core/src/domain.md`). A type used by one feature lives in that feature. If it passes a dozen types, it has become a god module. The dozen counts non-message types; each message has exactly one emitting feature, `Notice` excepted (ADR 0002). Identifier types are outside the dozen (ADR 0008).
 4. **Phases are declared once,** in `flow/` (ADR 0002). Fixed step runs named sets in order: intent, effects, integrate, collide, rules, sanity. Every `FixedUpdate` system names its phase. The step gate, in `FixedFirst`, decides whether the phases run and is the one fixed-step system outside them (ADR 0003). A system that serves, moves, collides, or judges the ball also joins `BallInPlay` (ADR 0004). No system orders itself relative to another feature's system.
 5. **Components own their invariants.** Mutation happens through the component's API from any feature. Cross-feature triggers are events, never direct calls.
 6. **Extension points are exhaustive enums.** Effect, boss, and item identities. Adding a variant makes the compiler enumerate every spawn table, cue map, and AI branch to extend.
 7. **A feature is a directory with a plugin at its root.** Growable sub-concepts (individual effects, bosses) are submodules with a uniform shape: components, systems, spawn function.
-8. **The shell mirrors core.** One view module per core feature, one adapter per port, one screen per state, the overlay apart. The shell's spawn table matches the same enum as core's.
+8. **The shell mirrors core.** One view module per core body (arena, ball, paddle), beside presentation modules that serve them all (camera, motion, trail, shake); one screen per state; the overlay apart. A port is written by its adapter in `ports/` or by a named screen (the pause screen writes `MatchControl`, as focus loss does). The shell's spawn table matches the same enum as core's. Amended 2026-11-09 at milestone close: the rule said one view per core feature and one adapter per port, which M1's shell outgrew.
 9. **Tests live beside the feature.** A shared testing module behind a cargo feature builds a minimal app with chosen plugins and fake ports.
 10. **Size decides depth.** A floor is a file until it needs a directory.
 
@@ -64,7 +64,7 @@ Orientational shape at the final milestone:
 
 ```
 pong_core/src/
-  kernel/        geometry, integrate, collide, predict      (no ECS)
+  kernel/        geometry, integrate, collide, reflect, predict, random   (no ECS)
   domain/        Seat, EffectId, BossId, ItemId, events
   flow/          AppState, MatchState, phase sets, step gate, FIXED_HZ   (ADR 0002, 0003)
   features/
@@ -72,25 +72,31 @@ pong_core/src/
     ball/        Ball, Velocity, Position, snap marker
     paddle/      Paddle with clamped size API
     physics/     systems wrapping kernel; force accumulator
-    rules/       scoring, match-flow transitions, pause port
+    rules/       scoring, match-flow transitions, pause port, fault heal
     ai/          mirror controller; bosses/ one module each
-    effects/     EffectPool, spawn table; one module per effect
+    effects/     EffectPool, spawn table; one module per effect   (C1)
     meter/       chaos meter and catch-up bias           (C1)
     rooms/       RoomDescriptor, composition loader       (C3)
     items/       pick-ups, inventory, fire                (C2)
     beat/        BeatClock port and beat-driven triggers  (C4)
-    persistence/ model, versions, migrations, io
+    persistence/ model, document (versions, migrations), load (load policy), io
     tuning/      schema, embedded load, dev override
-    sanity/      invariant checks, SimFault, heal
+    sanity/      invariant checks
   app/           plugin group, error policy, Boot gate
   testing/       headless app builder, fake ports         (cargo feature)
 
 pong/src/
-  ports/         keyboard adapter, save paths, beat clock source
-  views/         one per core feature; effect view spawn table
-  audio/         cue map over core events and states
-  ui/            one screen per state; seat cue
-  overlay/
+  ports/         keyboard adapter, focus, save paths; beat clock source   (C4)
+  views/         arena, ball, paddle bodies; camera, motion (interpolation), trail, shake;
+                 effect view spawn table   (C1)
+  audio/         cue map over core events; synthesized sound bank; state and music cues   (C4)
+  ui/            one screen per state; HUD, notice line, menu input, seat cue, font, style
+  overlay/       developer overlay, F3
+  window.rs      window mode, Alt+Enter toggle
+  crash.rs       panic hook, crash file
+  xdg.rs         XDG directories
+  seed.rs        entropy seed for the core
+  lib.rs         the shell's plugins, as a library
   main.rs        assembles core plugin group plus shell plugins
 ```
 
@@ -116,8 +122,8 @@ Alternatives considered: flat feature files with a shared prelude (rejected: pre
 ## Boundaries
 
 - Core emits events (`BallHitPaddle`, `PointScored`, `EffectStarted`, `EffectEnded`, and so on). Shell plugins observe them. Core never calls the shell.
-- Four ports flow shell to core as resources: paddle intents from the keyboard adapter, pause and resume requests through `MatchControl` (ADR 0003), the beat clock at C4 from whichever audio engine owns time, and `SavePaths` from the XDG directories. Tests write fakes into the same resources.
-- Audio is a shell plugin that observes core events and app state. Music cues derive from state transitions. Volume is a setting. No audio type exists in core. This amends the design record's facade wording; the substance of that decision stands: built-in `bevy_audio` now, swap at C4 touches one plugin.
+- Four ports flow shell to core as resources: paddle intents from the keyboard adapter, pause and resume requests through `MatchControl` (ADR 0003), the beat clock at C4 from whichever audio engine owns time, and `SavePaths` from the XDG directories. Tests write fakes into the same resources. Besides the ports, the menu writes the match's `MatchConfig` and the player's `Settings` and `Profiles`, which persistence saves, and the shell moves `AppState` out of `Menu` and `InMatch`; rules alone moves `MatchState` (ADR 0003). Amended 2026-11-09 at milestone close.
+- Audio is a shell plugin that observes core events and app state ([ADR 0010](adr/0010-audio-boundary.md)). Music cues derive from state transitions. Volume is a setting. No audio type exists in core. This amends the design record's facade wording; the substance of that decision stands: built-in `bevy_audio` now, swap at C4 touches one plugin.
 
 ## Input
 
@@ -144,7 +150,7 @@ Rules owns every `MatchState` transition; the shell requests pause and resume th
 ## Tuning and assets
 
 - Tuning is one RON file embedded in the binary, the single source of truth. In dev builds it is overridden from the source tree with hot reload via `embedded_watcher`. Release reads it once at boot.
-- All assets are embedded: fonts, sounds, tuning, later music. The binary is self-contained and no `assets/` folder ships.
+- Fonts and tuning are embedded, later music; sounds are synthesized in code. The binary is self-contained and no `assets/` folder ships.
 
 ## Presentation
 
@@ -153,7 +159,7 @@ Rules owns every `MatchState` transition; the shell requests pause and resume th
 
 ## Error policy
 
-Decided 2026-10-30 after review found the earlier one-line policy lacked a taxonomy.
+Decided 2026-10-30 after review found the earlier one-line policy lacked a taxonomy. Recorded as [ADR 0009](adr/0009-error-policy.md).
 
 Principles:
 
@@ -164,15 +170,15 @@ Principles:
 5. Progress is never half-written: atomic write via temp file and rename.
 6. Every error class has a test, or the class is made impossible by construction.
 
-Mechanism: typed error enums only where a caller branches (persistence load and save, tuning validation). Audio init needs none: Bevy's audio plugin handles a missing device itself (amended 2026-11-08, [phase 9 report](specs/m1-phase9-report.md)). Interior systems return `Result<(), BevyError>` with context and go to Bevy's app-level error handler, set per build profile. Invariant checks panic in dev and emit a `SimFault` event in release, answered by a heal system that logs the state at error level. Tuning and save data use validated constructors, so invalid values cannot enter. A panic hook writes a crash file to the XDG state directory.
+Mechanism: typed error enums only where a caller branches (persistence load and save, tuning validation). Audio init needs none: Bevy's audio plugin handles a missing device itself (amended 2026-11-08, [phase 9 report](specs/m1-phase9-report.md)). Interior systems return `Result<(), BevyError>` with context and go to Bevy's app-level error handler, set per build profile. The sanity system writes a `SimFault` and returns it as its error in both builds; the handler panics in dev and logs it at error level in release, and rules answers the message by restarting the rally (amended 2026-11-09 at milestone close, [ADR 0009](adr/0009-error-policy.md)). Tuning and save data use validated constructors, so invalid values cannot enter. A panic hook writes a crash file to the XDG state directory.
 
 | Class                 | Example                                  | Detect                                    | Dev                                                                               | Release                                            | Notice           | Test                                     |
 | --------------------- | ---------------------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------- | -------------------------------------------------- | ---------------- | ---------------------------------------- |
-| Programmer invariant  | missing component, impossible transition | `?` in a `Result` system, invariant macro | panic                                                                             | log error, skip system this step                   | none             | headless App tests                       |
+| Programmer invariant  | missing component, impossible transition | `?` in a `Result` system; clamping setters; sanity system (amended 2026-11-09 at milestone close) | panic                                                                             | log error, skip system this step                   | none             | headless App tests                       |
 | Simulation fault      | NaN velocity, ball outside arena         | sanity system each fixed step             | panic                                                                             | reset rally, log                                   | none             | seeded soak test with random intents     |
 | Persistence read      | corrupt, newer version, unreadable       | `LoadError::{Corrupt, NewerVersion, Io}`  | as release                                                                        | back up, fresh model                               | one line         | fixture per kind                         |
-| Persistence write     | disk full, permission                    | `SaveError::Io`                           | as release                                                                        | keep in memory, retry at next match end            | once per session | unwritable injected path                 |
-| Data validation       | tuning out of range, negative wins       | validated constructor                     | CI test fails on embedded file; dev override keeps last good values, shows banner | cannot occur for embedded; save treated as Corrupt | none             | CI range-checks embedded tuning          |
+| Persistence write     | disk full, permission                    | `SaveError::Io`                           | as release                                                                        | keep in memory, retry at next match end or menu change (amended 2026-11-09 at milestone close) | once per session | unwritable injected path                 |
+| Data validation       | tuning out of range, negative wins       | validated constructor                     | CI test fails on embedded file; dev override keeps last good values, says why in one `Notice` (amended 2026-11-09 at milestone close) | cannot occur for embedded; save treated as Corrupt | one line, dev override only (amended 2026-11-09 at milestone close) | CI range-checks embedded tuning          |
 | Audio init            | no device                                | Bevy's `AudioPlugin`: warns, plays nothing | log, continue silent                                                              | silent mode                                        | none             | shell test with audio disabled           |
 | Render or window loss | GPU lost, no window                      | Bevy render error handler                 | exit with log                                                                     | exit with log and crash file                       | impossible       | none, accepted                           |
 | Uncaught panic        | anything missed above                    | panic hook                                | crash file, then default                                                          | in a system: crash file, log, skip the system; elsewhere: crash file, exit | none | forced panic writes the file, by test |
@@ -188,7 +194,7 @@ Alternatives considered: Bevy-native `Result` everywhere with a warn handler (re
 - Unit tests on pure functions: physics, AI prediction, migrations.
 - Headless `App` tests in core per plugin.
 - Shell adapter tests headless where possible (input mapping, state transitions).
-- CI: fmt check, clippy with warnings denied, tests, release build of the shell. `dynamic_linking` is dev-only and gated off in release.
+- CI: `just ci-check` (fmt check, layering check, clippy with warnings denied, nextest and doctests, cargo-deny), then a release build of the shell, checked with `ldd` to link no `bevy_dylib`. `dynamic_linking` is dev-only and gated off in release.
 
 ## Playtesting
 

@@ -115,7 +115,8 @@ enum PauseRequest {
 impl MatchControl {
     /// Asks to pause. Honoured in `Countdown`, `Playing`, and `PointScored`;
     /// ignored in `Paused` and `MatchOver`. The shell's focus-loss adapter
-    /// asks only while `Playing` (spec 1.6.1).
+    /// asks whenever the paddles move, between rallies included (spec 1.6.1,
+    /// ADR 0004).
     pub const fn request_pause(&mut self) {
         self.request = Some(PauseRequest::Pause);
     }

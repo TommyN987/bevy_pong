@@ -19,7 +19,8 @@ for p in "${parts[@]}"; do
       verb=${sub%% *}
       rest=" ${sub#"$verb"}"
       case "$verb" in
-        ""|status|log|diff|show|blame|stash|rev-parse|ls-files|ls-tree|describe|grep|shortlog|for-each-ref|cat-file|name-rev|merge-base|rev-list|count-objects|version|help|reflog) ;;
+        ""|status|log|diff|show|blame|stash|rev-parse|ls-files|ls-tree|describe|grep|shortlog|for-each-ref|cat-file|name-rev|merge-base|rev-list|count-objects|version|help) ;;
+        reflog)  printf '%s' "$rest" | grep -qE -- '^ *$|^ +show( |$)' || blocked="$p" ;;
         branch)  printf '%s' "$rest" | grep -qE -- '^ *$|^ +(-a|-r|--all|-l|--list|--show-current|-v|-vv|--contains|--merged|--no-merged)( |$)' || blocked="$p" ;;
         tag)     printf '%s' "$rest" | grep -qE -- '^ *$|^ +(-l|--list|-n[0-9]*|--contains)( |$)' || blocked="$p" ;;
         remote)  printf '%s' "$rest" | grep -qE -- '^ *$|^ +(-v|show|get-url)( |$)' || blocked="$p" ;;

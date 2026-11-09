@@ -33,6 +33,8 @@ check allow 'git remote -v'
 check allow 'git worktree list'
 check allow 'git config --get core.hooksPath'
 check allow 'git rev-parse --show-toplevel'
+check allow 'git reflog'
+check allow 'git reflog show -n 3'
 check allow 'echo "git commit" > note.txt'
 check allow 'gh pr view 1'
 check allow 'ls'
@@ -54,6 +56,9 @@ check DENY 'git restore docs/'
 check DENY 'gh pr create --fill'
 check DENY 'gh repo create x'
 check DENY 'sudo git push'
+# Reflog's own subcommands rewrite history (milestone-close audit, 2026-11-09).
+check DENY 'git reflog expire --expire=now --all'
+check DENY 'git reflog delete HEAD@{1}'
 
 echo
 echo "deny payload sample:"

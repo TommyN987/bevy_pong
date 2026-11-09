@@ -12,7 +12,8 @@ never its systems, never a later feature, never the app roof.
 
 Every feature has one shape:
 its plugin registers its resources and messages,
-its systems join a `FixedStepPhase` or an `OnEnter`/`OnTransition` schedule,
+its systems join a `FixedStepPhase`, an `OnEnter`/`OnTransition` schedule, or `Update`
+(tuning, rules, and persistence run there; tuning's load also starts in `Startup`),
 and its public types are what later features may use.
 
 ## tuning
@@ -45,9 +46,8 @@ a refused file never reaches `Assets`, so the last good values stay by construct
 and `notice_refused_override` writes one `Notice`.
 `ShownRefusal` exists because Bevy 0.20.1 reports one refused reload twice.
 
-Open, unverified: the watcher watches `BEVY_ASSET_ROOT`, else `CARGO_MANIFEST_DIR`.
-Under `cargo run -p pong` that is likely `pong/`, which does not contain `tuning.ron`.
-Plan 3.9's manual check settles it.
+The watcher watches `BEVY_ASSET_ROOT`, else `CARGO_MANIFEST_DIR`, which under `cargo run -p pong` is `pong/` and misses `tuning.ron`.
+So `just run` sets `BEVY_ASSET_ROOT` to `pong_core/`; plan 3.9's manual check passed with it (2026-11-07).
 
 ## seats
 
@@ -64,7 +64,7 @@ because frames run at the display rate and fixed steps at 60 Hz:
 | `tapped` | Any non-still report | Once, then cleared | A press shorter than a frame that ran no step still moves the paddle once. |
 
 `resolve_human_intents` (Intent) maps each human seat onto its side in `PaddleIntents`;
-the AI will write AI sides there.
+the AI's `steer_ai_paddles` (Intent) writes the AI sides there.
 `forget_reported_intents` (`OnEnter(Countdown)`) clears the port,
 so a menu key press never becomes a serve's first move.
 
@@ -186,7 +186,7 @@ and keeps that target for the approach.
 It holds still through `reaction_delay`, then steers to the target.
 When the ball is not coming it steers to the centre, where the next serve starts.
 `intent_toward` stops within half a step's travel of a target, so the paddle never jitters.
-`MirrorController::aim` and `side` read the approach's `Aim` (target and error) for the shell's overlay (plan 10.1); nothing else is public.
+Of its state, only `aim` (the approach's `Aim`: target and error) and `side` are readable, for the shell's overlay (plan 10.1).
 
 Steering is not in `BallInPlay`: the AI lines up between rallies as players do (ADR 0004).
 The serve shares the intent phase, unordered, so a reaction to a serve may start one step late.

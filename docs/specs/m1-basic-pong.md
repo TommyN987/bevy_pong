@@ -8,14 +8,14 @@ Obligation levels: MUST, SHOULD, MAY, WONT. Every item carries a done-condition.
 - Bevy 0.20.1; `2d`, `ui`, `audio` feature collections; `embedded_watcher`, `dynamic_linking`, `bevy_ci_testing` opt-in. [confirmed]
 - `MinimalPlugins` is headless. [confirmed]
 - `App::set_error_handler` exists; fallible systems panic by default. [confirmed, 0.17 onward]
-- Render-free core compiles without `wgpu`. [probable; M0 verifies]
+- Render-free core compiles without `wgpu`. [confirmed 2026-10-31, [ADR 0001](../adr/0001-crate-structure.md): `cargo tree` of the spike's render-free core shows no `wgpu`]
 - 2D bloom needs an HDR camera and colors above 1.0; TonyMcMapface tonemapping and deband dither recommended. [confirmed]
-- A window focus event exists. [probable]
+- A window focus event exists. [confirmed 2026-11-04, [phase 4 report](m1-phase4-report.md): `pong::ports::focus` reads `bevy::window::WindowFocused`]
 - Bevy 0.19 ships an `EditableText` component for text entry. [confirmed] Amended 2026-11-08 (`bevy-api-check`, [phase 8 report](m1-phase8-report.md)): at 0.20.1 it takes keys only with the `TextInput` marker and input focus, and it does not hide them from `ButtonInput<KeyCode>`.
 - Bevy's built-in font draws printable ASCII only. [confirmed 2026-11-08, [phase 8 report](m1-phase8-report.md): the game embeds DejaVu Sans Bold]
 - Bevy's audio accepts an in-memory source built from bytes or a custom decodable source. [confirmed 2026-11-08, `bevy-api-check`, [phase 9 report](m1-phase9-report.md): the game's own `Decodable` asset hands rodio its samples; no file format, no new dependency]
 - cargo-nextest does not run doctests. [confirmed]
-- nextest supports per-test timeouts that fail the run. [probable]
+- nextest supports per-test timeouts that fail the run. [confirmed 2026-11-08, [phase 8 report](m1-phase8-report.md): `.config/nextest.toml` sets `slow-timeout` with `terminate-after`, and the crash tests failed the run when they passed 30 s]
 - GitHub Actions needs Ubuntu build dependencies for Bevy: pkg-config, libx11-dev, libasound2-dev, libudev-dev, libxkbcommon-x11-0, libwayland-dev. [confirmed, research]
 
 ## Decisions taken during specification
@@ -33,13 +33,13 @@ Obligation levels: MUST, SHOULD, MAY, WONT. Every item carries a done-condition.
 
 ## 1.1 Repository foundation
 
-- **1.1.1 MUST** Workspace per M0's ADR, Bevy pinned to an exact 0.20 patch, `rust-toolchain.toml` on nightly. Done: `cargo build` succeeds on a clean clone. Amended 2026-11-07 (phase 4 report, ADR 0005): a dated nightly with the cranelift component; a clean clone also needs `clang` and `mold`.
+- **1.1.1 MUST** Workspace per M0's ADR, Bevy pinned to an exact 0.20 patch, `rust-toolchain.toml` on nightly. Done: `cargo build` succeeds on a clean clone. Amended 2026-11-07 (phase 4 report, ADR 0005): a dated nightly with the cranelift component; a clean clone also needs `clang` and `mold`. Amended 2026-11-09 at milestone close ([phase 3 report](m1-phase3-report.md)): the dependencies beyond Bevy are `serde`, `ron`, and `thiserror`, each justified beside it in the workspace `Cargo.toml`.
 - **1.1.2 MUST** `dynamic_linking` behind a dev-only cargo feature. Done: `ldd` on the release binary shows no `libbevy_dylib`.
 - **1.1.3 MUST** GitHub Actions on Ubuntu: Linux deps, `just`, nextest, cargo cache; runs `just ci-check` then a release build. Done: green on the default branch. Depends on the user creating the GitHub remote.
 - **1.1.4 MUST** `.gitignore`, license file, `docs/adr/` with a template, `docs/specs/` holding this spec. Done: files present.
-- **1.1.5 SHOULD** Clippy beyond default: selected pedantic lints; `unwrap_used` denied in core. Done: lint config in workspace `Cargo.toml`, CI green.
+- **1.1.5 SHOULD** Clippy beyond default: selected pedantic lints; `unwrap_used` denied in core. Done: lint config in workspace `Cargo.toml`, CI green. Amended 2026-11-09 at milestone close (workspace `Cargo.toml`, `pong_core/src/lib.rs`): the whole pedantic group warns, with no upfront allows; one allow, `needless_pass_by_value`, was promoted from inline expects. `unwrap_used` and `expect_used` are denied in `pong_core/src/lib.rs`, not in `Cargo.toml`; tests may `expect` (`clippy.toml`).
 - **1.1.6 WONT** Release packaging or installers.
-- **1.1.7 MUST** `justfile` recipes: `fmt`, `lint`, `test`, `test-core`, `dev-check`, `ci-check`, `run`, `run-release`. Done: every command referenced by CLAUDE.md, CI, and hooks is a `just` recipe, verified by grep.
+- **1.1.7 MUST** `justfile` recipes: `fmt`, `lint`, `test`, `test-core`, `dev-check`, `ci-check`, `run`, `run-release`. Done: every command referenced by CLAUDE.md, CI, and hooks is a `just` recipe, verified by grep. Amended 2026-11-09 at milestone close (`justfile`): every listed recipe exists; the justfile also has `fmt-check`, `arch-check`, `deny`, `key-check`, `setup`, and `build-release`, which CI runs after `ci-check`.
 - **1.1.8 MUST** `just dev-check` formats in place, then clippy with warnings denied, then the full test suite. `just ci-check` is identical with fmt in check mode. Done: `dev-check` exits non-zero on a planted clippy warning and a planted failing test; `ci-check` exits non-zero on an unformatted file. Amended 2026-11-04 (ADR 0002, plan 3.11.1): both gates run `arch-check`, the layering check, after formatting and before clippy.
 - **1.1.9 MUST** Tests run via `cargo nextest run`; doctests via `cargo test --doc` in the same recipe. Done: a planted failing doctest fails `ci-check`.
 - **1.1.10 SHOULD** `cargo-deny` with license allowlist and advisories, inside `ci-check`. Done: `deny.toml` present, passes.
@@ -62,7 +62,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 ## 1.3 Core vocabulary
 
 - **1.3.1 MUST** `Seat { Left, Right }`, `Controller { Human(Seat), Ai(Difficulty) }`. Done: each used by two or more features.
-- **1.3.2 MUST** Events: `BallHitPaddle { side }`, `BallHitWall`, `PointScored { scorer }`, `MatchEnded { winner }`, `Notice { text }`. Done: each emitted by exactly one feature, observed by the shell. Amended 2026-11-02 (phase 3 report): `BallHitPaddle` names the paddle's side, since an AI paddle has no seat; `PointScored` names the scorer, since "side" did not say scorer or conceder. Amended 2026-11-04 (ADR 0002): `Notice` is the one exception to "exactly one feature"; any feature with a player-actionable failure emits it. Amended 2026-11-08 (plan 7.4, [phase 7 report](m1-phase7-report.md)): `MatchEnded { winner, longest_rally }` carries the match's most paddle hits in one rally, taken when the match ended.
+- **1.3.2 MUST** Events: `BallHitPaddle { side }`, `BallHitWall`, `PointScored { scorer }`, `MatchEnded { winner }`, `Notice { text }`. Done: each emitted by exactly one feature, observed by the shell. Amended 2026-11-02 (phase 3 report): `BallHitPaddle` names the paddle's side, since an AI paddle has no seat; `PointScored` names the scorer, since "side" did not say scorer or conceder. Amended 2026-11-04 (ADR 0002): `Notice` is the one exception to "exactly one feature"; any feature with a player-actionable failure emits it. Amended 2026-11-08 (plan 7.4, [phase 7 report](m1-phase7-report.md)): `MatchEnded { winner, longest_rally }` carries the match's most paddle hits in one rally, taken when the match ended. Amended 2026-11-09 at milestone close ([phase 3 report](m1-phase3-report.md)): `Serve { toward }` is an internal message from rules to the ball, which the shell does not observe (rule 5: cross-feature triggers are messages). `SimFault` is internal too, emitted by sanity and read by rules (`pong_core/src/domain.rs`, spec 1.4.7); "observed by the shell" holds for the five player-facing messages.
 - **1.3.3 MUST** Vocabulary under a dozen types. Done: counted at milestone close. Amended 2026-11-04 (ADR 0002): the cap counts non-message types; messages fall under 1.3.2. Amended 2026-11-08 (ADR 0008): identifier types such as `ProfileId` fall outside the cap.
 - **1.3.4 WONT** `EffectId`, `BossId`, `ItemId`.
 
@@ -70,13 +70,13 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 
 ### 1.4.1 Seats and intents
 
-- **MUST** `PaddleIntent { Up, Down, None }` per seat; latched in `Update`, consumed and cleared in `FixedUpdate`. Done: a one-frame press spanning two fixed steps moves the paddle exactly once. Amended 2026-11-04 (phase 3 report): the level is re-reported every `Update` and read by every fixed step, and a tap latch is spent by the first; done when a hold moves on every fixed step, and a press shorter than a frame moves exactly once and is never missed.
+- **MUST** `PaddleIntent { Up, Down, None }` per seat; latched in `Update`, consumed and cleared in `FixedUpdate`. Done: a one-frame press spanning two fixed steps moves the paddle exactly once. Amended 2026-11-04 (phase 3 report): the level is re-reported every `Update` and read by every fixed step, and a tap latch is spent by the first; done when a hold moves on every fixed step, and a press shorter than a frame moves exactly once and is never missed. Amended 2026-11-09 at milestone close ([phase 3 report](m1-phase3-report.md)): the third variant is `Still`, kept apart from `Option::None`.
 - **MUST** Key bindings per seat in tuning. Done: changing the RON changes keys without recompiling in dev.
-- **MUST** Action and reserved keys exist in the binding schema. Done: present in the RON.
+- **MUST** Action and reserved keys exist in the binding schema. Done: present in the RON. Amended 2026-11-09 at milestone close ([phase 3 report](m1-phase3-report.md)): the fourth key is named `back`: it backs out of menus and is reserved in play.
 
 ### 1.4.2 Ball
 
-- **MUST** `Position`, `Velocity`, `Ball`, `Snap` marker. Done: snap set on serve, cleared by the view after one frame. Amended 2026-11-04 (ADR 0003, plan 3.14): the teleport moved from the serve to entering `Countdown`, so snap is set at spawn and on entering `Countdown`; the serve only launches.
+- **MUST** `Position`, `Velocity`, `Ball`, `Snap` marker. Done: snap set on serve, cleared by the view after one frame. Amended 2026-11-04 (ADR 0003, plan 3.14): the teleport moved from the serve to entering `Countdown`, so snap is set at spawn and on entering `Countdown`; the serve only launches. Amended 2026-11-09 at milestone close ([phase 3 report](m1-phase3-report.md)): `Position`, `Velocity`, and `Snap` are the ball feature's components, not vocabulary; a paddle keeps its own centre.
 - **MUST** Serve: countdown, then launch toward the side that conceded at a random angle within a tunable cone from the seeded random resource. Done: fixed seed reproduces the angle.
 
 ### 1.4.3 Paddle
@@ -89,12 +89,12 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 
 ### 1.4.5 Rules
 
-- **MUST** `MatchConfig { left, right, points_to_win }`. Done: built by the menu, read by rules. Amended 2026-11-08 (ADR 0008): `MatchConfig` also carries `players: SeatPlayers`, who each seat plays as; persistence reads it to record results.
-- **MUST** Substates `Countdown`, `Playing`, `PointScored`, `Paused`, `MatchOver` under `InMatch`. Done: a headless test walks the cycle to `MatchOver`. Amended 2026-11-04 (ADR 0003): rules owns every transition; the serve fires on `Countdown → Playing` only; entering `Countdown` re-centres the ball; pause and resume come through the `MatchControl` port, and resume returns to the substate paused from. Amended 2026-11-07 (ADR 0004): paddles move in `Countdown` and `PointScored` too; the ball moves, collides, and scores only in `Playing`.
+- **MUST** `MatchConfig { left, right, points_to_win }`. Done: built by the menu, read by rules. Amended 2026-11-08 (ADR 0008): `MatchConfig` also carries `players: SeatPlayers`, who each seat plays as; persistence reads it to record results. Amended 2026-11-09 at milestone close ([phase 3 report](m1-phase3-report.md)): `MatchConfig` is vocabulary, read by seats, rules, the AI, and the menu; `points_to_win` is a `NonZeroU8`, as are tuning's options, so zero cannot be represented.
+- **MUST** Substates `Countdown`, `Playing`, `PointScored`, `Paused`, `MatchOver` under `InMatch`. Done: a headless test walks the cycle to `MatchOver`. Amended 2026-11-04 (ADR 0003): rules owns every transition; the serve fires on `Countdown → Playing` only; entering `Countdown` re-centres the ball; pause and resume come through the `MatchControl` port, and resume returns to the substate paused from. Amended 2026-11-07 (ADR 0004): paddles move in `Countdown` and `PointScored` too; the ball moves, collides, and scores only in `Playing`. Amended 2026-11-09 at milestone close ([phase 3 report](m1-phase3-report.md)): the substate type is `MatchState`; a match's first serve goes toward a side drawn from the seeded random source.
 - **MUST** Score per side; `MatchEnded` at target. Done: test.
-- **MUST** Points-to-win options list and default in tuning. Done: menu offers the list, default preselected, match ends at the chosen value by test.
+- **MUST** Points-to-win options list and default in tuning. Done: menu offers the list, default preselected, match ends at the chosen value by test. Amended 2026-11-09 (plan 10.2, [phase 10 report](m1-phase10-report.md)): the last pick is preselected while tuning offers it, the default otherwise.
 - **SHOULD** Countdown length in tuning. Done: changeable.
-- **MAY** Persist last chosen points-to-win in settings. Done: restored on next start.
+- **MAY** Persist last chosen points-to-win in settings. Done: restored on next start. Done 2026-11-09 (plan 10.2): settings file v2, by test and by the user's hand check.
 - **WONT** Deuce or best-of formats.
 
 ### 1.4.6 AI, mirror controller
@@ -112,8 +112,8 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 ### 1.4.8 Tuning
 
 - **MUST** One embedded RON deserialized at `Boot` into a validated `Tuning` resource. Done: CI parses the embedded file; validation rejects a crafted out-of-range value.
-- **MUST** Dev override from the source tree with hot reload; invalid override keeps last good values and logs. Done: manual check plus unit test of keep-last-good.
-- **MUST** Schema: arena size, paddle size bounds and speed, ball speed, cap, per-hit increase, maximum reflection angle, serve cone, countdown, points-to-win list and default, key bindings per seat, AI difficulties, color palette. Done: all present.
+- **MUST** Dev override from the source tree with hot reload; invalid override keeps last good values and logs. Done: manual check plus unit test of keep-last-good. Amended 2026-11-09 at milestone close ([phase 3 report](m1-phase3-report.md)): a refused override also emits one `Notice` naming the refused value, the banner of the architecture's error table.
+- **MUST** Schema: arena size, paddle size bounds and speed, ball speed, cap, per-hit increase, maximum reflection angle, serve cone, countdown, points-to-win list and default, key bindings per seat, AI difficulties, color palette. Done: all present. Amended 2026-11-09 at milestone close ([phase 3 report](m1-phase3-report.md)): angles are degrees in the file, radians after validation; the schema adds `paddle.inset` (goal line to the paddle's back face) and `match_flow.point_pause_seconds` (how long a point stays on screen).
 - **MUST** Palette is a list; profiles store the color value. Done: a profile keeps its color after the palette is reordered, by test.
 
 ### 1.4.9 Persistence
@@ -123,7 +123,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 - **MUST** Settings file v1: master volume, window mode. Done: round-trip test. Amended 2026-11-09 (plan 10.2, [phase 10 report](m1-phase10-report.md)): settings file v2 adds the last points-to-win picked, or none; a v1 file migrates to v2 with none.
 - **MUST** Load policy: corrupt or newer version backs up with timestamp suffix, starts fresh, emits one `Notice`. Done: fixtures for corrupt and for version 99.
 - **MUST** Write policy: failure keeps the model in memory, retries at next match end, one `Notice` per session. Done: test with an unwritable path. Amended 2026-11-08 (plan 8.1, [phase 8 report](m1-phase8-report.md)): the game also writes in `Menu` whenever profiles or settings change, so a failure retries at the next match end or menu change; still one `Notice` per session.
-- **MUST** Versioned enum migration chain; fixture `v1.ron`; a test asserting fixture count equals current version. Done: tests pass.
+- **MUST** Versioned enum migration chain; fixture `v1.ron`; a test asserting fixture count equals current version. Done: tests pass. Amended 2026-11-09 at milestone close ([ADR 0007](../adr/0007-persistence-format.md)): one fixture per released version of each kind, `pong_core/tests/fixtures/<kind>_v<N>.ron` (`profiles_v1`, `settings_v1`, `settings_v2`); per kind, a test asserts the fixture versions are exactly `1..=current` (`pong_core/tests/save_fixtures.rs`).
 - **MUST** Guest built in, never written; a Guest side records nothing, the other side records normally. Done: test.
 - **SHOULD** Records written at `MatchEnded` only. Done: no write during play, by test.
 
@@ -135,7 +135,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 
 ## 1.5 Core testing
 
-- **1.5.1 MUST** `testing` module behind a cargo feature: `MinimalPlugins` plus chosen core plugins, fake intents, temp-dir `SavePaths`, fixed seed. Done: used by every headless test.
+- **1.5.1 MUST** `testing` module behind a cargo feature: `MinimalPlugins` plus chosen core plugins, fake intents, temp-dir `SavePaths`, fixed seed. Done: used by every headless test. Amended 2026-11-09 at milestone close ([phase 3 report](m1-phase3-report.md)): the harness builds the whole `CorePlugins` group; a test that wants fewer adjusts it through `headless_app_with`.
 - **1.5.2 MUST** Soak: scripted match with random intents for both seats over at least 100,000 fixed steps, panic handler on, no fault; nextest per-test timeout of thirty seconds fails the run. Done: passes in CI. Amended 2026-11-04 (plan 3.19): the 100,000 steps are counted in `Playing`. Amended 2026-11-08 ([phase 8 report](m1-phase8-report.md)): the thirty seconds bind every test but the two crash-file tests, which get ninety: each writes a full backtrace from a large test binary, which on the first run after a rebuild is read cold.
 - **1.5.3 SHOULD** Schedule randomization on in tests. Done: tests pass with it enabled.
 
@@ -144,7 +144,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 ### 1.6.1 Ports
 
 - **MUST** Keyboard adapter maps physical keys from tuning to `PaddleIntent` per seat; `SavePaths` from XDG directories. Done: a held key maps to an intent by test. Amended 2026-11-04 (plan 4.1): the adapter reports once per frame before the fixed steps, only while `Playing`; the `SavePaths` resource lands with persistence (plan 7.1), the XDG resolver in plan 4.1. Amended 2026-11-07 (ADR 0004): the adapter reports whenever the paddles move, between rallies too.
-- **MUST** Focus loss clears intents and enters `Paused` only from `Playing`. Done: manual check plus a test sending the focus event. Amended 2026-11-04 (ADR 0003): the pause goes through the `MatchControl` port. Amended 2026-11-07 (ADR 0004): it pauses wherever the paddles move, `Countdown` and `PointScored` too, so no countdown runs out unseen.
+- **MUST** Focus loss clears intents and enters `Paused` only from `Playing`. Done: manual check plus a test sending the focus event. Amended 2026-11-04 (ADR 0003): the pause goes through the `MatchControl` port. Amended 2026-11-07 (ADR 0004): it pauses wherever the paddles move, `Countdown` and `PointScored` too, so no countdown runs out unseen. Amended 2026-11-09 at milestone close ([phase 4 report](m1-phase4-report.md)): the clear runs after that frame's keyboard report, since Bevy releases keys a frame after focus loss; the latest focus change of a frame decides.
 
 ### 1.6.2 Views
 
@@ -156,11 +156,11 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 
 ### 1.6.3 UI
 
-- **MUST** Screens: boot, main menu (play, settings, quit), mode select (vs human, vs computer, difficulty stars, points-to-win), profile select per seat with seat cue, match HUD with score, pause, match over with winner and records delta, notice line. Done: full flow playable keyboard-only. Amended 2026-11-08 (plan 8.4, [phase 8 report](m1-phase8-report.md)): the HUD shows the countdown's whole seconds; the seat cue shows what each key does; the name screens and match over show which key goes on.
+- **MUST** Screens: boot, main menu (play, settings, quit), mode select (vs human, vs computer, difficulty stars, points-to-win), profile select per seat with seat cue, match HUD with score, pause, match over with winner and records delta, notice line. Done: full flow playable keyboard-only. Amended 2026-11-08 (plan 8.4, [phase 8 report](m1-phase8-report.md)): the HUD shows the countdown's whole seconds; the seat cue shows what each key does; the name screens and match over show which key goes on. Amended 2026-11-09 at milestone close (`pong/src/ui/menu/mod.rs`, `MenuScreen`): mode select is two screens, opponent (Friend, or the computer at ★ to ★★★), then points-to-win; settings opens volume and window mode, a screen each; profile select per seat leads to name and colour screens for a new profile, and through Edit to rename, recolour, and delete screens.
 - **MUST** During a seat's turn only that seat's keys move the cursor; D/Right confirms; A/Left and Escape back out. Done: the other seat's keys do nothing, by test.
 - **MUST** Profile creation: typed name, color from the palette. Done: new profile appears in the file.
 - **MUST** Seat key filter suspended during text entry. Done: a name using letters from both key sets is enterable.
-- **MUST** Name cap twelve characters; duplicates allowed. Done: thirteenth character rejected; two identical names coexist, by test.
+- **MUST** Name cap twelve characters; duplicates allowed. Done: thirteenth character rejected; two identical names coexist, by test. Amended 2026-11-09 at milestone close ([phase 8 report](m1-phase8-report.md)): names take Latin letters up to U+024F, digits, spaces, and hyphens; a name is trimmed, and a blank one is not taken.
 - **SHOULD** Rename and delete a profile. Done: both reachable from profile select. Amended 2026-11-08 (plan 8.4, the user's addition): also change its colour, from the same place.
 - **SHOULD** Text limited to single words or icons where a 9-year-old must read. Done: review at milestone close.
 - **MUST** Settings screen: volume, window mode only. Done: both change and persist. Amended 2026-11-08 ([phase 9 report](m1-phase9-report.md)): every menu list shows at most six rows, following the cursor, with ▲ and ▼ where rows are hidden; at eleven rows, volume ran off the screen.
@@ -183,7 +183,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 
 ## 1.7 Error policy wiring
 
-- **1.7.1 MUST** Error handler per build profile: panic in dev, log in release. Done: a failing test system behaves differently under each.
+- **1.7.1 MUST** Error handler per build profile: panic in dev, log in release. Done: a failing test system behaves differently under each. Amended 2026-11-09 at milestone close ([phase 3 report](m1-phase3-report.md), [ADR 0009](../adr/0009-error-policy.md)): `ErrorPolicyPlugin` carries its policy, so the harness forces the dev policy in any build.
 - **1.7.2 MUST** Panic hook writes a crash file to the XDG state directory. Done: a forced panic produces the file.
 - **1.7.3 MUST** `Notice` rendered as one line on the menu, cleared at next match start. Done: visible after a corrupt-save fixture is placed.
 
@@ -195,8 +195,8 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 
 ## 1.9 Milestone close
 
-- **1.9.1 MUST** ADRs: crate structure (M0), error policy, persistence format, audio boundary. Done: four files. Amended 2026-11-04: plus ADR 0002 (intra-crate layering) and ADR 0003 (match flow ownership); six files.
-- **1.9.2 MUST** CLAUDE.md, rules, hooks per [claude-code-setup.md](../claude-code-setup.md). Done: hooks fire on an edit and a commit.
+- **1.9.1 MUST** ADRs: crate structure (M0), error policy, persistence format, audio boundary. Done: four files. Amended 2026-11-04: plus ADR 0002 (intra-crate layering) and ADR 0003 (match flow ownership); six files. Amended 2026-11-09 at milestone close: the six are ADR 0001 (crate structure), 0002 (intra-crate layering), 0003 (match flow ownership), 0007 (persistence format), 0009 (error policy), and 0010 (audio boundary); all exist, 0009 and 0010 written 2026-11-09. Ten ADRs in all, 0001 through 0010.
+- **1.9.2 MUST** CLAUDE.md, rules, hooks per [claude-code-setup.md](../claude-code-setup.md). Done: hooks fire on an edit and a commit. Amended 2026-11-09 at milestone close ([claude-code-setup.md](../claude-code-setup.md), Hooks): Claude performs no mutative git, so the commit-time hook became the native `pre-push` hook; done when hooks fire on an edit and a push.
 - **1.9.3 MUST** Checklist: CI green, docs updated, vocabulary under twelve, no `unwrap` in core, AI review item 1.4.6 signed. Done: checklist marked in this file.
 
 ## Deliberately absent

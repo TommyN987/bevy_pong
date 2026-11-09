@@ -30,7 +30,13 @@
       "Bash(git mv*)",
       "Bash(gh pr create*)",
       "Bash(gh pr merge*)",
-      "Bash(gh repo create*)"
+      "Bash(gh repo create*)",
+      "Bash(git branch*)",
+      "Bash(git tag*)",
+      "Bash(git reflog expire*)",
+      "Bash(git reflog delete*)",
+      "Bash(gh pr close*)",
+      "Bash(gh pr edit*)"
     ]
   },
   "hooks": {

@@ -7,7 +7,7 @@ version = 2
 yanked = "deny"
 # Unmaintained advisories fail only for crates the workspace depends on directly.
 # Transitive ones (e.g. ttf-parser under winit's Wayland decorations, RUSTSEC-2026-0192)
-# are upstream's to resolve and are re-examined at each Bevy upgrade (/bevy-upgrade).
+# are upstream's to resolve and are re-examined at each Bevy upgrade (the `/bevy-upgrade` skill, not built yet).
 unmaintained = "workspace"
 
 [licenses]
