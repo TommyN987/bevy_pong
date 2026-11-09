@@ -16,10 +16,10 @@ Build order and why:
 | `SeededRandomPlugin` | Inserts `Random::seeded(seed)` before features draw from it. |
 | `FlowPlugin` | States and phases before the features that name them. |
 | `BootPlugin` | The gate out of `Boot`. |
-| `TuningPlugin`, `SeatsPlugin`, `BallPlugin`, `PaddlePlugin`, `PhysicsPlugin`, `RulesPlugin` | The declared feature order. |
+| `TuningPlugin`, `SeatsPlugin`, `BallPlugin`, `PaddlePlugin`, `PhysicsPlugin`, `RulesPlugin`, `AiPlugin`, `SanityPlugin`, `PersistencePlugin` | The declared feature order. |
 
 `seed` decides every random draw in the core.
-The shell will pass entropy (plan 4.5); tests pass a constant.
+The shell passes fresh entropy each launch (`pong::seed`, plan 4.5); tests pass a constant.
 
 Preconditions, the caller's to meet:
 `AssetPlugin` is added first;
@@ -47,7 +47,6 @@ a `Single` query with zero or several matches skips its system silently.
 ## Boot gate (`boot.rs`)
 
 `leave_boot` moves `Boot → Menu`.
-It runs in `Update` under `in_state(AppState::Boot).and_then(resource_exists::<Tuning>)`,
+It runs in `Update` under `in_state(AppState::Boot)` and `resource_exists` for `Tuning`, `Settings`, and `Profiles`,
 so "wait until loaded" is a run condition, not a polled flag.
-Persistence (plan phase 7) extends the condition with settings and profiles.
 It lives in the roof because it reads a feature's type, which flow may not.

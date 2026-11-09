@@ -32,8 +32,8 @@ One `app.update()` runs these schedules in order.
 Our systems are in brackets.
 
 ```
-(first update only) StateTransition → OnEnter(Boot) → PreStartup → Startup [begin_loading] → PostStartup
-───────────────────────────────────────────────────────────────────────────────────────────────────────
+(first update only) StateTransition → OnEnter(Boot) [load_saves] → PreStartup → Startup [begin_loading] → PostStartup
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 First            time: Real → Virtual (delta clamped at 250 ms); message buffers swap (see below)
 PreUpdate        asset server inserts finished loads into Assets<Tuning>
 StateTransition  apply NextState (AppState before MatchState)
@@ -45,7 +45,8 @@ RunFixedMainLoop overstep += virtual delta
                    FixedFirst      [open_or_close_step_gate]
                    FixedUpdate     Intent → Effects → Integrate → Collide → Rules → Sanity
                    FixedPostUpdate [Bevy: signal "a fixed step ran"] [harness: recorders]
-Update           [leave_boot, promote/reload tuning, countdown/point timers, pause port]
+Update           [leave_boot, promote/reload tuning, countdown/point timers, restart_rally_after_fault, pause port]
+                 [match-end records and saves, menu-change saves]
 PostUpdate       asset events written as messages
 Last
 ```

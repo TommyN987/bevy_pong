@@ -22,30 +22,32 @@ The user's operating-mode framework (#Frame, #Research, #Design, #Record, #Spec,
 
 **CLAUDE.md**, under forty lines:
 - what the project is, in two sentences
-- pointers to `docs/frame.md`, `docs/research.md`, `docs/design.md`, `docs/architecture.md`
+- pointers to `docs/frame.md`, `docs/design.md`, `docs/architecture.md`; `docs/research.md` is reached from the design
 - the pinned Bevy version
-- the `just` recipes: `dev-check`, `ci-check`, `test`, `run`
+- the `just` recipes, listed under Toolchain in `CLAUDE.md`
 - four non-negotiables: verify Bevy API against the pinned version before writing it (pinned source first, docs.rs fallback, through the agent); core never imports shell, render, window, audio, or UI; no new dependency without a treadmill justification; never run mutative git (the user owns commits, branches, pushes, PRs)
 - where specs and ADRs live
 
 **Rules** in `.claude/rules/`, path-scoped:
 - `pong_core.md` scoped to `pong_core/**`: forbidden imports; physics as pure functions; vocabulary floor stays tiny
-- `tests.md` scoped to `**/tests/**`: fixture conventions, soak test conventions, headless builder usage
+- `tests.md` scoped to `pong_core/tests/**`, `pong/tests/**`, `pong_core/src/testing/**`: fixture conventions, soak test conventions, headless builder usage
 
 **Hooks** (amended 2026-10-30, twice: all hooks call `just` recipes; and Claude performs no mutative git, so the commit-time Claude Code hook was replaced):
 - PostToolUse on Rust file edits: `just fmt`, guarded on a root `Cargo.toml` existing
-- PreToolUse on Bash: blocks mutative git commands (add, commit, push, pull, fetch, branch, checkout, switch, merge, rebase, reset, tag, cherry-pick, revert, clean, `gh pr create`) and lists the allowed set: status, log, diff, show, blame, stash
+- PreToolUse on Bash: allows only `git stash` and the read-only git subcommands listed in the hook (branch, tag, remote, config, and worktree only as listings); blocks every other git subcommand and mutative `gh` commands such as `gh pr create`, naming the allowed set in its reason; `git reflog` only bare or with `show` (amended 2026-11-09)
 - SessionStart: print pinned Bevy version, current milestone, git status
 - PostToolUse on `Cargo.toml` edits: print the dependency policy as a non-blocking reminder
+
+The permission deny rules in `.claude/settings.json` are the second layer. They match by prefix, so they deny `git branch` and `git tag` outright, listings included, where the hook tells a listing from a change (amended 2026-11-09).
 
 The quality gate for the user's own git flow is a native `pre-push` hook in `.githooks/` running `just ci-check`, enabled once by `just setup` (sets `core.hooksPath`). Pre-push rather than pre-commit, because clippy on a Bevy workspace costs tens of seconds and small commits should stay cheap. `just dev-check` is the mutating variant for interactive use.
 
 **Skills**:
 - `/spec`: scaffold a milestone spec from a template mirroring the design invariants
 - `/adr`: write an architecture decision record
-- `/bevy-upgrade`: walk the migration guide, bump, build, list lagging crates
+- `/bevy-upgrade` (not built yet; at the first Bevy upgrade, plan 0.5): walk the migration guide, bump, build, list lagging crates
 - `/playtest`: append a session to the playtest log in observe-then-interpret format
-- `/milestone-close`: check CI, docs, ADRs, and playtest before declaring a milestone done
+- `/milestone-close` (not built yet; written after the M1 close, from its [phase 11 report](specs/m1-phase11-report.md)): check CI, docs, ADRs, and playtest before declaring a milestone done
 
 **Subagents**:
 - one custom, read-only `bevy-api-check`: reads the pinned crate source in the local cargo registry (docs.rs as fallback) and reports API mismatches, feature gates, and quoted behavior before Bevy code is written. Amended 2026-11-03: in phase 3 items 3.8–3.10 Claude read the registry source directly instead of calling the agent, which found two behaviors docs.rs does not show (a double failure event on refused reload, a `debug`-gated field); the agent now does that itself
@@ -60,6 +62,6 @@ The quality gate for the user's own git flow is a native `pre-push` hook in `.gi
 - Minimal (CLAUDE.md, fmt hook, CI): rejected because it leaves the Bevy API drift risk unaddressed.
 - Full automation (workflows per milestone, release-check routine, status line): rejected as cost and moving parts beyond a hobby Pong; a release check is one search per session.
 
-## Known caveat
+## Rule globs
 
-Path-scoped rules were reported by one tester to require unquoted `paths` globs. Verify when creating the first rule.
+Path-scoped rules load with unquoted `paths` globs, which one tester reported they require. The rules in `.claude/rules/` write them unquoted (`- pong_core/**`).

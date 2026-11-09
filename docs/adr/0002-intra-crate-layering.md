@@ -26,6 +26,7 @@ Add a `flow` layer between vocabulary and features, let features import data typ
 - `pong_core/src/flow/` holds `AppState`, `MatchState` and their registration, `FixedStepPhase` and the phase-set configuration, the step gate, and `FIXED_HZ` (ADR 0003).
   It imports only kernel, domain, and Bevy.
 - `app/` keeps `CorePlugins`, the error policy, and the Boot gate, which reads tuning (later settings and profiles).
+  Amended 2026-11-09 at milestone close (`pong_core/src/app/boot.rs`): the gate reads all three, tuning, settings, and profiles.
 - Rule 1: a feature imports kernel, domain, flow, and the public components, resources, and messages of features earlier in the order declared in `features/mod.rs`:
   `tuning, seats, ball, paddle, physics, rules, ai, sanity, persistence`.
   Never another feature's systems or plugin internals; never `app/`.
@@ -50,5 +51,6 @@ Add a `flow` layer between vocabulary and features, let features import data typ
   A needed import from a later feature means the order or the design is wrong.
 - Plan 3.11 makes the move; 3.11.1 (SHOULD) adds `just arch-check`, a grep check that relies on test modules sitting at the end of each file.
 - Known additions bring types to 10 of 12 through C2: `ProfileId` (M1 persistence), `EffectId` (C1), `BossId` (C3), `ItemId` (C2).
+  Amended 2026-11-09 at milestone close ([ADR 0008](0008-players-in-match-config.md)): overtaken; these are identifier types, outside the cap.
 - Heal (plan 6.1) re-serves through rules, so `Serve` keeps one emitter.
 - Amends `docs/architecture.md` rules 1, 3, 4 and the directory sketch; spec 1.3.2 and 1.3.3.

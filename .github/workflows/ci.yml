@@ -37,6 +37,10 @@ jobs:
 
       - name: ci-check
         run: just ci-check
+        # nextest's `ci` profile (.config/nextest.toml): no fail-fast, so one
+        # failure does not hide the others.
+        env:
+          NEXTEST_PROFILE: ci
 
   release-build:
     name: release build

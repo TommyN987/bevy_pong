@@ -27,6 +27,7 @@ Amended by ADR 0004 (2026-11-07): the phases also run in `Countdown` and `PointS
   The step that stops play finishes every phase, sanity included; the remaining steps of that frame skip.
   Whether a pending `NextState` can be read is unverified; `bevy-api-check` answers it before plan 3.13.
   Fallback: a rules-owned `PlayHalted` flag, set beside every `next.set` inside a fixed step, cleared on `OnEnter(Playing)`.
+  Amended 2026-11-09 at milestone close ([phase 3 report](../specs/m1-phase3-report.md), `pong_core/src/flow/phases.rs`): verified; the gate reads `Res<NextState<MatchState>>` and `Res<NextState<AppState>>` and opens only when both are `Unchanged`. No `PlayHalted` flag exists.
 - One fixed rate: `FIXED_HZ = 60` in `flow`; `CorePlugins` applies it to `Time<Fixed>`; the harness reads it.
   The harness gains frames of N steps and frames of half a step.
 - Serve on `OnTransition { exited: Countdown, entered: Playing }`.

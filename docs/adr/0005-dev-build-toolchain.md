@@ -34,3 +34,4 @@ The workspace builds on a dated nightly, `nightly-2026-11-06`, with cranelift fo
 - A nightly can break the build: each date move is a change to test, not an update.
 - A debugger loses Bevy's variables; backtraces keep file and line inside Bevy.
 - In dev builds, a panic in the workspace's own code cannot be caught by that code; Bevy's executors, compiled with LLVM, still catch system panics.
+- Amends spec 1.1.1: a dated nightly with the cranelift component, and `clang` and `mold` on a clean clone (recorded 2026-11-09 at milestone close).

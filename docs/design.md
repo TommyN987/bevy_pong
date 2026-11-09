@@ -56,7 +56,7 @@ Rationale: the order is dependency-correct, each layer reuses the previous, and 
 
 ## Decision: persistence lands in Basic Pong
 
-**Chosen:** profiles and records are saved from milestone one, in a versioned plain-data file owned by the game. Later payloads (unlocks, campaign position) are added additively.
+**Chosen:** profiles and records are saved from milestone one, in two plain-data RON files owned by the game, `settings.ron` and `profiles.ron`, each versioned on its own. Later payloads (unlocks, campaign position) are added additively. Built in phase 7 and recorded as [ADR 0007](adr/0007-persistence-format.md).
 
 **Alternatives:** a dedicated save milestone before C1 (rejected: a milestone with nothing new to play, and records would be retrofitted); no persistence until C3 (rejected: leaves C1's unlock pool meaningless and overloads C3).
 
@@ -66,7 +66,7 @@ Rationale: the order is dependency-correct, each layer reuses the previous, and 
 
 **Chosen:** `bevy_audio` at milestone one, reached only through a boundary that speaks game vocabulary, never engine asset handles. A beat clock is added at C4, and the backend is swapped then if needed.
 
-**Amended 2026-10-30 during the architecture round:** the boundary is core's event vocabulary, not a facade the game calls. Audio is a shell plugin observing core events and app state; music cues derive from state transitions; volume is a setting; no audio type exists in core. See [architecture.md](architecture.md).
+**Amended 2026-10-30 during the architecture round:** the boundary is core's event vocabulary, not a facade the game calls. Audio is a shell plugin observing core events and app state; music cues derive from state transitions; volume is a setting; no audio type exists in core. See [architecture.md](architecture.md). Built in phase 9 and recorded as [ADR 0010](adr/0010-audio-boundary.md).
 
 **Alternatives:** built-in with no boundary (rejected: systems emitting sound could not run in headless tests); Kira from milestone one, with or without boundary (rejected: third-party dependency on the upgrade treadmill four milestones before its clock is needed, while Bevy's audio direction is unsettled).
 

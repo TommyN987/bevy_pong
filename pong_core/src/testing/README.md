@@ -30,7 +30,7 @@ Bevy's first update has zero delta, so the first frame runs no fixed step.
 | `boot`, `enter_match`, `start_match`, `leave_match` | Drive the app through its states. |
 | `app_state`, `match_state`, `run_until` | Inspect state; run frames until a condition holds. |
 | `frame`, `set_frame_length(FrameLength)`, `fixed_timestep` | One `update()`; `HalfStep` simulates a display faster than 60 Hz, `Steps(n)` a slow or hitching one. At most 14 steps: Bevy caps a frame at 250 ms. |
-| `report_intent` | Fakes a seat's keys, as the shell's adapter will. |
+| `report_intent` | Fakes a seat's keys, as the shell's adapter (`pong::ports::keyboard`) reports them. |
 | `record::<M>`, `recorded`, `take_recorded` | Keep every `M` written, read in `FixedPostUpdate` right after the steps that write. |
 | `ball_state`, `place_ball` | Read or script the one ball. |
 | `TempSaveDir` | A fresh directory under the system temp directory, removed when dropped; `save_paths()` gives the `SavePaths` fake (spec 1.5.1). Std only. |

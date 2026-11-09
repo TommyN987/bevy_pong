@@ -20,7 +20,7 @@ Pair-programming roles vary per phase or per item: Claude drives and the user re
 ## Phase protocol
 
 - **P.1 MUST** The user creates and names the branch. Roles (driver, navigator, reviewer) are agreed for the phase, per item where useful. Done: branch exists; roles stated.
-- **P.2 MUST** The driver implements an item. When the user drives, Claude navigates: explains the Bevy idiom and its why, points at API verified against docs.rs for the pinned version, keeps the done-condition in view. When Claude drives, it runs `bevy-api-check` before each Bevy API. Done: done-condition evidence exists, produced by the driver.
+- **P.2 MUST** The driver implements an item. When the user drives, Claude navigates: explains the Bevy idiom and its why, points at API verified against docs.rs for the pinned version, keeps the done-condition in view. When Claude drives, it runs `bevy-api-check` before each Bevy API. Done: done-condition evidence exists, produced by the driver. Amended 2026-11-09 at milestone close (CLAUDE.md non-negotiable 1, `.claude/agents/bevy-api-check.md`): Bevy API is verified against the pinned crate source in the local cargo registry first, docs.rs as fallback.
 - **P.3 MUST** `just dev-check` is green before any handoff. Done: green.
 - **P.4 MUST** The reviewer checks the item against its done-condition and the architecture rules. When Claude reviews, it reports and changes nothing without the user's word. Done: review recorded in session or PR.
 - **P.5 MUST** The user commits, pushes, opens the PR, merges. Claude drafts commit messages on request. Done: PR merged.
@@ -31,10 +31,10 @@ Pair-programming roles vary per phase or per item: Claude drives and the user re
 ### 0. Claude Code setup
 Realizes [claude-code-setup.md](../claude-code-setup.md). Depends on nothing.
 
-- **0.1 MUST** CLAUDE.md under forty lines: project in two sentences; pointers to frame, research, design, architecture, specs; Bevy 0.20 with exact patch filled in at 2.7; the `just` recipes; four non-negotiables (verify Bevy API against docs.rs for the pinned version; core never imports shell, render, window, audio, or UI; no new dependency without a treadmill justification; never run mutative git). Done: file exists, under forty lines.
+- **0.1 MUST** CLAUDE.md under forty lines: project in two sentences; pointers to frame, research, design, architecture, specs; Bevy 0.20 with exact patch filled in at 2.7; the `just` recipes; four non-negotiables (verify Bevy API against docs.rs for the pinned version; core never imports shell, render, window, audio, or UI; no new dependency without a treadmill justification; never run mutative git). Done: file exists, under forty lines. Amended 2026-11-09 at milestone close (CLAUDE.md non-negotiable 1, `.claude/agents/bevy-api-check.md`): the first non-negotiable verifies Bevy API through `bevy-api-check`, pinned registry source first, docs.rs as fallback.
 - **0.2 MUST** `.claude/rules/pong_core.md` scoped to `pong_core/**`; `tests.md` scoped to `**/tests/**`. Done: both load on a matching edit after phase 2; glob quoting checked.
 - **0.3 MUST** Hooks: PostToolUse on Rust edits runs `just fmt` (guarded on workspace existence); PreToolUse on Bash blocks mutative git commands and lists the allowed set; SessionStart prints Bevy version, milestone, git status; PostToolUse on `Cargo.toml` prints the dependency policy. Done: each fires once in a dry trial; a dry `git commit` attempt is blocked.
-- **0.4 MUST** Subagent `bevy-api-check`, read-only, fetches docs.rs for the pinned version and reports mismatches. Done: definition present; invoked once on a sample snippet.
+- **0.4 MUST** Subagent `bevy-api-check`, read-only, fetches docs.rs for the pinned version and reports mismatches. Done: definition present; invoked once on a sample snippet. Amended 2026-11-09 at milestone close (`.claude/agents/bevy-api-check.md`): the agent reads the pinned crate source in the local cargo registry first, docs.rs as fallback.
 - **0.5 SHOULD** Skills `/spec`, `/adr`, `/playtest` now; `/bevy-upgrade` and `/milestone-close` when first needed. Done: three skill files invocable.
 - **0.6 MUST** Permissions: cargo subcommands and `just` allowed; mutative git commands and `cargo publish` denied. Done: settings file lists them.
 - **0.7 MUST** `docs/playtest.md` template and `docs/adr/0000-template.md`. Done: files exist. (Spec 1.8.1 and part of 1.1.4 live here because they are documents.)
@@ -76,7 +76,7 @@ Added 2026-11-04 from the phase 3 review (findings and dispositions in [m1-phase
 All on `feat/headless-rally`; the phase 3 PR waits for them.
 Order: 3.11, then 3.12, then 3.13 through 3.18 in any order, then 3.19, 3.20, 3.21.
 
-- **3.11 MUST** `flow` layer and feature order per ADR 0002. Done: (a) no production code in `features/` or `flow/` imports `crate::app`; (b) no feature imports one later in the order declared in `features/mod.rs`; (c) `flow` imports only kernel, domain, and Bevy; (d) `entering_countdown_clears_seat_intents` lives in seats and passes; (e) rules does not import seats; (f) the `resource_exists::<MatchConfig>` guard on seats is gone.
+- **3.11 MUST** `flow` layer and feature order per ADR 0002. Done: (a) no production code in `features/` or `flow/` imports `crate::app`; (b) no feature imports one later in the order declared in `features/mod.rs`; (c) `flow` imports only kernel, domain, and Bevy; (d) `entering_countdown_clears_seat_intents` lives in seats and passes; (e) rules does not import seats; (f) the `resource_exists::<MatchConfig>` guard on seats is gone. Amended 2026-11-09 at milestone close (`pong_core/src/features/seats/mod.rs`): (d)'s test is now two in seats, `a_key_press_from_the_menu_is_forgotten_on_entering_the_first_countdown` and `a_key_press_from_the_last_rally_is_forgotten_on_entering_every_later_countdown`.
   - **3.11.1 SHOULD** `just arch-check` inside `dev-check` and `ci-check`, checking (a) through (c) by grep. Done: a planted import of `features::rules` inside `paddle` fails `just dev-check`.
 - **3.12 MUST** One fixed rate and harness frame-length control per ADR 0003. Done: a `CorePlugins` app has a `Time<Fixed>` timestep of `1 / FIXED_HZ`; the harness has no rate constant of its own; an app-level test with half-step frames shows a tap moving the paddle exactly once.
 - **3.13 MUST** Step gate per ADR 0003; `bevy-api-check` first confirms whether a pending `NextState` can be read. Done, with 14-step frames (the longest that fit Bevy's 250 ms clamp at 60 Hz; corrected 2026-11-04 from 15): a goal raises the score by exactly 1 and writes one `PointScored`; the final point writes exactly one `MatchEnded`; a recording system in the sanity phase runs in the step that scores; no later step in that frame runs any phase.
@@ -149,7 +149,7 @@ Realizes spec 1.6.2 SHOULD and MAY, 1.6.5, 1.6.6 MAY. Depends on 8.
 Realizes spec 1.8.3, 1.9. Depends on all above.
 
 - **11.1 SHOULD** One session per child, logged. Done: entries exist.
-- **11.2 MUST** ADRs: error policy, persistence format, audio boundary, plus 0001, 0002, 0003. Done: six files. Amended 2026-11-04.
+- **11.2 MUST** ADRs: error policy, persistence format, audio boundary, plus 0001, 0002, 0003. Done: six files. Amended 2026-11-04. Amended 2026-11-09 at milestone close: the six are ADR 0001, 0002, 0003, 0007 (persistence format), 0009 (error policy), and 0010 (audio boundary); all exist, 0009 and 0010 written 2026-11-09. Ten ADRs in all, 0001 through 0010.
 - **11.3 MUST** Close checklist per spec 1.9.3. Done: marked in the M1 spec.
 
 ## User actions outside the plan

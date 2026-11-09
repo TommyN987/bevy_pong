@@ -4,7 +4,7 @@
 set -euo pipefail
 root=$(git rev-parse --show-toplevel)
 cd "$root"
-if [ ! -f Cargo.toml ]; then
+if [[ ! -f Cargo.toml ]]; then
   echo "pre-push: no Cargo.toml at repo root yet; skipping ci-check"
   exit 0
 fi
