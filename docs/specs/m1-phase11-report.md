@@ -5,7 +5,9 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) and [m1-plan.md](m1-plan.md
 
 ## Deviations
 
-None so far.
+| Item | Deviation | Recorded |
+|---|---|---|
+| 1.8.3, plan 11.1 | One shared session of both children, not one session per child; each child played the other and the computer in it. The parent reported it afterwards; no quotes, duration, or build were noted. | Spec 1.8.3 done note; playtest log, 2026-11-09. |
 
 ## Decisions taken in this phase
 
@@ -25,4 +27,7 @@ None so far.
     7. Spec 1.9.2 amended: hooks fire on an edit and a push.
     8. `.claude/rules/pong_core.md`: `domain.rs`, not `domain/`; `EffectId`, `ItemId`, `BossId`, and the beat clock tagged with the milestone that brings them.
     9. `.claude/rules/tests.md`: load-policy fixtures sit outside the one-per-version rule.
+  - Part B (2026-11-09): the close checklist is in spec 1.9.3. Four rows done on evidence; the vocabulary count first read 7, missing `Side`, which is vocabulary defined in the kernel, and reconciled to ADR 0008's 8. The AI review and the readability review await the user's signature, the push hook the user's confirmation, CI the close branch's push.
+  - Part B closed (2026-11-09): the user signed the AI review (1.4.6) and the readability review (1.6.3); the pre-push hook ran on the user's push; CI passed on `6b64b80` with `NEXTEST_PROFILE: ci` in the log. Every checklist row is marked.
+  - Part C (2026-11-09): the playtest, logged with the `playtest` skill from the parent's report: no trouble with menus or text, no fights, both modes enjoyed, sounds and trail working. The single-cursor menu stays; no change proposed.
   - Rows the sweep left as they are: those resolved by a later phase (1.2.6 in 3.6; three 1.5.1 rows in 3.8 and phase 7; 1.5.2 in 6.1, whose sanity phase the soak now relies on), those about the plan rather than the spec (the 1.4.8 manual reload check, plan 4.5, plan 10.2's Alt+Enter), and process deviations (TDD notes, Bevy source read without `bevy-api-check`), which concern the working agreement, not what the game is.
