@@ -143,7 +143,7 @@ Realizes spec 1.6.4. Depends on 3 events and 7 settings; independent of 8.
 Realizes spec 1.6.2 SHOULD and MAY, 1.6.5, 1.6.6 MAY. Depends on 8.
 
 - **10.1 SHOULD** Ball trail, overlay. Done: visible. Done 2026-11-09 ([phase 10 report](m1-phase10-report.md)): the ball trail, and the overlay on F3, in release builds too; both pending the user's look.
-- **10.2 MAY** Screen shake, Alt+Enter, persisted points-to-win. Done: visible or restored.
+- **10.2 MAY** Screen shake, Alt+Enter, persisted points-to-win. Done: visible or restored. Done 2026-11-09 ([phase 10 report](m1-phase10-report.md)): all three; Alt+Enter since 8.1; the shake pending the user's look.
 
 ### 11. Playtest and close
 Realizes spec 1.8.3, 1.9. Depends on all above.

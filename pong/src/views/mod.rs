@@ -17,6 +17,7 @@ pub mod ball;
 pub mod camera;
 pub mod motion;
 pub mod paddle;
+pub mod shake;
 pub mod trail;
 
 /// Draw order, back to front.
@@ -39,6 +40,7 @@ impl Plugin for ViewsPlugin {
         app.add_systems(Startup, create_unit_meshes).add_plugins((
             motion::MotionPlugin,
             trail::TrailPlugin,
+            shake::ShakePlugin,
             camera::CameraPlugin,
             arena::ArenaViewPlugin,
             ball::BallViewPlugin,

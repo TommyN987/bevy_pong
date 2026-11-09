@@ -443,6 +443,7 @@ mod tests {
         Settings {
             volume: Volume::new(30).expect("in range"),
             window_mode: WindowMode::Windowed,
+            points_to_win: None,
         }
     }
 

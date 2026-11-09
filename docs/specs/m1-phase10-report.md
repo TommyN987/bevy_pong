@@ -8,6 +8,7 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) and [m1-plan.md](m1-plan.md
 | Item | Deviation | Recorded |
 |---|---|---|
 | plan 10.2 | Alt+Enter needed no work: it has toggled the window mode since plan 8.1 (`WindowModePlugin`). | This report. |
+| 1.4.9 | Settings file version 2: version 1 plus the last points-to-win picked, the first released migration. | Spec 1.4.9 amended 2026-11-09; features README. |
 
 ## Decisions taken in this phase
 
@@ -23,4 +24,9 @@ Deviations from [m1-basic-pong.md](m1-basic-pong.md) and [m1-plan.md](m1-plan.md
   - Lines: the rates; the ball's speed in arena units per second; each computer player's side and aim, or "centre"; the state, the match state, the menu screen, as present. A line with nothing to read is left out.
   - Core: `ai::Aim { target_y, error }`, held in the plan's `Meet`; `MirrorController::aim` and `side` read it. The draw order is unchanged, so every seeded run is too.
   - TDD: red then green, the rates and the text as unit tests, the plugin headless. Checked against deliberate breaks: the aim never reported, a span closing every frame, dividing by one second, counts never reset, the error unsigned, never hiding, starting shown, no match state, no ball speed, the first frame counted. Each fails a test. The reset break survived at first, since every test closed one span; a test now closes two at different rates. A first try at the first-frame break did not compile, which proves nothing; rewritten, it fails.
-- Not tested, judged by eye: how the trail looks; the overlay's place and size, and its numbers in a release build (`just build-release`).
+- Part C (2026-11-09, both items, the user's choice).
+  - Points-to-win: `Settings.points_to_win` is the last pick, `None` before the first, not a default, since tuning owns the default and two copies could drift. The points screen opens on it while tuning still offers it, otherwise on tuning's default (a preselection not in the list would put the cursor on the first row); a pick is kept at once, and the menu's save trigger writes it.
+  - Settings file version 2 (`document::v2`), reusing v1's window-mode shape. The pick is the file's own enum, `Picked(n)` or `Unpicked`, not an `Option`: serde reads a missing `Option` field as `None`, and a released shape is exact. `Picked(0)` is `InvalidSaveData::NoPointsToWin`. A v1 file migrates in one step, `From<v1::SettingsFile>`, to a v2 file with no pick, then to the model; v1's own `into_model` is gone, its types unchanged. The `settings_v2.ron` fixture joins `settings_v1.ron`; the fixture-count test failed on the version bump until it did.
+  - Screen shake, split like the trail: `views::shake` starts a shake on `PointScored` and moves the x and y of any `Shake` entity; the camera carries one. The offset is two sines (23 and 17 Hz) from zero under a `(1 - t/T)^2` envelope, 1.5 arena units at most, over 0.3 s, then exactly zero: the same wobble every point, no randomness. Tested on a plain entity in the camera's place, since a camera needs the renderer.
+  - TDD: red then green each. Checked against deliberate breaks: the migration inventing a pick, a zero accepted, the pick not written, the migration dropping a v1 value, the fallback filter gone, the pick not kept, the saved pick ignored, a shake that never ends, no decay, shaking without a point, z overwritten, stopping a frame early. Each fails a test.
+- Not tested, judged by eye: how the trail and the shake look; the overlay's place and size, and its numbers in a release build (`just build-release`).

@@ -9,7 +9,8 @@
 //! game apart from a damaged one.
 //!
 //! Every type in [`v1`] is the released version 1 format and never changes.
-//! Version 2 adds a `v2` module, a variant, and a `v1 → v2` step.
+//! A new version adds a module, a variant, and a step from the version
+//! before: settings are at version 2 ([`v2`], plan 10.2); profiles at 1.
 
 use bevy::color::Srgba;
 use ron::ser::PrettyConfig;
@@ -25,7 +26,7 @@ use super::model::{
 pub const PROFILES_VERSION: u32 = 1;
 
 /// The settings file version this game writes.
-pub const SETTINGS_VERSION: u32 = 1;
+pub const SETTINGS_VERSION: u32 = 2;
 
 /// Why a document could not become a model.
 #[derive(Debug, thiserror::Error)]
@@ -114,13 +115,18 @@ pub fn decode_profiles(text: &str) -> Result<Profiles, DecodeError> {
 /// # Errors
 /// [`EncodeError`] if RON cannot write the document.
 pub fn encode_settings(settings: Settings) -> Result<String, EncodeError> {
-    let document = v1::SettingsFile {
+    let document = v2::SettingsFile {
         version: SETTINGS_VERSION,
         volume_percent: settings.volume.percent(),
         window_mode: match settings.window_mode {
             WindowMode::BorderlessFullscreen => v1::WindowModeEntry::BorderlessFullscreen,
             WindowMode::Windowed => v1::WindowModeEntry::Windowed,
         },
+        points_to_win: settings
+            .points_to_win
+            .map_or(v2::PointsEntry::Unpicked, |points| {
+                v2::PointsEntry::Picked(points.get())
+            }),
     };
     Ok(ron::ser::to_string_pretty(&document, PrettyConfig::new())?)
 }
@@ -133,6 +139,7 @@ pub fn encode_settings(settings: Settings) -> Result<String, EncodeError> {
 pub fn decode_settings(text: &str) -> Result<Settings, DecodeError> {
     let document = match version_of(text)? {
         1 => SettingsDocument::V1(strict(text)?),
+        2 => SettingsDocument::V2(strict(text)?),
         version => return Err(unreadable_version(version, SETTINGS_VERSION)),
     };
     Ok(document.into_current().map_err(Corruption::from)?)
@@ -156,13 +163,16 @@ impl ProfilesDocument {
 /// A settings file of a released version, before migration.
 enum SettingsDocument {
     V1(v1::SettingsFile),
+    V2(v2::SettingsFile),
 }
 
 impl SettingsDocument {
-    /// Migrates to the current model, one version at a time.
+    /// Migrates to the current model, one version at a time: a version 1
+    /// file becomes a version 2 file, which becomes the model.
     fn into_current(self) -> Result<Settings, InvalidSaveData> {
         match self {
-            Self::V1(file) => file.into_model(),
+            Self::V1(file) => v2::SettingsFile::from(file).into_model(),
+            Self::V2(file) => file.into_model(),
         }
     }
 }
@@ -196,10 +206,7 @@ fn unreadable_version(version: u32, current: u32) -> DecodeError {
 mod v1 {
     use serde::{Deserialize, Serialize};
 
-    use super::{
-        InvalidSaveData, Profile, ProfileId, ProfileName, Profiles, Records, Settings, Srgba,
-        Volume, WindowMode,
-    };
+    use super::{InvalidSaveData, Profile, ProfileId, ProfileName, Profiles, Records, Srgba};
 
     #[derive(Serialize, Deserialize)]
     #[serde(deny_unknown_fields)]
@@ -249,18 +256,6 @@ mod v1 {
         Windowed,
     }
 
-    impl SettingsFile {
-        pub(super) fn into_model(self) -> Result<Settings, InvalidSaveData> {
-            Ok(Settings {
-                volume: Volume::new(self.volume_percent)?,
-                window_mode: match self.window_mode {
-                    WindowModeEntry::BorderlessFullscreen => WindowMode::BorderlessFullscreen,
-                    WindowModeEntry::Windowed => WindowMode::Windowed,
-                },
-            })
-        }
-    }
-
     impl ProfilesFile {
         pub(super) fn into_model(self) -> Result<Profiles, InvalidSaveData> {
             let profiles = self
@@ -284,8 +279,70 @@ mod v1 {
     }
 }
 
+/// Released version 2 (plan 10.2): version 1 plus the last points-to-win
+/// picked. Frozen once released, as [`v1`] is; it reuses v1's window mode,
+/// whose shape it shares.
+mod v2 {
+    use std::num::NonZeroU8;
+
+    use serde::{Deserialize, Serialize};
+
+    use super::v1::{self, WindowModeEntry};
+    use super::{InvalidSaveData, Settings, Volume, WindowMode};
+
+    #[derive(Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub(super) struct SettingsFile {
+        pub(super) version: u32,
+        pub(super) volume_percent: u8,
+        pub(super) window_mode: WindowModeEntry,
+        pub(super) points_to_win: PointsEntry,
+    }
+
+    /// The game's own shape, not an `Option`: serde would read a missing
+    /// `Option` field as `None`, and a released shape is exact.
+    #[derive(Serialize, Deserialize)]
+    pub(super) enum PointsEntry {
+        Unpicked,
+        Picked(u8),
+    }
+
+    /// The `v1 → v2` step: the values kept, no pick, since version 1 saved
+    /// none.
+    impl From<v1::SettingsFile> for SettingsFile {
+        fn from(file: v1::SettingsFile) -> Self {
+            Self {
+                version: 2,
+                volume_percent: file.volume_percent,
+                window_mode: file.window_mode,
+                points_to_win: PointsEntry::Unpicked,
+            }
+        }
+    }
+
+    impl SettingsFile {
+        pub(super) fn into_model(self) -> Result<Settings, InvalidSaveData> {
+            Ok(Settings {
+                volume: Volume::new(self.volume_percent)?,
+                window_mode: match self.window_mode {
+                    WindowModeEntry::BorderlessFullscreen => WindowMode::BorderlessFullscreen,
+                    WindowModeEntry::Windowed => WindowMode::Windowed,
+                },
+                points_to_win: match self.points_to_win {
+                    PointsEntry::Unpicked => None,
+                    PointsEntry::Picked(points) => {
+                        Some(NonZeroU8::new(points).ok_or(InvalidSaveData::NoPointsToWin)?)
+                    }
+                },
+            })
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroU8;
+
     use bevy::color::Srgba;
 
     use super::{
@@ -341,6 +398,7 @@ mod tests {
             Settings {
                 volume: Volume::new(30).expect("in range"),
                 window_mode: WindowMode::Windowed,
+                points_to_win: NonZeroU8::new(15),
             },
         ] {
             let text = encode_settings(settings).expect("settings encode");
@@ -349,6 +407,51 @@ mod tests {
                 settings
             );
         }
+    }
+
+    /// Plan 10.2: the settings this game writes are version 2.
+    #[test]
+    fn settings_are_written_as_version_2() {
+        let text = encode_settings(Settings::default()).expect("settings encode");
+        assert!(text.contains("version: 2"), "{text}");
+    }
+
+    /// The first migration: a version 1 file keeps its values and has no
+    /// points-to-win pick, since version 1 never saved one.
+    #[test]
+    fn a_version_1_settings_file_migrates_with_no_points_pick() {
+        let v1 = "(version: 1, volume_percent: 60, window_mode: Windowed)";
+        assert_eq!(
+            decode_settings(v1).expect("version 1 decodes"),
+            Settings {
+                volume: Volume::new(60).expect("in range"),
+                window_mode: WindowMode::Windowed,
+                points_to_win: None,
+            }
+        );
+    }
+
+    /// Exact like version 1: a version 2 file without its pick field is
+    /// corrupt, not unpicked.
+    #[test]
+    fn a_version_2_file_missing_its_points_field_is_corrupt() {
+        let missing = "(version: 2, volume_percent: 60, window_mode: Windowed)";
+        assert!(matches!(
+            decode_settings(missing),
+            Err(DecodeError::Corrupt(Corruption::Syntax(_)))
+        ));
+    }
+
+    #[test]
+    fn a_version_2_file_saving_zero_points_is_corrupt() {
+        let zero =
+            "(version: 2, volume_percent: 60, window_mode: Windowed, points_to_win: Picked(0))";
+        assert!(matches!(
+            decode_settings(zero),
+            Err(DecodeError::Corrupt(Corruption::Invalid(
+                InvalidSaveData::NoPointsToWin
+            )))
+        ));
     }
 
     /// Plan 7.2's newer-version policy needs this told apart from corruption.

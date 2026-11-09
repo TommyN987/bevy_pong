@@ -16,6 +16,8 @@ use bevy::ecs::system::{Commands, Query, Res};
 use bevy::post_process::bloom::Bloom;
 use pong_core::features::tuning::Tuning;
 
+use super::shake::Shake;
+
 /// Outside the arena: the letterbox bars.
 const BACKDROP: Color = Color::BLACK;
 
@@ -44,6 +46,7 @@ fn spawn_camera(mut commands: Commands) {
         Bloom::NATURAL,
         Tonemapping::TonyMcMapface,
         DebandDither::Enabled,
+        Shake::default(),
     ));
 }
 

@@ -3,6 +3,7 @@
 //! invalid one is corrupt (docs/architecture.md, error table).
 
 use std::collections::HashSet;
+use std::num::NonZeroU8;
 
 use bevy::color::{Alpha, Srgba};
 use bevy::ecs::resource::Resource;
@@ -46,6 +47,9 @@ pub enum InvalidSaveData {
         /// The percent refused.
         percent: u8,
     },
+    /// A saved points-to-win of zero: a match that ends before it starts.
+    #[error("points to win is 0")]
+    NoPointsToWin,
 }
 
 /// A child's chosen name: one to twelve characters (spec 1.6.3), counted as
@@ -316,14 +320,18 @@ pub enum WindowMode {
     Windowed,
 }
 
-/// This device's settings (spec 1.4.9): master volume and window mode only.
-/// A resource from `Boot` on (plan 7.2).
+/// This device's settings (spec 1.4.9): master volume, window mode, and the
+/// last points-to-win picked (plan 10.2). A resource from `Boot` on (plan
+/// 7.2).
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Settings {
     /// Master volume.
     pub volume: Volume,
     /// How the window shows the game.
     pub window_mode: WindowMode,
+    /// The points-to-win picked last; `None` before the first pick. Not a
+    /// default: tuning owns that, and the menu falls back to it.
+    pub points_to_win: Option<NonZeroU8>,
 }
 
 impl Default for Settings {
@@ -331,6 +339,7 @@ impl Default for Settings {
         Self {
             volume: Volume(80),
             window_mode: WindowMode::BorderlessFullscreen,
+            points_to_win: None,
         }
     }
 }

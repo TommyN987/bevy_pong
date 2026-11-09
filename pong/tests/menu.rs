@@ -934,3 +934,32 @@ fn a_list_opened_near_its_end_still_shows_a_full_window() {
     assert_eq!(list(&app).cursor(), 10, "100 under the cursor");
     assert_eq!(rows_on_screen(&mut app), (5..11).collect::<Vec<_>>());
 }
+
+/// Plan 10.2: the points picked are kept in the settings and saved, and the
+/// points screen opens on them next time, here after backing out to it.
+#[test]
+fn the_points_picked_are_saved_and_under_the_cursor_next_time() {
+    let mut app = menu_app();
+    pick(&mut app, MenuItem::Play, LEFT);
+    pick(&mut app, MenuItem::Friend, LEFT);
+    pick(&mut app, MenuItem::PointsToWin(points(15)), LEFT);
+    assert_eq!(
+        app.world().resource::<Settings>().points_to_win,
+        Some(points(15))
+    );
+    frame(&mut app);
+    assert_eq!(saved_settings(&app).points_to_win, Some(points(15)));
+    tap(&mut app, KeyCode::Escape);
+    assert_eq!(screen(&app), MenuScreen::PointsToWin);
+    assert_eq!(under_cursor(&app), MenuItem::PointsToWin(points(15)));
+}
+
+/// A pick the tuning no longer offers: the tuned default, not the first row.
+#[test]
+fn a_saved_pick_no_longer_offered_opens_on_the_tuned_default() {
+    let mut app = menu_app();
+    app.world_mut().resource_mut::<Settings>().points_to_win = Some(points(7));
+    pick(&mut app, MenuItem::Play, LEFT);
+    pick(&mut app, MenuItem::Friend, LEFT);
+    assert_eq!(under_cursor(&app), MenuItem::PointsToWin(points(10)));
+}
