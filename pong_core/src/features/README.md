@@ -186,6 +186,7 @@ and keeps that target for the approach.
 It holds still through `reaction_delay`, then steers to the target.
 When the ball is not coming it steers to the centre, where the next serve starts.
 `intent_toward` stops within half a step's travel of a target, so the paddle never jitters.
+`MirrorController::aim` and `side` read the approach's `Aim` (target and error) for the shell's overlay (plan 10.1); nothing else is public.
 
 Steering is not in `BallInPlay`: the AI lines up between rallies as players do (ADR 0004).
 The serve shares the intent phase, unordered, so a reaction to a serve may start one step late.

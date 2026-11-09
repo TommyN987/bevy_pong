@@ -8,6 +8,7 @@ use bevy::window::WindowPlugin;
 use pong::audio::SoundsPlugin;
 use pong::audio::synth::Synth;
 use pong::crash::{self, CrashContext};
+use pong::overlay::OverlayPlugin;
 use pong::ports::{PortsPlugin, save_paths};
 use pong::ui::ScreensPlugin;
 use pong::views::ViewsPlugin;
@@ -55,6 +56,7 @@ fn main() -> AppExit {
         ViewsPlugin,
         ScreensPlugin,
         WindowModePlugin,
+        OverlayPlugin,
     ));
     app.run()
 }
