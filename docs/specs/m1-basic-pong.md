@@ -100,7 +100,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 ### 1.4.6 AI, mirror controller
 
 - **MUST** Reaction delay and prediction error from a difficulty entry; target from 1.2.6, recomputed when the ball turns toward the AI; error resampled per approach. Done: zero delay and zero error returns every ball; large error misses some over a seeded run. Amended 2026-11-08 ([phase 5 report](m1-phase5-report.md)): while the ball is not coming, or an approach has no crossing in the prediction's reach, the AI steers to the centre, and it steers between rallies too (ADR 0004); on a serve toward the AI the reaction may start one fixed step late, since the serve and the AI share the intent phase unordered (architecture rule 4).
-- **MUST** AI reads no future ball position beyond 1.2.6. Done: review item at milestone close.
+- **MUST** AI reads no future ball position beyond 1.2.6. Done: review item at milestone close. Signed 2026-11-09 by the user (reviewer); evidence in 1.9.3.
 - **MUST** Three difficulty entries in tuning. Done: present.
 - **WONT** Adaptive difficulty.
 
@@ -162,7 +162,7 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 - **MUST** Seat key filter suspended during text entry. Done: a name using letters from both key sets is enterable.
 - **MUST** Name cap twelve characters; duplicates allowed. Done: thirteenth character rejected; two identical names coexist, by test. Amended 2026-11-09 at milestone close ([phase 8 report](m1-phase8-report.md)): names take Latin letters up to U+024F, digits, spaces, and hyphens; a name is trimmed, and a blank one is not taken.
 - **SHOULD** Rename and delete a profile. Done: both reachable from profile select. Amended 2026-11-08 (plan 8.4, the user's addition): also change its colour, from the same place.
-- **SHOULD** Text limited to single words or icons where a 9-year-old must read. Done: review at milestone close.
+- **SHOULD** Text limited to single words or icons where a 9-year-old must read. Done: review at milestone close. Signed 2026-11-09 by the user (reviewer); evidence in 1.9.3.
 - **MUST** Settings screen: volume, window mode only. Done: both change and persist. Amended 2026-11-08 ([phase 9 report](m1-phase9-report.md)): every menu list shows at most six rows, following the cursor, with ▲ and ▼ where rows are hidden; at eleven rows, volume ran off the screen.
 
 ### 1.6.4 Audio
@@ -191,13 +191,27 @@ Coupling: 1.2.6 and 1.2.2 share one integrate function. This is the AI fairness 
 
 - **1.8.1 MUST** `docs/playtest.md` with the observe-then-interpret template. Done: exists.
 - **1.8.2 MUST** Keyboard ghosting check on the kids' machine: both seats hold up, down, and action, six keys. Done: result in the playtest log before C3.
-- **1.8.3 SHOULD** One session per child recorded. Done: entries exist.
+- **1.8.3 SHOULD** One session per child recorded. Done: entries exist. Done 2026-11-09 ([playtest log](../playtest.md)): one shared session, both children, each playing the other and the computer; reported by the parent.
 
 ## 1.9 Milestone close
 
 - **1.9.1 MUST** ADRs: crate structure (M0), error policy, persistence format, audio boundary. Done: four files. Amended 2026-11-04: plus ADR 0002 (intra-crate layering) and ADR 0003 (match flow ownership); six files. Amended 2026-11-09 at milestone close: the six are ADR 0001 (crate structure), 0002 (intra-crate layering), 0003 (match flow ownership), 0007 (persistence format), 0009 (error policy), and 0010 (audio boundary); all exist, 0009 and 0010 written 2026-11-09. Ten ADRs in all, 0001 through 0010.
 - **1.9.2 MUST** CLAUDE.md, rules, hooks per [claude-code-setup.md](../claude-code-setup.md). Done: hooks fire on an edit and a commit. Amended 2026-11-09 at milestone close ([claude-code-setup.md](../claude-code-setup.md), Hooks): Claude performs no mutative git, so the commit-time hook became the native `pre-push` hook; done when hooks fire on an edit and a push.
 - **1.9.3 MUST** Checklist: CI green, docs updated, vocabulary under twelve, no `unwrap` in core, AI review item 1.4.6 signed. Done: checklist marked in this file.
+
+### 1.9.3 Close checklist
+
+Opened and closed 2026-11-09 ([phase 11 report](m1-phase11-report.md)). A row is marked when its evidence exists, or when the user, as reviewer, signs it. Every row is marked.
+
+| Item | Evidence | Status |
+|---|---|---|
+| CI green | `main` green at `eb26032` (run 42540846189); the close branch at `6b64b80` green (run 42545474553), its `ci-check` step run with `NEXTEST_PROFILE: ci`, 391 tests passed | done 2026-11-09 |
+| Docs updated | The consistency audit: 75 findings across docs and code, fixed or decided by the user ([phase 11 report](m1-phase11-report.md)) | done 2026-11-09 |
+| Vocabulary under twelve (1.3.3) | 8 capped types of 12 (`Side`, `Seat`, `Difficulty`, `Controller`, `MatchConfig`, `Random`, `Player`, `SeatPlayers`); `ProfileId` outside the cap (ADR 0008); 7 messages (`pong_core/src/domain.rs`) | done 2026-11-09 |
+| No `unwrap` in core | `#![deny(clippy::unwrap_used, clippy::expect_used)]` in `pong_core/src/lib.rs`; clippy with warnings denied is green | done 2026-11-09 |
+| AI review (1.4.6) | `steer_ai_paddles` (`features/ai/mod.rs`) hands `steer` the ball's current `Position` and `Velocity` as one `Motion`, its paddle, tuning, the step, and the seeded random source; `plan_approach` looks ahead only through the kernel's `crossing_y`, spec 1.2.6's prediction | signed 2026-11-09 by the user (reviewer) |
+| Readable text (1.6.3 SHOULD) | The phase 8 review table ([phase 8 report](m1-phase8-report.md)); added since: the ▲ ▼ scroll marks; the children read the screens without trouble in the close playtest ([playtest log](../playtest.md)) | signed 2026-11-09 by the user (reviewer) |
+| Hooks fire (1.9.2) | Edit: the formatter hook ran after every Rust edit in phases 9–11. Push: `core.hooksPath` is `.githooks`, whose `pre-push` runs `just ci-check` | done 2026-11-09: edit observed; push confirmed by the user, the hook ran before the close branch's push |
 
 ## Deliberately absent
 

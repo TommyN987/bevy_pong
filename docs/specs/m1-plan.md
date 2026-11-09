@@ -148,9 +148,9 @@ Realizes spec 1.6.2 SHOULD and MAY, 1.6.5, 1.6.6 MAY. Depends on 8.
 ### 11. Playtest and close
 Realizes spec 1.8.3, 1.9. Depends on all above.
 
-- **11.1 SHOULD** One session per child, logged. Done: entries exist.
-- **11.2 MUST** ADRs: error policy, persistence format, audio boundary, plus 0001, 0002, 0003. Done: six files. Amended 2026-11-04. Amended 2026-11-09 at milestone close: the six are ADR 0001, 0002, 0003, 0007 (persistence format), 0009 (error policy), and 0010 (audio boundary); all exist, 0009 and 0010 written 2026-11-09. Ten ADRs in all, 0001 through 0010.
-- **11.3 MUST** Close checklist per spec 1.9.3. Done: marked in the M1 spec.
+- **11.1 SHOULD** One session per child, logged. Done: entries exist. Done 2026-11-09 ([playtest log](../playtest.md)): one shared session of both children, reported by the parent; the menu-fight hypothesis answered no.
+- **11.2 MUST** ADRs: error policy, persistence format, audio boundary, plus 0001, 0002, 0003. Done: six files. Amended 2026-11-04. Amended 2026-11-09 at milestone close: the six are ADR 0001, 0002, 0003, 0007 (persistence format), 0009 (error policy), and 0010 (audio boundary); all exist, 0009 and 0010 written 2026-11-09. Ten ADRs in all, 0001 through 0010. Done 2026-11-09 ([phase 11 report](m1-phase11-report.md)): all six exist.
+- **11.3 MUST** Close checklist per spec 1.9.3. Done: marked in the M1 spec. Done 2026-11-09: every row marked, the AI and readability reviews signed by the user.
 
 ## User actions outside the plan
 

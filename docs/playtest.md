@@ -21,7 +21,7 @@ Proposed change (at most one):
 
 ## Hypotheses to test
 
-- Menu with a single cursor and sequential seat selection: do the kids fight over the menu? If yes, revisit per-seat cursors (docs/architecture.md, Input).
+- Menu with a single cursor and sequential seat selection: do the kids fight over the menu? If yes, revisit per-seat cursors (docs/architecture.md, Input). Outcome 2026-11-09: no fights reported (session below); single cursor kept.
 - Keyboard ghosting: both seats holding up, down, and action at once (six keys) all register on the kids' keyboard. Result required before C3 (spec 1.8.2). Outcome 2026-11-07: no; at most five of the six register. Every in-play hold of one direction plus action per seat registers (session below).
 
 ## Sessions
@@ -42,3 +42,19 @@ Interpretation (may be empty):
 - Up and down held together cancel, so no player holds both in play. The heaviest in-play hold is one direction plus action per seat, four keys; each such hold (W or S with D, ↑ or ↓ with →) is inside a five-key set run 2 showed registering.
 Proposed change (at most one):
 - None now. Repeat this check when C2 gives the action key a job, holding one direction plus action per seat.
+
+### 2026-11-09 · M1 close (plan 11.1, spec 1.8.3) · the 9-year-old and the 11-year-old, together · build not recorded (M1 close branch)
+Duration: not recorded.
+Reported by the parent after the session; no notes were taken during it.
+Observations (what happened, in order):
+- Both children played each other, and each played the computer.
+- They went through the menus and read the screens without visible trouble.
+- Neither fought the other over the menu.
+- The sounds played for them, the win fanfare included; the ball trail showed.
+Quotes (verbatim, by role):
+- None recorded.
+Interpretation (may be empty):
+- The parent read the session as enjoyed, against each other and against the computer.
+- One shared session stood in for one session per child: each child played both modes in it.
+Proposed change (at most one):
+- None.
