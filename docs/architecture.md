@@ -54,7 +54,7 @@ Rules:
 3. **Vocabulary stays tiny.** Only types used by two or more features: seat, side, effect identity, core events. `Side` is defined in `kernel::geometry`, which needs it first (`pong_core/src/domain.md`). A type used by one feature lives in that feature. If it passes a dozen types, it has become a god module. The dozen counts non-message types; each message has exactly one emitting feature, `Notice` excepted (ADR 0002). Identifier types are outside the dozen (ADR 0008).
 4. **Phases are declared once,** in `flow/` (ADR 0002). Fixed step runs named sets in order: intent, effects, integrate, collide, rules, sanity. Every `FixedUpdate` system names its phase. The step gate, in `FixedFirst`, decides whether the phases run and is the one fixed-step system outside them (ADR 0003). A system that serves, moves, collides, or judges the ball also joins `BallInPlay` (ADR 0004). No system orders itself relative to another feature's system.
 5. **Components own their invariants.** Mutation happens through the component's API from any feature. Cross-feature triggers are events, never direct calls.
-6. **Extension points are exhaustive enums.** Effect, boss, and item identities. Adding a variant makes the compiler enumerate every spawn table, cue map, and AI branch to extend.
+6. **Extension points are exhaustive enums.** Effect, boss, and item identities. Adding a variant makes the compiler enumerate every spawn table, cue map, and AI branch to extend. Amended 2026-11-10 by [ADR 0011](adr/0011-perturbation-identity-and-contract.md): for effects (perturbations), only identity is a closed enum; behaviour sits behind a per-perturbation contract with a core half and a shell half.
 7. **A feature is a directory with a plugin at its root.** Growable sub-concepts (individual effects, bosses) are submodules with a uniform shape: components, systems, spawn function.
 8. **The shell mirrors core.** One view module per core body (arena, ball, paddle), beside presentation modules that serve them all (camera, motion, trail, shake); one screen per state; the overlay apart. A port is written by its adapter in `ports/` or by a named screen (the pause screen writes `MatchControl`, as focus loss does). The shell's spawn table matches the same enum as core's. Amended 2026-11-09 at milestone close: the rule said one view per core feature and one adapter per port, which M1's shell outgrew.
 9. **Tests live beside the feature.** A shared testing module behind a cargo feature builds a minimal app with chosen plugins and fake ports.
@@ -118,6 +118,8 @@ Alternatives considered: flat feature files with a shared prelude (rejected: pre
 - `EffectId` is a serializable enum with stable string names. It is the save key, the room vocabulary, and the item payload.
 - `EffectId` plus params maps through a spawn table to a component bundle. Behavior lives in systems over those components, one system per behavior where needed.
 - Field effects accumulate into a per-step force on the ball.
+
+Amended 2026-11-10 by [ADR 0011](adr/0011-perturbation-identity-and-contract.md): the spawn-table shape above is reopened; the C1 spec settles the contract's form and how perturbations compose.
 
 ## Boundaries
 
