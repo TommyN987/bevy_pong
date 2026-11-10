@@ -52,11 +52,11 @@ Rationale: the order is dependency-correct, each layer reuses the previous, and 
 - C3 rooms are neon-generic; themes arrive as skins at or after C4.
 - The keyboard ghosting test runs before C3 ships. Amended 2026-11-07 (playtest log): the kids' keyboard drops one of the six keys with both seats holding up, down, and action; every hold of one direction plus action per seat registers, so the check is repeated when C2 gives the action key a job.
 - The beat never gates paddle or ball movement.
-- C1 field effects express force as a pure function of position and time, called by both the physics step and the AI's prediction; a per-step accumulator cannot be predicted. Added 2026-11-04 (phase 3 review).
+- C1 field effects express force as a pure function of position and time, called by both the physics step and the AI's prediction; a per-step accumulator cannot be predicted. Added 2026-11-04 (phase 3 review). Amended 2026-11-11 ([M2 spec](specs/m2-chaos-pong.md), Spin): a pure function of ball state, position, and time.
 
 ## C1 direction
 
-Decided 2026-11-10, during the C1 spec round. The C1 spec carries the detail.
+Decided 2026-11-10, during the C1 spec round. The [M2 spec](specs/m2-chaos-pong.md) carries the detail, the roster included.
 
 **Advisory, no longer binding:** the C1 effect list (gravity well, wind, ball split, paddle shrink) and the C1 rules in this document: the rally-length driver, the thresholds, and the catch-up bias.
 Any perturbation may be dropped, changed, or added.
