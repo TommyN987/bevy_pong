@@ -38,7 +38,7 @@ Surfaced during design and absent from the frame: per-kid profiles, and match st
 ## Milestone spine
 
 1. **Basic Pong.** Classic rules, mirror AI with reaction delay and prediction error, game states, neon bloom, CI, headless tests, per-kid profiles with records persisted.
-2. **C1 Chaos Meter.** Visible meter climbs per paddle hit in a rally; thresholds enable field effects (gravity well, wind, ball split, paddle shrink); unlock pool persisted.
+2. **C1 Chaos Meter.** Visible meter climbs per paddle hit in a rally; thresholds enable field effects (gravity well, wind, ball split, paddle shrink); unlock pool persisted. Amended 2026-11-10: this line is advisory and the unlock pool is dropped; see "C1 direction" below.
 3. **C3 Dungeon.** Rooms composed from the effect pool; boss AIs with personalities; two-player co-op against a boss; campaign position persisted per profile. Split into C3a (one room, boss, co-op) and C3b (campaign and room library).
 4. **C2 Loadout.** Pick-ups in the arena; one action key per player fires stored items; AI understands items.
 5. **C4 Stage.** Beat clock drives spawns and bonuses; beat bar on screen; original music.
@@ -47,16 +47,41 @@ Rationale: the order is dependency-correct, each layer reuses the previous, and 
 
 ## Invariants carried into specs
 
-- C1's meter includes a catch-up bias toward the trailing player.
+- C1's meter includes a catch-up bias toward the trailing player. Amended 2026-11-10: advisory, with its form open; see "C1 direction" below.
 - C3's room and boss definitions carry an "items available" parameter from the start, so C2 does not reopen C3.
 - C3 rooms are neon-generic; themes arrive as skins at or after C4.
 - The keyboard ghosting test runs before C3 ships. Amended 2026-11-07 (playtest log): the kids' keyboard drops one of the six keys with both seats holding up, down, and action; every hold of one direction plus action per seat registers, so the check is repeated when C2 gives the action key a job.
 - The beat never gates paddle or ball movement.
 - C1 field effects express force as a pure function of position and time, called by both the physics step and the AI's prediction; a per-step accumulator cannot be predicted. Added 2026-11-04 (phase 3 review).
 
+## C1 direction
+
+Decided 2026-11-10, during the C1 spec round. The C1 spec carries the detail.
+
+**Advisory, no longer binding:** the C1 effect list (gravity well, wind, ball split, paddle shrink) and the C1 rules in this document: the rally-length driver, the thresholds, and the catch-up bias.
+Any perturbation may be dropped, changed, or added.
+"Perturbation" is the round's working name for an effect.
+
+**Decided:**
+
+- Classic Pong stays selectable as it is. Chaos Pong is a variant beside it, not a layer on top; the two may differ in any rule.
+- A mode is a ruleset: data over one simulation. `MatchConfig` carries which ruleset is played.
+- Chaos keeps a small speed ramp, smaller than Classic's.
+- Chaos escalates on two scales. The match sets breadth: which perturbations are in play, changing only between points. The rally sets intensity: each active perturbation's dial, rising on paddle hits and resetting on a point.
+- The match scale is driven by the leader's progress toward the points target.
+- Perturbations are pluggable and independent of each other; one can be dropped or added without system-wide edits ([ADR 0011](adr/0011-perturbation-identity-and-contract.md)). The touch list there is a SHOULD.
+- No bake-off of unpolished prototypes: every perturbation ships at the quality bar and is playtested as the real thing.
+- The action key stays unused until C2.
+- Records are kept per ruleset.
+- C1 persists no unlock pool.
+
+**Back pocket, not decided:** a career scale of progression as its own axis, shaped as a campaign rather than a lifelong career.
+Possibly against the AI only, with wins unlocking more chaos elements and each level harder than the one before.
+C3b's campaign is where it would land.
+
 ## Decision: persistence lands in Basic Pong
 
-**Chosen:** profiles and records are saved from milestone one, in two plain-data RON files owned by the game, `settings.ron` and `profiles.ron`, each versioned on its own. Later payloads (unlocks, campaign position) are added additively. Built in phase 7 and recorded as [ADR 0007](adr/0007-persistence-format.md).
+**Chosen:** profiles and records are saved from milestone one, in two plain-data RON files owned by the game, `settings.ron` and `profiles.ron`, each versioned on its own. Later payloads (unlocks, campaign position) are added additively. Amended 2026-11-10: C1 adds records per ruleset and no unlock pool; see "C1 direction" above. Built in phase 7 and recorded as [ADR 0007](adr/0007-persistence-format.md).
 
 **Alternatives:** a dedicated save milestone before C1 (rejected: a milestone with nothing new to play, and records would be retrofitted); no persistence until C3 (rejected: leaves C1's unlock pool meaningless and overloads C3).
 

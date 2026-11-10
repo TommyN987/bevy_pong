@@ -41,7 +41,7 @@ Which twists, in which order, turn Pong into a chaotic, progressively escalating
 
 - Rust, Bevy, ECS idioms throughout.
 - Linux desktop, shared keyboard, up to two humans plus AI.
-- Readable by a 9-year-old: minimal text, visual feedback over menus.
+- Readable by a 9-year-old: minimal text, visual feedback over menus. Clarified 2026-11-10: this constrains text and visible causes, not difficulty; the 9-year-old is the more experienced gamer of the two children.
 - CI from the start: fmt, clippy, tests, release builds.
 - Architecture decision records for significant decisions.
 - Visually polished at every milestone, not deferred to the end.
