@@ -9,13 +9,13 @@ The first five were proposed before implementation and approved by the user on 2
 
 | Item | Deviation | Recorded |
 |---|---|---|
-| spec 2.2.3 | One height factor for both paddles, not one per side. Catch-up bias is a WONT and Shrink shortens both; a per-side factor would be a channel change, which the compiler walks through every effect. | This report; features README. Spec amendment at the next record step. |
-| spec 2.3.9 | The curve type yields a number only. Its whole-count form, and the rule that an item effect starts at return one or later, wait for Lens (plan phase 8): no item effect exists to validate against. | This report. Spec amendment at the next record step. |
-| spec 2.6.1 | Paddles restore at the countdown, not at the instant of the point. The flight is cleared on entering `Countdown`, so the paddles stay short through the point pause. | This report; features README. |
-| spec 2.3.7 | Started and ended messages are written for bag effects only. An always-on effect never starts, and leaving a match ends nothing. | This report; `domain.md`. |
-| spec 2.1.1 | Both modes are tuning data naming their effects (`always`, `bag`), with thresholds in whole percent. Classic is the mode with an empty bag; nothing branches on the mode but the tuning lookup. | This report; features README. Spec amendment at the next record step. |
-| spec 2.3.7 | The order of an ended message before a started one is not tested. They are two message types with a reader each, so no test observes their order across types. | This report. |
-| plan 2.1 | `Mode::Chaos { cap: NonZeroU8 }`, no new cap type. A cap above the schedule's reach never binds, so it needs no validation. Vocabulary: 9 capped types of 12. | This report; `domain.rs`. |
+| spec 2.2.3 | One height factor for both paddles, not one per side. Catch-up bias is a WONT and Shrink shortens both; a per-side factor would be a channel change, which the compiler walks through every effect. | This report; features README. Spec amended 2026-11-11. |
+| spec 2.3.9 | The curve type yields a number only. Its whole-count form, and the rule that an item effect starts at return one or later, wait for Lens (plan phase 8): no item effect exists to validate against. | This report. Spec amended 2026-11-11. |
+| spec 2.6.1 | Paddles restore at the countdown, not at the instant of the point. The flight is cleared on entering `Countdown`, so the paddles stay short through the point pause. | This report; features README. Spec amended 2026-11-11. |
+| spec 2.3.7 | Started and ended messages are written for bag effects only. An always-on effect never starts, and leaving a match ends nothing. | This report; `domain.md`. Spec amended 2026-11-11. |
+| spec 2.1.1 | Both modes are tuning data naming their effects (`always`, `bag`), with thresholds in whole percent. Classic is the mode with an empty bag; nothing branches on the mode but the tuning lookup. | This report; features README. Spec amended 2026-11-11. |
+| spec 2.3.7 | The order of an ended message before a started one is not tested. They are two message types with a reader each, so no test observes their order across types. | This report. Spec amended 2026-11-11. |
+| plan 2.1 | `Mode::Chaos { cap: NonZeroU8 }`, no new cap type. A cap above the schedule's reach never binds, so it needs no validation. Vocabulary: 9 capped types of 12. | This report; `domain.rs`. Plan and spec 2.1.1 amended 2026-11-11. |
 
 ## Test changes
 
