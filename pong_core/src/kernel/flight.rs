@@ -86,10 +86,13 @@ impl FlightStart {
 #[derive(Debug)]
 pub struct Contribution {
     /// Added to the ball's launch speed, in units per second. The base adds
-    /// the serve speed and applies the cap ([`SpeedRule::launch`]).
+    /// the serve speed and applies the cap ([`launch_speed`]).
     ///
-    /// [`SpeedRule::launch`]: super::reflect::SpeedRule::launch
+    /// [`launch_speed`]: super::reflect::launch_speed
     pub speed_gain: f32,
+    /// Multiplies the height of both paddles; `1.0` leaves them alone. The
+    /// base applies the product through the paddle's clamped setter.
+    pub paddle_height_factor: f32,
     /// A lateral force acting for the whole flight, if any.
     pub field: Option<Box<dyn Field>>,
 }
@@ -99,18 +102,33 @@ pub struct Contribution {
 /// Invariant: nothing but [`tick`](Self::tick) changes a flight after
 /// [`start`](Self::start) built it. Returns and steps stop at `u16::MAX`
 /// rather than wrap; both are `u16` because every `u16` is exact in `f32`.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Flight {
     returns: u16,
     steps: u16,
     speed_gain: f32,
+    paddle_height_factor: f32,
     fields: Vec<Box<dyn Field>>,
+}
+
+/// The empty flight: no returns, no gain, paddles at their own height, no
+/// forces. What a ball is in between rallies.
+impl Default for Flight {
+    fn default() -> Self {
+        Self {
+            returns: 0,
+            steps: 0,
+            speed_gain: 0.0,
+            paddle_height_factor: 1.0,
+            fields: Vec::new(),
+        }
+    }
 }
 
 impl Flight {
     /// The flight that begins at `start`, composed from each active effect's
-    /// contribution. Both channels compose by sum, so the order of
-    /// `contributions` does not matter.
+    /// contribution. Gains and fields compose by sum and height factors by
+    /// product, so the order of `contributions` does not matter.
     #[must_use]
     pub fn start(
         start: FlightStart,
@@ -122,6 +140,7 @@ impl Flight {
         };
         for contribution in contributions {
             flight.speed_gain += contribution.speed_gain;
+            flight.paddle_height_factor *= contribution.paddle_height_factor;
             flight.fields.extend(contribution.field);
         }
         flight
@@ -137,6 +156,18 @@ impl Flight {
     #[must_use]
     pub const fn speed_gain(&self) -> f32 {
         self.speed_gain
+    }
+
+    /// The product of the effects' paddle height factors; `1.0` with none.
+    #[must_use]
+    pub const fn paddle_height_factor(&self) -> f32 {
+        self.paddle_height_factor
+    }
+
+    /// Fixed steps since this flight began.
+    #[must_use]
+    pub const fn steps(&self) -> u16 {
+        self.steps
     }
 
     /// Force on a ball in `motion` at this flight's present step.
@@ -208,6 +239,7 @@ mod tests {
     fn pushing(speed_gain: f32, field: impl Field + 'static) -> Contribution {
         Contribution {
             speed_gain,
+            paddle_height_factor: 1.0,
             field: Some(Box::new(field)),
         }
     }
@@ -225,7 +257,30 @@ mod tests {
         let flight = Flight::default();
         assert_eq!(flight.force(at(3.0), DT), Vec2::ZERO);
         assert_eq!(flight.returns(), 0);
+        assert_eq!(flight.steps(), 0);
         assert_near(flight.speed_gain(), 0.0, 1e-6);
+        assert_near(flight.paddle_height_factor(), 1.0, 1e-6);
+    }
+
+    #[test]
+    fn height_factors_compose_by_product_in_either_order() {
+        let shrinking = |factor: f32| Contribution {
+            speed_gain: 0.0,
+            paddle_height_factor: factor,
+            field: None,
+        };
+        let one = Flight::start(FlightStart::SERVE, [shrinking(0.5), shrinking(0.8)]);
+        let other = Flight::start(FlightStart::SERVE, [shrinking(0.8), shrinking(0.5)]);
+        assert_near(one.paddle_height_factor(), 0.4, 1e-6);
+        assert_near(other.paddle_height_factor(), 0.4, 1e-6);
+    }
+
+    #[test]
+    fn the_clock_counts_the_steps_ticked() {
+        let mut flight = Flight::default();
+        flight.tick();
+        flight.tick();
+        assert_eq!(flight.steps(), 2);
     }
 
     #[test]
@@ -264,6 +319,7 @@ mod tests {
             FlightStart::SERVE,
             [Contribution {
                 speed_gain: 7.0,
+                paddle_height_factor: 1.0,
                 field: None,
             }],
         );

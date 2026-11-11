@@ -106,7 +106,7 @@ mod tests {
 
     use bevy::color::{Color, LinearRgba, Srgba};
     use pong_core::domain::{
-        Controller, Difficulty, MatchConfig, Player, ProfileId, Seat, SeatPlayers,
+        Controller, Difficulty, MatchConfig, Mode, Player, ProfileId, Seat, SeatPlayers,
     };
     use pong_core::features::persistence::model::{Profile, ProfileName, Profiles, Records};
     use pong_core::kernel::geometry::Side;
@@ -133,6 +133,7 @@ mod tests {
                 right_seat: Player::Guest,
             },
             points_to_win: NonZeroU8::MIN,
+            mode: Mode::Classic,
         }
     }
 

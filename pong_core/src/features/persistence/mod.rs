@@ -360,7 +360,7 @@ mod tests {
     use super::io::SavePaths;
     use super::model::{Profile, ProfileName, Profiles, Records, Settings, Volume, WindowMode};
     use crate::domain::{
-        BallHitPaddle, Controller, Difficulty, MatchConfig, Notice, Player, ProfileId, Seat,
+        BallHitPaddle, Controller, Difficulty, MatchConfig, Mode, Notice, Player, ProfileId, Seat,
         SeatPlayers,
     };
     use crate::features::tuning::Tuning;
@@ -423,6 +423,7 @@ mod tests {
             right,
             players,
             points_to_win: NonZeroU8::MIN,
+            mode: Mode::Classic,
         }
     }
 

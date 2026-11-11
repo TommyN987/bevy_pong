@@ -76,6 +76,14 @@ pub fn mirror(velocity: Vec2, normal: Vec2) -> Vec2 {
     velocity - 2.0 * velocity.dot(normal) * normal
 }
 
+/// Speed a ball leaves a paddle at: `serve_speed` plus the effects' summed
+/// `gain`, never above `cap`. The one statement of the speed channel's bound
+/// (ADR 0011); physics applies it with the cap every mode shares.
+#[must_use]
+pub fn launch_speed(serve_speed: f32, gain: f32, cap: f32) -> f32 {
+    (serve_speed + gain).min(cap)
+}
+
 /// How ball speed changes over a rally (spec 1.2.5, 1.2.7): what each paddle
 /// return adds, and the cap on the result. The Speed effect reads the
 /// increase; the base applies the cap in [`SpeedRule::launch`] (M2 spec 2.0.4).
@@ -125,7 +133,7 @@ impl SpeedRule {
     /// and the single wall fold stay valid.
     #[must_use]
     pub fn launch(self, serve_speed: f32, gain: f32) -> f32 {
-        (serve_speed + gain).min(self.cap)
+        launch_speed(serve_speed, gain, self.cap)
     }
 
     /// Units per second each paddle return adds, before the cap.

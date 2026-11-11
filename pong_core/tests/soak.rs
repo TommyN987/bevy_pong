@@ -17,7 +17,7 @@ use bevy::app::{App, FixedUpdate};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::ResMut;
-use pong_core::domain::{BallHitPaddle, Controller, MatchConfig, Seat, SeatPlayers};
+use pong_core::domain::{BallHitPaddle, Controller, MatchConfig, Mode, Seat, SeatPlayers};
 use pong_core::features::paddle::Paddle;
 use pong_core::features::sanity::SanityPlugin;
 use pong_core::features::seats::PaddleIntent;
@@ -67,6 +67,7 @@ fn two_humans_to(points: u8) -> MatchConfig {
         right: Controller::Human(Seat::Right),
         players: SeatPlayers::GUESTS,
         points_to_win: NonZeroU8::new(points).expect("a positive target"),
+        mode: Mode::Classic,
     }
 }
 
@@ -167,7 +168,7 @@ fn a_hundred_thousand_live_steps_with_mixed_intents_and_frame_lengths_raise_no_f
         "the soak relies on the sanity phase to check every step"
     );
     let tuning = app.world().resource::<Tuning>().clone();
-    let cap = tuning.ball().speed_rule().cap();
+    let cap = tuning.ball().speed_cap();
     let dt = fixed_timestep(&app).as_secs_f32();
 
     let mut random = Pcg32::seed(42);

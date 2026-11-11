@@ -11,9 +11,11 @@ use bevy::time::{Fixed, Time};
 
 use crate::domain::SimFault;
 use crate::features::ball::{Ball, Position, Velocity};
+use crate::features::effects::BallFlight;
 use crate::features::paddle::Paddle;
 use crate::features::tuning::Tuning;
 use crate::flow::phases::FixedStepPhase;
+use crate::kernel::flight::Flight;
 use crate::kernel::integrate::Motion;
 
 /// Checks the simulation's invariants in the sanity phase of every step in
@@ -33,14 +35,15 @@ impl Plugin for SanityPlugin {
     }
 }
 
-/// Exactly one ball, sound; both paddles sound. Reports the first fault found.
+/// Exactly one ball, sound, in a flight of sane length; both paddles sound.
+/// Reports the first fault found.
 ///
 /// # Errors
 /// The [`SimFault`] found, after writing it as a message.
 fn check_invariants(
     tuning: Res<Tuning>,
     time: Res<Time<Fixed>>,
-    balls: Query<(&Position, &Velocity), With<Ball>>,
+    balls: Query<(&Position, &Velocity, &BallFlight), With<Ball>>,
     paddles: Query<&Paddle>,
     mut faults: MessageWriter<SimFault>,
 ) -> Result<(), BevyError> {
@@ -54,11 +57,11 @@ fn check_invariants(
 fn check_world(
     tuning: &Tuning,
     step_seconds: f32,
-    balls: &Query<(&Position, &Velocity), With<Ball>>,
+    balls: &Query<(&Position, &Velocity, &BallFlight), With<Ball>>,
     paddles: &Query<&Paddle>,
 ) -> Result<(), SimFault> {
     let count = balls.iter().len();
-    let Ok((position, velocity)) = balls.single() else {
+    let Ok((position, velocity, flight)) = balls.single() else {
         return Err(SimFault::BallCount { count });
     };
     let ball = Motion {
@@ -66,6 +69,7 @@ fn check_world(
         velocity: velocity.0,
     };
     check_ball(ball, tuning, step_seconds)?;
+    check_flight(flight.flight(), tuning, step_seconds)?;
     paddles
         .iter()
         .try_for_each(|paddle| check_paddle(*paddle, tuning))
@@ -90,7 +94,7 @@ fn check_ball(ball: Motion, tuning: &Tuning, step_seconds: f32) -> Result<(), Si
     let shape = tuning.ball();
     let radius = shape.radius();
     let limit_x =
-        tuning.arena().half_extents().x + radius.value() + shape.speed_rule().cap() * step_seconds;
+        tuning.arena().half_extents().x + radius.value() + shape.speed_cap() * step_seconds;
     let limit_y = tuning.arena().center_limit_y(radius) + TOLERANCE;
     let at = ball.position;
     let inside = at.is_finite() && at.x.abs() <= limit_x && at.y.abs() <= limit_y;
@@ -98,6 +102,23 @@ fn check_ball(ball: Motion, tuning: &Tuning, step_seconds: f32) -> Result<(), Si
         Ok(())
     } else {
         Err(SimFault::BallOutsideArena { position: at })
+    }
+}
+
+/// A flight is sound while it is no longer than the tuned limit (M2 spec
+/// 2.5.6). Every flight ends at a paddle return or a goal; one that does
+/// neither for this long is a stalled or trapped ball, which no effect's own
+/// guard need rule out. The clock runs only while the ball is in play, so
+/// neither a pause nor a countdown counts.
+///
+/// `step_seconds` is the fixed timestep.
+fn check_flight(flight: &Flight, tuning: &Tuning, step_seconds: f32) -> Result<(), SimFault> {
+    let seconds = f32::from(flight.steps()) * step_seconds;
+    let limit = tuning.ball().flight_limit_seconds();
+    if seconds <= limit {
+        Ok(())
+    } else {
+        Err(SimFault::FlightTooLong { seconds, limit })
     }
 }
 
@@ -125,14 +146,15 @@ mod tests {
     use bevy::app::App;
     use bevy::math::Vec2;
 
-    use super::{check_ball, check_paddle};
+    use super::{check_ball, check_flight, check_paddle};
     use crate::app::error_policy::{ErrorPolicy, ErrorPolicyPlugin};
-    use crate::domain::{Controller, MatchConfig, Seat, SeatPlayers, Serve, SimFault};
+    use crate::domain::{Controller, MatchConfig, Mode, Seat, SeatPlayers, Serve, SimFault};
     use crate::features::ball::{Ball, Position, Velocity};
     use crate::features::paddle::Paddle;
     use crate::features::rules::Score;
     use crate::features::tuning::{EMBEDDED_RON, Tuning};
     use crate::flow::states::MatchState;
+    use crate::kernel::flight::Flight;
     use crate::kernel::geometry::Side;
     use crate::kernel::integrate::Motion;
     use crate::testing::{
@@ -244,6 +266,7 @@ mod tests {
             right: Controller::Human(Seat::Right),
             players: SeatPlayers::GUESTS,
             points_to_win: NonZeroU8::new(10).expect("ten is non-zero"),
+            mode: Mode::Classic,
         }
     }
 
@@ -345,5 +368,97 @@ mod tests {
         assert_eq!(take_recorded::<Serve>(&mut app).len(), 1);
         assert!(ball_state(&mut app).1.is_finite());
         assert_eq!(take_recorded::<SimFault>(&mut app), Vec::new());
+    }
+
+    /// A flight that has run for `steps` fixed steps.
+    fn flight_of(steps: u16) -> Flight {
+        let mut flight = Flight::default();
+        for _ in 0..steps {
+            flight.tick();
+        }
+        flight
+    }
+
+    /// The embedded limit is 20 s: 1,200 steps at 60 Hz.
+    #[test]
+    fn a_flight_is_sound_up_to_the_tuned_limit_and_a_fault_beyond_it() {
+        assert_eq!(check_flight(&flight_of(0), &tuning(), STEP), Ok(()));
+        assert_eq!(check_flight(&flight_of(1_100), &tuning(), STEP), Ok(()));
+        assert!(matches!(
+            check_flight(&flight_of(1_300), &tuning(), STEP),
+            Err(SimFault::FlightTooLong { limit, .. }) if (limit - 20.0).abs() < 1e-6
+        ));
+    }
+
+    /// The embedded tuning with flights limited to half a second.
+    fn short_flights() -> Tuning {
+        let ron = EMBEDDED_RON.replace("flight_limit_seconds: 20.0", "flight_limit_seconds: 0.5");
+        assert_ne!(
+            ron, EMBEDDED_RON,
+            "the flight limit was not found in the RON"
+        );
+        Tuning::from_ron(&ron).expect("a short flight limit is valid")
+    }
+
+    /// M2 spec 2.5.6's done-condition, the dev half: a ball bouncing between
+    /// the walls with no way to a paddle or a goal is reported.
+    #[test]
+    #[should_panic(expected = "without a return or a goal")]
+    fn under_the_dev_policy_an_endless_flight_panics_once_past_the_limit() {
+        let mut app = playing();
+        app.insert_resource(short_flights());
+        place_ball(&mut app, Vec2::ZERO, Vec2::new(0.0, 60.0));
+        for _ in 0..40 {
+            frame(&mut app);
+        }
+    }
+
+    /// The release half: the heal restarts the rally, and the new rally's
+    /// flight starts its clock again.
+    #[test]
+    fn under_the_release_policy_an_endless_flight_restarts_the_rally() {
+        let mut app =
+            headless_app_with(1, |core| core.set(ErrorPolicyPlugin(ErrorPolicy::Release)));
+        record::<SimFault>(&mut app);
+        boot(&mut app);
+        app.insert_resource(short_flights());
+        start_match(&mut app, two_humans());
+        place_ball(&mut app, Vec2::ZERO, Vec2::new(0.0, 60.0));
+        run_until(
+            &mut app,
+            |app| match_state(app) == MatchState::Countdown,
+            60,
+            "the endless flight was never healed",
+        );
+        let faults = take_recorded::<SimFault>(&mut app);
+        assert!(
+            faults
+                .iter()
+                .all(|fault| matches!(fault, SimFault::FlightTooLong { .. })),
+            "{faults:?}"
+        );
+        assert!(
+            matches!(faults.first(), Some(SimFault::FlightTooLong { .. })),
+            "the endless flight raised no fault"
+        );
+        // The countdown cleared the flight, so the waiting ball raises nothing more.
+        for _ in 0..10 {
+            frame(&mut app);
+        }
+        assert_eq!(take_recorded::<SimFault>(&mut app), Vec::new());
+    }
+
+    /// The clock runs only in play: a ball waiting through a countdown longer
+    /// than the limit is no endless flight.
+    #[test]
+    fn a_countdown_longer_than_the_limit_raises_no_fault() {
+        let mut app = headless_app(1);
+        boot(&mut app);
+        app.insert_resource(short_flights());
+        enter_match(&mut app, two_humans());
+        for _ in 0..90 {
+            frame(&mut app);
+        }
+        assert_eq!(match_state(&app), MatchState::Countdown);
     }
 }

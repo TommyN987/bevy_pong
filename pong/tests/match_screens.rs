@@ -25,7 +25,7 @@ use pong::ui::menu::MenuScreen;
 use pong::ui::pause::PauseRow;
 use pong::ui::style::KeyHint;
 use pong_core::domain::{
-    BallHitPaddle, Controller, Difficulty, MatchConfig, Player, ProfileId, Seat, SeatPlayers,
+    BallHitPaddle, Controller, Difficulty, MatchConfig, Mode, Player, ProfileId, Seat, SeatPlayers,
 };
 use pong_core::features::persistence::model::{Profile, ProfileName, Profiles, Records};
 use pong_core::features::rules::{MatchControl, Score};
@@ -69,6 +69,7 @@ fn humans(players: SeatPlayers, points: u8) -> MatchConfig {
         right: Controller::Human(Seat::Right),
         players,
         points_to_win: NonZeroU8::new(points).expect("not zero"),
+        mode: Mode::Classic,
     }
 }
 

@@ -33,7 +33,7 @@ use bevy::state::app::AppExtStates;
 use bevy::state::condition::{in_state, state_changed};
 use bevy::state::state::{NextState, State, SubStates};
 use pong_core::domain::{
-    Controller, Difficulty, MatchConfig, Player, ProfileId, Seat, SeatPlayers,
+    Controller, Difficulty, MatchConfig, Mode, Player, ProfileId, Seat, SeatPlayers,
 };
 use pong_core::features::persistence::model::{
     Profile, ProfileName, Profiles, Settings, Volume, WindowMode,
@@ -375,6 +375,9 @@ impl MatchDraft {
                 right_seat: player(Seat::Right),
             },
             points_to_win,
+            // The mode screen arrives with M2 plan phase 3; until then the
+            // menu starts Classic.
+            mode: Mode::Classic,
         })
     }
 

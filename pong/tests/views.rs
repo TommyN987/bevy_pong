@@ -13,7 +13,7 @@ use bevy::state::state::NextState;
 use bevy::transform::components::Transform;
 use pong::views::motion::MotionPlugin;
 use pong::views::trail::{GHOSTS, TrailGhost, TrailPlugin};
-use pong_core::domain::{Controller, MatchConfig, Seat, SeatPlayers};
+use pong_core::domain::{Controller, MatchConfig, Mode, Seat, SeatPlayers};
 use pong_core::features::ball::{Ball, Snap};
 use pong_core::features::paddle::Paddle;
 use pong_core::features::rules::MatchControl;
@@ -30,6 +30,7 @@ fn two_humans() -> MatchConfig {
         right: Controller::Human(Seat::Right),
         players: SeatPlayers::GUESTS,
         points_to_win: NonZeroU8::new(10).expect("ten is non-zero"),
+        mode: Mode::Classic,
     }
 }
 

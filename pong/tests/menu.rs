@@ -25,7 +25,7 @@ use pong::ui::menu::view::{MenuHeading, MenuRow, MenuScreenRoot, ScrollMark, Sea
 use pong::ui::menu::{MenuItem, MenuList, MenuPlugin, MenuScreen, SHOWN_ROWS};
 use pong::ui::style::KeyHint;
 use pong_core::domain::{
-    Controller, Difficulty, MatchConfig, Player, ProfileId, Seat, SeatPlayers,
+    Controller, Difficulty, MatchConfig, Mode, Player, ProfileId, Seat, SeatPlayers,
 };
 use pong_core::features::persistence::document::{decode_profiles, decode_settings};
 use pong_core::features::persistence::io::SavePaths;
@@ -205,6 +205,7 @@ fn two_friends_pick_left_seat_first_then_right_and_the_match_starts() {
             right: Controller::Human(Seat::Right),
             players: SeatPlayers::GUESTS,
             points_to_win: points(5),
+            mode: Mode::Classic,
         }
     );
 }
@@ -321,6 +322,7 @@ fn back_and_escape_return_to_the_screen_before_and_the_new_path_is_the_one_playe
                 right_seat: Player::Profile(MAX),
             },
             points_to_win: points(5),
+            mode: Mode::Classic,
         }
     );
 }

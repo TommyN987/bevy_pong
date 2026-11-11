@@ -289,7 +289,8 @@ mod tests {
 
     use super::{MirrorController, intent_toward};
     use crate::domain::{
-        BallHitPaddle, Controller, Difficulty, MatchConfig, PointScored, Random, Seat, SeatPlayers,
+        BallHitPaddle, Controller, Difficulty, MatchConfig, Mode, PointScored, Random, Seat,
+        SeatPlayers,
     };
     use crate::features::paddle::Paddle;
     use crate::features::seats::PaddleIntent;
@@ -312,6 +313,7 @@ mod tests {
             right,
             players: SeatPlayers::GUESTS,
             points_to_win: NonZeroU8::new(10).expect("ten is non-zero"),
+            mode: Mode::Classic,
         }
     }
 
@@ -791,7 +793,7 @@ mod tests {
             .map(|_| {
                 let y = random.next_f32_in(-limit_y, limit_y);
                 let (sin, cos) = random.next_f32_in(-angle, angle).sin_cos();
-                let speed = random.next_f32_in(shape.serve_speed(), shape.speed_rule().cap());
+                let speed = random.next_f32_in(shape.serve_speed(), shape.speed_cap());
                 ball(Vec2::new(from_x, y), Vec2::new(cos, sin) * speed)
             })
             .collect()

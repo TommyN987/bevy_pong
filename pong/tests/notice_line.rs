@@ -8,7 +8,7 @@ use bevy::ecs::message::Messages;
 use bevy::ecs::query::With;
 use bevy::ui::widget::Text;
 use pong::ui::notice_line::{NoticeLine, NoticeLinePlugin, NoticeText};
-use pong_core::domain::{Controller, MatchConfig, Notice, Seat, SeatPlayers};
+use pong_core::domain::{Controller, MatchConfig, Mode, Notice, Seat, SeatPlayers};
 use pong_core::features::persistence::io::SavePaths;
 use pong_core::testing::{boot, frame, headless_app, leave_match, start_match};
 
@@ -45,6 +45,7 @@ fn two_guests() -> MatchConfig {
         right: Controller::Human(Seat::Right),
         players: SeatPlayers::GUESTS,
         points_to_win: NonZeroU8::MIN,
+        mode: Mode::Classic,
     }
 }
 

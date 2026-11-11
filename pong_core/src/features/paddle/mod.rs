@@ -194,7 +194,7 @@ mod tests {
     use bevy::state::state::NextState;
 
     use super::Paddle;
-    use crate::domain::{Controller, MatchConfig, Seat, SeatPlayers};
+    use crate::domain::{Controller, MatchConfig, Mode, Seat, SeatPlayers};
     use crate::features::seats::PaddleIntent;
     use crate::features::tuning::{EMBEDDED_RON, Tuning};
     use crate::flow::states::{AppState, MatchState};
@@ -217,6 +217,7 @@ mod tests {
             right: Controller::Human(Seat::Right),
             players: SeatPlayers::GUESTS,
             points_to_win: NonZeroU8::new(10).expect("ten is non-zero"),
+            mode: Mode::Classic,
         }
     }
 

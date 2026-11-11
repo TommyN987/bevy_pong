@@ -12,7 +12,8 @@ use pong::audio::sound::Sound;
 use pong::audio::synth::Synth;
 use pong::audio::{Cue, CueSounds, SoundsPlugin};
 use pong_core::domain::{
-    BallHitPaddle, BallHitWall, Controller, MatchConfig, MatchEnded, PointScored, Seat, SeatPlayers,
+    BallHitPaddle, BallHitWall, Controller, MatchConfig, MatchEnded, Mode, PointScored, Seat,
+    SeatPlayers,
 };
 use pong_core::features::persistence::model::{Settings, Volume as SavedVolume};
 use pong_core::kernel::geometry::Side;
@@ -31,6 +32,7 @@ fn audio_app() -> App {
             right: Controller::Human(Seat::Right),
             players: SeatPlayers::GUESTS,
             points_to_win: NonZeroU8::new(10).expect("not zero"),
+            mode: Mode::Classic,
         },
     );
     app

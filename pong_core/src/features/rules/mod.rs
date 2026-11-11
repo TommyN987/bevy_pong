@@ -400,7 +400,7 @@ mod tests {
 
     use super::{MatchControl, MatchState, Rally, Score, StateTimer};
     use crate::domain::{
-        BallHitPaddle, BallHitWall, Controller, MatchConfig, MatchEnded, PointScored, Seat,
+        BallHitPaddle, BallHitWall, Controller, MatchConfig, MatchEnded, Mode, PointScored, Seat,
         SeatPlayers, Serve, SimFault,
     };
     use crate::features::tuning::Tuning;
@@ -434,6 +434,7 @@ mod tests {
             right: Controller::Human(Seat::Right),
             players: SeatPlayers::GUESTS,
             points_to_win,
+            mode: Mode::Classic,
         }
     }
 

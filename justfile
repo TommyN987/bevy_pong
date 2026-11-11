@@ -51,7 +51,7 @@ deny:
 arch-check:
     #!/usr/bin/env bash
     set -euo pipefail
-    order=(tuning seats ball paddle effects physics rules ai sanity persistence)
+    order=(tuning seats ball paddle effects physics rules escalation ai sanity persistence)
     production() { sed '/^#\[cfg(test)\]/,$d' "$1"; }
     position() { local i; for i in "${!order[@]}"; do [[ ${order[$i]} == "$1" ]] && { echo "$i"; return; }; done; echo -1; }
     failed=0

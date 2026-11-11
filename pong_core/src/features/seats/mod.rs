@@ -164,7 +164,7 @@ mod tests {
     use bevy::state::state::NextState;
 
     use super::{PaddleIntent, PaddleIntents, SeatIntents};
-    use crate::domain::{Controller, Difficulty, MatchConfig, Seat, SeatPlayers};
+    use crate::domain::{Controller, Difficulty, MatchConfig, Mode, Seat, SeatPlayers};
     use crate::flow::states::MatchState;
     use crate::kernel::geometry::Side;
     use crate::testing::{
@@ -177,6 +177,7 @@ mod tests {
             right: Controller::Human(Seat::Right),
             players: SeatPlayers::GUESTS,
             points_to_win: NonZeroU8::new(10).expect("ten is non-zero"),
+            mode: Mode::Classic,
         }
     }
 
@@ -218,6 +219,7 @@ mod tests {
             right: Controller::Ai(Difficulty::TwoStars),
             players: SeatPlayers::GUESTS,
             points_to_win: NonZeroU8::new(10).expect("ten is non-zero"),
+            mode: Mode::Classic,
         }
     }
 
