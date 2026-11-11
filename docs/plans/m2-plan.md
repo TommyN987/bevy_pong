@@ -40,9 +40,9 @@ Every effect phase (3 for Shrink's shell half, then 5 to 10) follows it.
 Realizes spec 2.0, 2.1.2, 2.2.0, 2.2.4, 2.3.1 through 2.3.6, 2.3.9 through 2.3.11, 2.6.0 for Classic. Depends on nothing. No new behaviour.
 
 - **1.1 MUST** Kernel: the field trait and the composed flight; prediction and the wall step take a flight. Done: prediction equals simulation under two dummy fields, in either order.
-- **1.2 MUST** The flight sits on the ball and owns the rally's hit count; `Force` is removed; rules keeps the records only. Done: no `Force` in `pong_core`; M1's rally-record tests pass.
+- **1.2 MUST** The flight sits on the ball and owns the rally's hit count; `Force` is removed; rules keeps the records only. Done: no `Force` in `pong_core`; M1's rally-record tests pass. Amended 2026-11-11 ([phase 1 report](m2-phase1-report.md)): the flight counts returns, not touches (spec 2.2.4, amended).
 - **1.3 MUST** The paddle exposes its step motion. Done: spec 2.0.3's test.
-- **1.4 MUST** `EffectId`, the effect trait, the curve type, one registration match per crate, the base plugin. Done: removing a match arm fails the build.
+- **1.4 MUST** `EffectId`, the effect trait, the curve type, one registration match per crate, the base plugin. Done: removing a match arm fails the build. Amended 2026-11-11 ([phase 1 report](m2-phase1-report.md)): the curve type moved to 2.3, with Shrink as its first user; the shell's registration match moved to 3.3, where the icons first consume an effect. Phase 1 built the core's match.
 - **1.5 MUST** Speed as the first effect; Classic's tuning carries its gain. Done: spec 2.0.4's test.
 - **1.6 MUST** The feature order gains `effects`, after paddle and before physics (spec 2.0.5); `arch-check` learns that effects do not import each other. Done: a planted cross-import fails `arch-check`; ADR 0002's list matches `features/mod.rs`.
 - **1.7 MUST** M1's suite passes with no assertion changed. Done: the phase report lists every call site changed for a changed signature, and any test that differs in the last float bits.
@@ -51,9 +51,9 @@ Realizes spec 2.0, 2.1.2, 2.2.0, 2.2.4, 2.3.1 through 2.3.6, 2.3.9 through 2.3.1
 ### 2. Chaos, headless
 Realizes spec 2.1.1, 2.2.3, 2.3.7, 2.4, 2.5.6, 2.6.0 for Chaos, 2.6.1's core half. Depends on 1.
 
-- **2.1 MUST** Mode in `MatchConfig`, with the cap. Done: compiles; vocabulary count reported.
+- **2.1 MUST** Mode in `MatchConfig`, with the cap. Done: compiles; vocabulary count reported. Amended 2026-11-11 ([phase 2 report](m2-phase2-report.md)): `Mode::Chaos { cap: NonZeroU8 }`, no new cap type; a cap above the schedule's reach never binds. Vocabulary: 9 capped types of 12.
 - **2.2 MUST** Escalation, placed after rules in the feature order: count from thresholds, the cap, and the shipped effects; selection as a pure function over any list, tested without real effects. Done: spec 2.4.1's table and 2.4.4's conditions, by test.
-- **2.3 MUST** Paddle modifier channel and Shrink's core half. Done: spec 2.6.1's test.
+- **2.3 MUST** Paddle modifier channel and Shrink's core half. Done: spec 2.6.1's test. Amended 2026-11-11 ([phase 2 report](m2-phase2-report.md)): the shared curve type (spec 2.3.9) was built here, as `kernel/ramp.rs`, yielding a number only.
 - **2.4 MUST** Enter and leave messages. Done: spec 2.3.7's test.
 - **2.5 MUST** Flight-time invariant in sanity. Done: spec 2.5.6's tests.
 - **2.6 MUST** A headless Chaos match reaches `MatchOver`. Done: green.
@@ -63,7 +63,7 @@ Realizes spec 2.7, 2.8, 2.9, 2.6.1's shell half. Depends on 2.
 
 - **3.1 MUST** Profiles v2 and settings v3, with fixtures and migrations. Done: spec 2.8.2 and 2.8.3.
 - **3.2 MUST** Mode screen, first in the flow. Done: spec 2.8.1.
-- **3.3 MUST** Icons, the joining icon in the countdown, the hit count. Done: spec 2.7.1 and 2.7.2.
+- **3.3 MUST** Icons, the joining icon in the countdown, the hit count. Done: spec 2.7.1 and 2.7.2. Amended 2026-11-11 ([phase 1 report](m2-phase1-report.md)): the shell's registration match (spec 2.3.3, 2.3.10) is built here, moved from 1.4.
 - **3.4 MUST** Shrink's view, cue, and icon (E.1, E.3); match over shows the played mode's delta. Done: spec 2.8.4; visible.
 - **3.5 SHOULD** Overlay lines and the sandbox. Done: spec 2.9.
 - **3.6 MUST** A Chaos match with Shrink plays through by hand. Done: the user's check in `just run`. The kids' session waits for 5.4.
@@ -98,7 +98,7 @@ Realizes spec 2.2.5, 2.2.9, 2.6.3. Depends on 4. Effect protocol.
 ### 8. Lens
 Realizes spec 2.6.5, 2.3.8. Depends on 5. Effect protocol.
 
-- **8.1 SHOULD** Lens per E.1 through E.7, with mirrored items and belief lag. Done: spec 2.6.5.
+- **8.1 SHOULD** Lens per E.1 through E.7, with mirrored items and belief lag. Done: spec 2.6.5. Amended 2026-11-11 ([phase 2 report](m2-phase2-report.md)): the curve's whole-count form and the item rule (spec 2.3.9) are built here, with the first item effect.
 - **8.2 SHOULD** Touch list measured on this PR. Done: the result is in the report.
 
 ### 9. Blocks

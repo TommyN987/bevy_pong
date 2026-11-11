@@ -9,11 +9,11 @@ All five were proposed before implementation and approved by the user on 2026-11
 
 | Item | Deviation | Recorded |
 |---|---|---|
-| spec 2.2.4, plan 1.2 | The flight counts returns, not touches. A return is a face hit, which turns the ball back and starts a flight. An end clip writes `BallHitPaddle` and starts none. Rules is unchanged and still counts touches for the rally record. M1 raised the speed on a face hit only, so only the return count reproduces Classic. | This report; features README. Spec amendment at the next record step. |
-| plan 1.4, spec 2.3.9 | The shared curve type is not built. Speed is linear and capped by the channel; Shrink is the curve's first user, in plan phase 2. | This report. Plan amendment at the next record step. |
-| plan 1.4, spec 2.3.3, 2.3.10 | The shell's registration match is not built. Nothing in the shell consumes an effect until the icons of plan phase 3. The core's match exists. | This report. Plan amendment at the next record step. |
-| spec 2.1.1 | The tuning file keeps its shape. `ball.per_hit_increase` feeds Speed; the per-mode layout arrives with modes in plan phase 2. | This report. |
-| spec 2.0.1 | Two kinds of test change beyond changed call sites, listed below. | This report. Spec amendment at the next record step. |
+| spec 2.2.4, plan 1.2 | The flight counts returns, not touches. A return is a face hit, which turns the ball back and starts a flight. An end clip writes `BallHitPaddle` and starts none. Rules is unchanged and still counts touches for the rally record. M1 raised the speed on a face hit only, so only the return count reproduces Classic. | This report; features README. Spec and plan amended 2026-11-11. |
+| plan 1.4, spec 2.3.9 | The shared curve type is not built. Speed is linear and capped by the channel; Shrink is the curve's first user, in plan phase 2. | This report. Plan and spec amended 2026-11-11. |
+| plan 1.4, spec 2.3.3, 2.3.10 | The shell's registration match is not built. Nothing in the shell consumes an effect until the icons of plan phase 3. The core's match exists. | This report. Plan amended 2026-11-11. |
+| spec 2.1.1 | The tuning file keeps its shape. `ball.per_hit_increase` feeds Speed; the per-mode layout arrives with modes in plan phase 2. | This report. Closed by phase 2: spec 2.1.1 amended 2026-11-11. |
+| spec 2.0.1 | Two kinds of test change beyond changed call sites, listed below. | This report. Spec amended 2026-11-11. |
 
 ## Test changes (plan 1.7)
 
