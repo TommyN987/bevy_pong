@@ -119,7 +119,7 @@ mod tests {
     use bevy::state::state::NextState;
 
     use super::{BallInPlay, FixedStepPhase};
-    use crate::domain::{Controller, MatchConfig, Seat, SeatPlayers};
+    use crate::domain::{Controller, MatchConfig, Mode, Seat, SeatPlayers};
     use crate::flow::states::MatchState;
     use crate::testing::{
         FrameLength, boot, frame, headless_app, match_state, set_frame_length, start_match,
@@ -170,6 +170,7 @@ mod tests {
                 right: Controller::Human(Seat::Right),
                 players: SeatPlayers::GUESTS,
                 points_to_win: NonZeroU8::new(10).expect("ten is non-zero"),
+                mode: Mode::Classic,
             },
         );
         app

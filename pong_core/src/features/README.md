@@ -5,7 +5,7 @@ One directory per feature, each with a plugin at its root.
 ## Order and imports
 
 The order is declared in [`mod.rs`](mod.rs) (ADR 0002):
-`tuning, seats, ball, paddle, effects, physics, rules, ai, sanity, persistence`.
+`tuning, seats, ball, paddle, effects, physics, rules, escalation, ai, sanity, persistence`.
 A feature may import the public components, resources, and messages of an earlier feature;
 never its systems, never a later feature, never the app roof.
 `just arch-check` enforces the order by grep,
@@ -128,9 +128,18 @@ Nothing changes in mid-flight but the flight's clock.
 | `Effect` | A trait with no default methods: `id` and `contribute`. An effect that skips a part does not compile. |
 | `Contribution` (kernel) | A struct without `Default`. Adding a channel adds a field, and every effect stops compiling until it states its stance. |
 | `build` | The crate's one match on `EffectId`: the registration. A new variant does not compile until it is built there. |
-| `ActiveEffects` | Resource: the effects in play. `start_flight(start)` asks each once. Every channel composes by sum, so order does not matter. |
+| `ActiveEffects` | Resource: the effects in play, set by escalation through `set(ids, tuning, mode)`. `start_flight(start)` asks each once. Every channel composes commutatively, so order does not matter. |
 | `BallFlight` | Component, required by `Ball`: the ball's flight. Replaced only at a flight start, cleared only between rallies. |
-| `speed.rs` | Speed: a launch-speed gain per return of the rally. One module per effect. |
+| `speed.rs` | Speed: a launch-speed gain per return of the rally, at the per-hit increase of the mode played. One module per effect. |
+| `shrink.rs` | Shrink: a factor on both paddles' height, riding a `Ramp` over the rally's returns from one to `height_min / height_default`. |
+
+Channels, each composing so that effects cannot see each other:
+
+| Channel | Composes by | Bound, kept by the base |
+|---|---|---|
+| Launch speed gain | Sum | `launch_speed` adds the serve speed and applies `ball.speed_cap`. |
+| Paddle height factor | Product | `Paddle::set_height` clamps to the tuned bounds. One factor for both paddles. |
+| Lateral field | Sum | None yet; no effect contributes one (M2 plan phase 5). |
 
 Two counts that look alike and are not:
 the flight counts returns, face hits that turn the ball back and start a flight;
@@ -143,9 +152,9 @@ The base adds the serve speed and applies the cap (`SpeedRule::launch`): bounds 
 
 | System | Runs | Does |
 |---|---|---|
-| `put_classic_effects_in_play` | `OnEnter(InMatch)` | Speed alone, until modes exist (M2 plan phase 2). |
 | `rebuild_effects_from_changed_tuning` | Effects | Rebuilds the effects in play when `Tuning` changed, so a dev reload reaches them. |
-| `clear_flights` | `OnEnter(Countdown)` | An empty flight: no returns, no forces. |
+| `fit_paddles_to_the_flight` | Effects | Sets both paddles to the default height times the flight's factor, only when the factor changed since it last wrote. One step after the return that started the flight. |
+| `clear_flights` | `OnEnter(Countdown)` | An empty flight: no returns, no forces, factor one. So paddles are whole for every serve, and stay short through the point pause before it. |
 | `start_flight_on_serve` | Effects, `BallInPlay` | On `Serve`, starts the rally's first flight, after the ball feature launched the ball in Intent. |
 
 Later flights start in physics, at a paddle return:
@@ -210,6 +219,35 @@ While a transition is pending, the request waits a frame.
 Entering `Countdown` starts a new rally: every serve follows a countdown, the heal's restart included; a pause and resume does not.
 Entering a match clears both. It is public for C1's meter and a HUD; records read the snapshot in `MatchEnded`.
 
+## escalation
+
+Which effects are in play, decided between points (M2 spec 2.4).
+The match scale sets breadth here; the rally scale sets intensity in each effect, from the flight's return count.
+This feature knows no effect: it reads names from the mode's tuning and hands them to `ActiveEffects`.
+It is the one writer of that resource.
+
+A mode is data (`tuning.mode(mode)`): effects that are `always` on, a `bag` to schedule,
+`thresholds_percent` of the leader's progress at which one more joins, and `rotate_every_points`.
+Classic is the mode with an empty bag, so nothing here branches on the mode.
+
+`schedule.rs` is the arithmetic, free of the ECS and generic over the item, tested with plain numbers:
+
+| Piece | Does |
+|---|---|
+| `count` | One, plus one per threshold reached, capped by the match's cap and by the bag. Compared in whole numbers, so 3 of 10 against 30 percent is exact. |
+| `shuffle` | Seeded order for the bag. A bag of one or none draws nothing, so Classic's random stream is M1's. |
+| `Rotation<T>` | Items in play, oldest first, and a bench. A rising count only adds. A rotation swaps the oldest for the next; the one that leaves goes to the back, so none returns before every other had its turn. |
+
+| System | Runs | Does |
+|---|---|---|
+| `draw_the_bag` | `OnEnter(InMatch)` | Shuffles the mode's bag; resets the schedule. |
+| `bring_effects_up_to_date` | `OnEnter(Countdown)` | Recomputes the count from the score; rotates if a rotation interval of points has passed; writes `EffectEnded` then `EffectStarted` for bag effects; sets `ActiveEffects`. |
+
+`OnEnter(Countdown)` also fires after a fault and on resuming a paused countdown.
+The update counts points, not countdowns, so those re-entries change nothing.
+Nothing changes inside a rally (M2 spec 2.4.3).
+Always-on effects announce nothing, and leaving a match ends nothing.
+
 ## ai
 
 The mirror controller (spec 1.4.6): the computer's player writes the same `PaddleIntents` a seat does.
@@ -239,7 +277,10 @@ The serve shares the intent phase, unordered, so a reaction to a serve may start
 
 The last phase of every step in which the phases run checks that the simulation is sound (spec 1.4.7):
 exactly one ball; its velocity finite; its centre inside the walls and no farther past a goal line than one step at the speed cap;
-each paddle's centre finite and the whole paddle inside the walls.
+each paddle's centre finite and the whole paddle inside the walls;
+the ball's flight no longer than `ball.flight_limit_seconds` (M2 spec 2.5.6).
+The last is the one exit for a stalled or trapped ball, whatever effect caused it:
+no effect carries a guard of its own for it. The flight's clock runs only in play, so a pause or a countdown does not count.
 It runs between rallies too, not in `BallInPlay`: a ball resting past the goal after a point is within bounds (ADR 0004).
 
 One code path in both builds. A broken invariant is written as a `SimFault` and returned as the system's error;

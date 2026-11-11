@@ -18,9 +18,40 @@
         radius: 1.0,
         serve_speed: 80.0,
         speed_cap: 250.0,
-        per_hit_increase: 7.0,
+        // A flight longer than this is a fault: the rally restarts (M2 spec 2.5.6).
+        // Classic's slowest crossing takes under four seconds.
+        flight_limit_seconds: 20.0,
         max_deflection_degrees: 60.0,
         serve_cone_degrees: 30.0,
+    ),
+
+    // A mode is data (M2 spec 2.1.1). `always` effects are on from the first
+    // serve; `bag` effects join one by one as the leader's progress toward the
+    // points target passes each threshold, and rotate every so many points.
+    // Effects are named as in the save files. Chaos's per-hit increase must be
+    // below Classic's.
+    modes: (
+        classic: (
+            per_hit_increase: 7.0,
+            always: [speed],
+            bag: [],
+            thresholds_percent: [],
+            rotate_every_points: 1,
+        ),
+        chaos: (
+            per_hit_increase: 3.0,
+            always: [speed],
+            bag: [shrink],
+            thresholds_percent: [30, 70],
+            rotate_every_points: 1,
+        ),
+    ),
+
+    // Each effect's dial rides the rally's return count: it starts to move at
+    // one return and is full at another.
+    effects: (
+        // Both paddles shorten from height_default to height_min.
+        shrink: (starts_at_return: 3, full_at_return: 15),
     ),
 
     match_flow: (

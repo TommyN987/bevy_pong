@@ -7,12 +7,16 @@ use std::num::NonZeroU8;
 use bevy::input::keyboard::KeyCode;
 use serde::Deserialize;
 
+use crate::domain::EffectId;
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct TuningFile {
     pub(super) arena: ArenaFile,
     pub(super) paddle: PaddleFile,
     pub(super) ball: BallFile,
+    pub(super) modes: ModesFile,
+    pub(super) effects: EffectsFile,
     pub(super) match_flow: MatchFlowFile,
     pub(super) ai: AiFile,
     pub(super) bindings: BindingsFile,
@@ -44,9 +48,46 @@ pub(super) struct BallFile {
     pub(super) radius: f32,
     pub(super) serve_speed: f32,
     pub(super) speed_cap: f32,
-    pub(super) per_hit_increase: f32,
+    /// The longest a flight may last before the sanity phase calls it a fault.
+    pub(super) flight_limit_seconds: f32,
     pub(super) max_deflection_degrees: f32,
     pub(super) serve_cone_degrees: f32,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ModesFile {
+    pub(super) classic: ModeFile,
+    pub(super) chaos: ModeFile,
+}
+
+/// One mode: its speed ramp, its effects, and its schedule.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ModeFile {
+    pub(super) per_hit_increase: f32,
+    /// In play from the first serve to the last.
+    pub(super) always: Vec<EffectId>,
+    /// Joining and rotating as the match goes on.
+    pub(super) bag: Vec<EffectId>,
+    /// Leader's progress toward the points target, in whole percent, at which
+    /// one more bag effect joins. Whole numbers, so a boundary is exact.
+    pub(super) thresholds_percent: Vec<u8>,
+    /// Points scored between rotations of the bag.
+    pub(super) rotate_every_points: NonZeroU8,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct EffectsFile {
+    pub(super) shrink: ShrinkFile,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ShrinkFile {
+    pub(super) starts_at_return: u16,
+    pub(super) full_at_return: u16,
 }
 
 #[derive(Debug, Deserialize)]

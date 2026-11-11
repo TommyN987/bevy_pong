@@ -2,10 +2,10 @@
 //! events the core emits for the shell to observe. No systems live here.
 //!
 //! `Side` is also vocabulary; it is defined in [`crate::kernel::geometry`]
-//! because geometry needs it first. Count (ADR 0002, ADR 0008): eight capped
+//! because geometry needs it first. Count (ADR 0002, ADR 0008): nine capped
 //! types of twelve (`Side`, `Seat`, `Difficulty`, `Controller`, `MatchConfig`,
-//! `Random`, `Player`, `SeatPlayers`), two identifier types outside the cap
-//! (`ProfileId`, `EffectId`), and seven messages, each with one emitting feature,
+//! `Random`, `Player`, `SeatPlayers`, `Mode`), two identifier types outside the
+//! cap (`ProfileId`, `EffectId`), and nine messages, each with one emitting feature,
 //! `Notice` excepted.
 
 use std::num::NonZeroU8;
@@ -82,11 +82,30 @@ pub enum EffectId {
     /// The ball leaves each paddle return faster (M2 spec 2.6.0).
     #[serde(rename = "speed")]
     Speed,
+    /// Both paddles shorten as the rally grows (M2 spec 2.6.1).
+    #[serde(rename = "shrink")]
+    Shrink,
 }
 
 impl EffectId {
     /// Every effect, in declaration order.
-    pub const ALL: [Self; 1] = [Self::Speed];
+    pub const ALL: [Self; 2] = [Self::Speed, Self::Shrink];
+}
+
+/// Which game a match plays (M2 spec 2.1.1). A mode is data: tuning holds
+/// each mode's effects and schedule, and nothing in the simulation branches
+/// on this type except to look that data up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Mode {
+    /// Pong as M1 shipped it: the speed ramp alone.
+    Classic,
+    /// Effects join and rotate as the match goes on.
+    Chaos {
+        /// The most effects in play at once, the player's choice. Zero is
+        /// unrepresentable; a cap above what the mode's schedule can reach
+        /// simply never binds.
+        cap: NonZeroU8,
+    },
 }
 
 /// Who a seated human plays as (ADR 0008): the built-in Guest, never saved,
@@ -142,6 +161,8 @@ pub struct MatchConfig {
     pub players: SeatPlayers,
     /// First to this many points wins.
     pub points_to_win: NonZeroU8,
+    /// Which game is played.
+    pub mode: Mode,
 }
 
 impl MatchConfig {
@@ -181,6 +202,13 @@ impl Random {
     pub fn next_f32_in(&mut self, lo: f32, hi: f32) -> f32 {
         self.0.next_f32_in(lo, hi)
     }
+
+    /// A whole number in `0..below`, for picking one of `below` things.
+    /// Precondition: `below > 0`. The modulo's bias is far below anything a
+    /// shuffle of a handful of effects can show.
+    pub fn next_below(&mut self, below: u32) -> u32 {
+        self.0.next_u32() % below
+    }
 }
 
 /// Launch the ball toward `toward`. Emitted by rules when a countdown ends;
@@ -197,6 +225,23 @@ pub struct Serve {
 pub struct BallHitPaddle {
     /// Which paddle.
     pub side: Side,
+}
+
+/// An effect joined the effects in play, between two points (M2 spec 2.3.7).
+/// Emitted by escalation, for a mode's scheduled effects only: an effect that
+/// is always on never starts.
+#[derive(Message, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EffectStarted {
+    /// The effect that joined.
+    pub effect: EffectId,
+}
+
+/// An effect left the effects in play, between two points. Emitted by
+/// escalation. Leaving a match ends nothing: what a match made goes with it.
+#[derive(Message, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EffectEnded {
+    /// The effect that left.
+    pub effect: EffectId,
 }
 
 /// The ball bounced off the top or bottom wall. Emitted by physics.
@@ -244,6 +289,15 @@ pub enum SimFault {
         /// The position seen.
         position: Vec2,
     },
+    /// The ball has flown longer than any flight can without a paddle return
+    /// or a goal (M2 spec 2.5.6): it is stalled or trapped.
+    #[error("the ball has flown {seconds} s without a return or a goal; the limit is {limit} s")]
+    FlightTooLong {
+        /// How long the flight has lasted.
+        seconds: f32,
+        /// The tuned limit.
+        limit: f32,
+    },
     /// Part of the paddle is through a wall, or its centre is not finite.
     #[error("{side:?} paddle centred at y = {center_y}, {height} tall, is outside the arena")]
     PaddleOutsideArena {
@@ -277,7 +331,7 @@ mod tests {
 
     use super::{
         BallHitPaddle, BallHitWall, Controller, Difficulty, EffectId, MatchConfig, MatchEnded,
-        Notice, Player, PointScored, ProfileId, Random, Seat, SeatPlayers, Serve, SimFault,
+        Mode, Notice, Player, PointScored, ProfileId, Random, Seat, SeatPlayers, Serve, SimFault,
     };
     use crate::kernel::geometry::Side;
 
@@ -388,6 +442,7 @@ mod tests {
             right: Controller::Ai(Difficulty::OneStar),
             players: SeatPlayers::GUESTS,
             points_to_win: NonZeroU8::new(10).expect("ten is non-zero"),
+            mode: Mode::Classic,
         };
         assert_eq!(
             config.controller(Side::Left),
@@ -430,6 +485,7 @@ mod tests {
                 right_seat: Player::Profile(ProfileId(2)),
             },
             points_to_win: NonZeroU8::new(10).expect("ten is non-zero"),
+            mode: Mode::Classic,
         };
         assert_eq!(
             config.player_on(Side::Left),
@@ -451,6 +507,10 @@ mod tests {
             ron::to_string(&EffectId::Speed).expect("an effect id serializes"),
             "speed"
         );
+        assert_eq!(
+            ron::to_string(&EffectId::Shrink).expect("an effect id serializes"),
+            "shrink"
+        );
     }
 
     /// `ALL` is written by hand; this match stops compiling when a variant is
@@ -460,6 +520,7 @@ mod tests {
         for (index, id) in EffectId::ALL.into_iter().enumerate() {
             let declared = match id {
                 EffectId::Speed => 0,
+                EffectId::Shrink => 1,
             };
             assert_eq!(index, declared);
         }

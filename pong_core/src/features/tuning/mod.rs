@@ -24,9 +24,10 @@ use bevy::ecs::system::{Commands, Res, ResMut};
 use bevy::input::keyboard::KeyCode;
 use bevy::reflect::TypePath;
 
-use crate::domain::{Difficulty, Notice, Seat};
+use crate::domain::{Difficulty, EffectId, Mode, Notice, Seat};
 use crate::flow::FIXED_HZ;
 use crate::kernel::geometry::{Arena, InvalidArena, InvalidLengthBounds, LengthBounds, Radius};
+use crate::kernel::ramp::{FullBeforeStart, Ramp};
 use crate::kernel::reflect::{InvalidSpeedRule, MaxDeflection, SpeedRule};
 use crate::kernel::{OutOfRange, Range};
 use file::TuningFile;
@@ -200,10 +201,47 @@ pub struct Tuning {
     arena: Arena,
     paddle: PaddleTuning,
     ball: BallTuning,
+    modes: ModesTuning,
+    effects: EffectsTuning,
     match_flow: MatchFlowTuning,
     ai: AiTuning,
     bindings: BindingsTuning,
     palette: Vec<Srgba>,
+}
+
+/// Every mode's data. Invariant: Chaos's per-hit increase is below Classic's
+/// (M2 spec 2.6.0).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ModesTuning {
+    classic: ModeTuning,
+    chaos: ModeTuning,
+}
+
+/// One mode as data (M2 spec 2.1.1): its speed ramp, its effects, and its
+/// schedule. Classic is the mode with an empty bag.
+///
+/// Invariants: no effect is named twice across `always` and `bag`; the
+/// thresholds rise strictly and none is above a hundred.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ModeTuning {
+    speed_rule: SpeedRule,
+    always: Vec<EffectId>,
+    bag: Vec<EffectId>,
+    thresholds_percent: Vec<u8>,
+    rotate_every_points: NonZeroU8,
+}
+
+/// Each effect's own numbers.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EffectsTuning {
+    shrink: ShrinkTuning,
+}
+
+/// Shrink's dial (M2 spec 2.6.1), as the factor on paddle height: one until
+/// the dial starts to move, `height_min / height_default` once it is full.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ShrinkTuning {
+    height_factor: Ramp,
 }
 
 /// Keys per seat. Invariant: no key is bound twice across both seats.
@@ -261,7 +299,8 @@ pub struct PaddleTuning {
 pub struct BallTuning {
     radius: Radius,
     serve_speed: f32,
-    speed_rule: SpeedRule,
+    speed_cap: f32,
+    flight_limit_seconds: f32,
     max_deflection: MaxDeflection,
     serve_cone: MaxDeflection,
 }
@@ -297,6 +336,37 @@ pub enum TuningError {
         /// The cap given.
         cap: f32,
     },
+    /// A mode names one effect twice across its `always` and `bag` lists.
+    #[error("tuning modes.{mode} names the effect {effect:?} more than once")]
+    ModeNamesEffectTwice {
+        /// `classic` or `chaos`.
+        mode: &'static str,
+        /// The effect named twice.
+        effect: EffectId,
+    },
+    /// A mode's thresholds do not rise strictly, or one is above a hundred.
+    #[error(
+        "tuning modes.{mode}.thresholds_percent {thresholds:?} must rise strictly and stay within 100"
+    )]
+    ModeThresholdsDoNotRise {
+        /// `classic` or `chaos`.
+        mode: &'static str,
+        /// The thresholds given.
+        thresholds: Vec<u8>,
+    },
+    /// Chaos must ramp its speed more gently than Classic (M2 spec 2.6.0).
+    #[error(
+        "tuning modes.chaos.per_hit_increase {chaos} is not below modes.classic.per_hit_increase {classic}"
+    )]
+    ChaosRampNotBelowClassic {
+        /// Classic's increase given.
+        classic: f32,
+        /// Chaos's increase given.
+        chaos: f32,
+    },
+    /// Shrink's dial would be full before it starts to move.
+    #[error("tuning effects.shrink: {0}")]
+    ShrinkRamp(#[from] FullBeforeStart),
     /// No points-to-win choices offered.
     #[error("tuning match_flow.points_to_win_options is empty")]
     PointsToWinOptionsEmpty,
@@ -391,10 +461,13 @@ impl Tuning {
     /// The first problem found, naming the value to fix.
     pub fn from_ron(text: &str) -> Result<Self, TuningError> {
         let file: TuningFile = ron::from_str(text)?;
+        let paddle = PaddleTuning::validate(&file.paddle)?;
         let tuning = Self {
             arena: Arena::new(file.arena.width, file.arena.height)?,
-            paddle: PaddleTuning::validate(&file.paddle)?,
+            paddle,
             ball: BallTuning::validate(&file.ball)?,
+            modes: ModesTuning::validate(file.modes, file.ball.speed_cap)?,
+            effects: EffectsTuning::validate(&file.effects, paddle)?,
             match_flow: MatchFlowTuning::validate(file.match_flow)?,
             ai: AiTuning::validate(&file.ai)?,
             bindings: BindingsTuning::validate(&file.bindings)?,
@@ -430,7 +503,7 @@ impl Tuning {
                 half_width,
             });
         }
-        let cap = self.ball.speed_rule.cap();
+        let cap = self.ball.speed_cap;
         let playable_height = 2.0 * self.arena.center_limit_y(self.ball.radius);
         if f64::from(cap) / FIXED_HZ >= f64::from(playable_height) {
             return Err(TuningError::SpeedCapCrossesArenaInOneStep {
@@ -439,6 +512,21 @@ impl Tuning {
             });
         }
         Ok(())
+    }
+
+    /// The data of `mode`: its speed ramp, its effects, and its schedule.
+    #[must_use]
+    pub const fn mode(&self, mode: Mode) -> &ModeTuning {
+        match mode {
+            Mode::Classic => &self.modes.classic,
+            Mode::Chaos { .. } => &self.modes.chaos,
+        }
+    }
+
+    /// Each effect's own numbers.
+    #[must_use]
+    pub const fn effects(&self) -> EffectsTuning {
+        self.effects
     }
 
     /// Keys per seat.
@@ -542,7 +630,9 @@ impl PaddleTuning {
 
 impl BallTuning {
     fn validate(file: &file::BallFile) -> Result<Self, TuningError> {
-        let speed_rule = SpeedRule::new(file.per_hit_increase, file.speed_cap)?;
+        let speed_cap = Range::PositiveFinite
+            .check(file.speed_cap)
+            .map_err(InvalidSpeedRule::Cap)?;
         let serve_speed = checked("ball.serve_speed", Range::PositiveFinite, file.serve_speed)?;
         if serve_speed > file.speed_cap {
             return Err(TuningError::ServeSpeedAboveCap {
@@ -556,7 +646,12 @@ impl BallTuning {
                 refused,
             })?,
             serve_speed,
-            speed_rule,
+            speed_cap,
+            flight_limit_seconds: checked(
+                "ball.flight_limit_seconds",
+                Range::PositiveFinite,
+                file.flight_limit_seconds,
+            )?,
             max_deflection: deflection("ball.max_deflection_degrees", file.max_deflection_degrees)?,
             serve_cone: deflection("ball.serve_cone_degrees", file.serve_cone_degrees)?,
         })
@@ -574,10 +669,18 @@ impl BallTuning {
         self.serve_speed
     }
 
-    /// Per-hit increase and cap.
+    /// The highest speed a ball can leave a paddle at, in every mode: the
+    /// base's bound on the speed channel (ADR 0011).
     #[must_use]
-    pub const fn speed_rule(self) -> SpeedRule {
-        self.speed_rule
+    pub const fn speed_cap(self) -> f32 {
+        self.speed_cap
+    }
+
+    /// The longest a flight may last, in seconds, before it is a fault
+    /// (M2 spec 2.5.6).
+    #[must_use]
+    pub const fn flight_limit_seconds(self) -> f32 {
+        self.flight_limit_seconds
     }
 
     /// Largest angle from straight-across a paddle hit can produce.
@@ -590,6 +693,125 @@ impl BallTuning {
     #[must_use]
     pub const fn serve_cone(self) -> MaxDeflection {
         self.serve_cone
+    }
+}
+
+impl ModesTuning {
+    fn validate(file: file::ModesFile, speed_cap: f32) -> Result<Self, TuningError> {
+        let classic = ModeTuning::validate("classic", file.classic, speed_cap)?;
+        let chaos = ModeTuning::validate("chaos", file.chaos, speed_cap)?;
+        let (classic_increase, chaos_increase) = (
+            classic.speed_rule.per_hit_increase(),
+            chaos.speed_rule.per_hit_increase(),
+        );
+        if chaos_increase >= classic_increase {
+            return Err(TuningError::ChaosRampNotBelowClassic {
+                classic: classic_increase,
+                chaos: chaos_increase,
+            });
+        }
+        Ok(Self { classic, chaos })
+    }
+}
+
+impl ModeTuning {
+    fn validate(
+        mode: &'static str,
+        file: file::ModeFile,
+        speed_cap: f32,
+    ) -> Result<Self, TuningError> {
+        let speed_rule = SpeedRule::new(file.per_hit_increase, speed_cap)?;
+        let mut named = HashSet::new();
+        for effect in file.always.iter().chain(&file.bag) {
+            if !named.insert(*effect) {
+                return Err(TuningError::ModeNamesEffectTwice {
+                    mode,
+                    effect: *effect,
+                });
+            }
+        }
+        let rising = file
+            .thresholds_percent
+            .windows(2)
+            .all(|pair| pair[0] < pair[1]);
+        let within = file
+            .thresholds_percent
+            .iter()
+            .all(|percent| *percent <= 100);
+        if !(rising && within) {
+            return Err(TuningError::ModeThresholdsDoNotRise {
+                mode,
+                thresholds: file.thresholds_percent,
+            });
+        }
+        Ok(Self {
+            speed_rule,
+            always: file.always,
+            bag: file.bag,
+            thresholds_percent: file.thresholds_percent,
+            rotate_every_points: file.rotate_every_points,
+        })
+    }
+
+    /// The mode's per-hit increase, with the cap every mode shares.
+    #[must_use]
+    pub const fn speed_rule(&self) -> SpeedRule {
+        self.speed_rule
+    }
+
+    /// Effects in play from the first serve to the last.
+    #[must_use]
+    pub fn always(&self) -> &[EffectId] {
+        &self.always
+    }
+
+    /// Effects that join and rotate as the match goes on.
+    #[must_use]
+    pub fn bag(&self) -> &[EffectId] {
+        &self.bag
+    }
+
+    /// Leader's progress toward the points target, in whole percent, at which
+    /// one more bag effect joins. Strictly rising.
+    #[must_use]
+    pub fn thresholds_percent(&self) -> &[u8] {
+        &self.thresholds_percent
+    }
+
+    /// Points scored between rotations of the bag.
+    #[must_use]
+    pub const fn rotate_every_points(&self) -> NonZeroU8 {
+        self.rotate_every_points
+    }
+}
+
+impl EffectsTuning {
+    fn validate(file: &file::EffectsFile, paddle: PaddleTuning) -> Result<Self, TuningError> {
+        let smallest = paddle.height_bounds.min() / paddle.height_default;
+        Ok(Self {
+            shrink: ShrinkTuning {
+                height_factor: Ramp::new(
+                    file.shrink.starts_at_return,
+                    file.shrink.full_at_return,
+                    1.0,
+                    smallest,
+                )?,
+            },
+        })
+    }
+
+    /// Shrink's numbers.
+    #[must_use]
+    pub const fn shrink(self) -> ShrinkTuning {
+        self.shrink
+    }
+}
+
+impl ShrinkTuning {
+    /// The factor on paddle height over the rally's returns.
+    #[must_use]
+    pub const fn height_factor(self) -> Ramp {
+        self.height_factor
     }
 }
 
@@ -823,8 +1045,11 @@ mod tests {
     use bevy::asset::io::embedded::{EmbeddedAssetRegistry, watched_path};
 
     use super::{EMBEDDED_RON, Tuning, TuningError, TuningPlugin, embedded_tuning_path};
-    use crate::domain::{Difficulty, Notice, Seat};
+    use std::num::NonZeroU8;
+
+    use crate::domain::{Difficulty, EffectId, Mode, Notice, Seat};
     use crate::kernel::geometry::InvalidLengthBounds;
+    use crate::kernel::ramp::FullBeforeStart;
     use crate::kernel::test_support::assert_near;
     use crate::kernel::{OutOfRange, Range};
     use crate::testing::{boot, frame, headless_app, record, recorded, run_until, take_recorded};
@@ -836,10 +1061,15 @@ mod tests {
             radius: 1.0,
             serve_speed: 80.0,
             speed_cap: 250.0,
-            per_hit_increase: 7.0,
+            flight_limit_seconds: 20.0,
             max_deflection_degrees: 60.0,
             serve_cone_degrees: 30.0,
         ),
+        modes: (
+            classic: (per_hit_increase: 7.0, always: [speed], bag: [], thresholds_percent: [], rotate_every_points: 1),
+            chaos: (per_hit_increase: 3.0, always: [speed], bag: [shrink], thresholds_percent: [30, 70], rotate_every_points: 1),
+        ),
+        effects: (shrink: (starts_at_return: 3, full_at_return: 15)),
         match_flow: (countdown_seconds: 3.0, point_pause_seconds: 0.8, points_to_win_options: [5, 10, 15, 21], points_to_win_default: 10),
         ai: (
             one_star: (reaction_delay_seconds: 0.35, prediction_error: 12.0),
@@ -1023,14 +1253,8 @@ mod tests {
         let tuning = valid();
         assert_near(tuning.arena().half_extents().y, 45.0, 1e-6);
         assert_near(tuning.ball().radius().value(), 1.0, 1e-6);
-        assert_near(
-            tuning
-                .ball()
-                .speed_rule()
-                .launch(80.0, tuning.ball().speed_rule().per_hit_increase()),
-            87.0,
-            1e-6,
-        );
+        let classic = tuning.mode(Mode::Classic).speed_rule();
+        assert_near(classic.launch(80.0, classic.per_hit_increase()), 87.0, 1e-6);
         assert_near(tuning.ball().serve_speed(), 80.0, 1e-6);
         assert_near(tuning.ball().max_deflection().radians(), FRAC_PI_3, 1e-6);
         assert_near(tuning.ball().serve_cone().radians(), FRAC_PI_3 / 2.0, 1e-6);
@@ -1264,5 +1488,136 @@ mod tests {
             Tuning::from_ron(&VALID.replace("thickness", "thicknes")),
             Err(TuningError::Parse(_))
         ));
+    }
+
+    /// M2 spec 2.1.1: a mode is data. Classic is Speed alone with an empty
+    /// bag; Chaos ramps more gently and schedules its bag.
+    #[test]
+    fn each_mode_reads_as_its_speed_rule_its_effects_and_its_schedule() {
+        let tuning = valid();
+        let classic = tuning.mode(Mode::Classic);
+        assert_near(classic.speed_rule().per_hit_increase(), 7.0, 1e-6);
+        assert_near(classic.speed_rule().cap(), 250.0, 1e-6);
+        assert_eq!(classic.always(), [EffectId::Speed]);
+        assert_eq!(classic.bag(), []);
+        assert_eq!(classic.thresholds_percent(), [] as [u8; 0]);
+
+        let cap = NonZeroU8::new(2).expect("two is non-zero");
+        let chaos = tuning.mode(Mode::Chaos { cap });
+        assert_near(chaos.speed_rule().per_hit_increase(), 3.0, 1e-6);
+        assert_near(chaos.speed_rule().cap(), 250.0, 1e-6);
+        assert_eq!(chaos.always(), [EffectId::Speed]);
+        assert_eq!(chaos.bag(), [EffectId::Shrink]);
+        assert_eq!(chaos.thresholds_percent(), [30, 70]);
+        assert_eq!(chaos.rotate_every_points().get(), 1);
+    }
+
+    #[test]
+    fn the_ball_carries_the_cap_every_mode_shares_and_the_flight_limit() {
+        let tuning = valid();
+        assert_near(tuning.ball().speed_cap(), 250.0, 1e-6);
+        assert_near(tuning.ball().flight_limit_seconds(), 20.0, 1e-6);
+        assert!(matches!(
+            Tuning::from_ron(&with("flight_limit_seconds", "0.0")),
+            Err(TuningError::Field {
+                path: "ball.flight_limit_seconds",
+                ..
+            })
+        ));
+    }
+
+    /// Shrink's dial runs from the default height to the minimum: as a
+    /// factor, from one to 8 over 14.
+    #[test]
+    fn shrinks_dial_is_a_factor_from_one_to_the_minimum_over_the_default() {
+        let factor = valid().effects().shrink().height_factor();
+        assert_near(factor.at(3), 1.0, 1e-6);
+        assert_near(factor.at(15), 8.0 / 14.0, 1e-6);
+    }
+
+    #[test]
+    fn a_mode_naming_an_effect_twice_is_rejected_naming_the_mode_and_the_effect() {
+        assert_eq!(
+            Tuning::from_ron(&with("bag", "[speed]")),
+            Err(TuningError::ModeNamesEffectTwice {
+                mode: "classic",
+                effect: EffectId::Speed,
+            })
+        );
+        assert_eq!(
+            Tuning::from_ron(&with("always", "[speed, speed]")),
+            Err(TuningError::ModeNamesEffectTwice {
+                mode: "classic",
+                effect: EffectId::Speed,
+            })
+        );
+    }
+
+    #[test]
+    fn an_effect_name_the_game_does_not_know_is_a_parse_error() {
+        assert!(matches!(
+            Tuning::from_ron(&with("bag", "[gravity_well]")),
+            Err(TuningError::Parse(_))
+        ));
+    }
+
+    #[test]
+    fn thresholds_that_do_not_rise_or_pass_a_hundred_are_rejected() {
+        for thresholds in ["[70, 30]", "[30, 30]", "[30, 101]"] {
+            assert!(
+                matches!(
+                    Tuning::from_ron(&with("thresholds_percent", thresholds)),
+                    Err(TuningError::ModeThresholdsDoNotRise {
+                        mode: "classic",
+                        ..
+                    })
+                ),
+                "{thresholds}"
+            );
+        }
+        assert!(Tuning::from_ron(&with("thresholds_percent", "[0, 100]")).is_ok());
+    }
+
+    /// M2 spec 2.6.0: Chaos ramps its speed more gently than Classic.
+    #[test]
+    fn a_chaos_ramp_not_below_classics_is_rejected() {
+        assert_eq!(
+            Tuning::from_ron(&with("per_hit_increase", "3.0")),
+            Err(TuningError::ChaosRampNotBelowClassic {
+                classic: 3.0,
+                chaos: 3.0,
+            })
+        );
+    }
+
+    /// M2 spec 2.3.9's done-condition, through the file.
+    #[test]
+    fn a_shrink_dial_full_before_it_starts_is_rejected() {
+        assert_eq!(
+            Tuning::from_ron(&with("full_at_return", "1")),
+            Err(TuningError::ShrinkRamp(FullBeforeStart {
+                starts_at: 3,
+                full_at: 1,
+            }))
+        );
+    }
+
+    #[test]
+    fn the_new_refusals_read_as_one_sentence_naming_the_value() {
+        let twice = Tuning::from_ron(&with("bag", "[speed]")).expect_err("named twice");
+        assert_eq!(
+            twice.to_string(),
+            "tuning modes.classic names the effect Speed more than once"
+        );
+        let ramp = Tuning::from_ron(&with("per_hit_increase", "3.0")).expect_err("not below");
+        assert_eq!(
+            ramp.to_string(),
+            "tuning modes.chaos.per_hit_increase 3 is not below modes.classic.per_hit_increase 3"
+        );
+        let shrink = Tuning::from_ron(&with("full_at_return", "1")).expect_err("full first");
+        assert_eq!(
+            shrink.to_string(),
+            "tuning effects.shrink: a dial full at return 1 cannot start to move at return 3"
+        );
     }
 }

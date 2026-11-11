@@ -3,8 +3,8 @@
 
 use super::Effect;
 use crate::domain::EffectId;
-use crate::features::tuning::Tuning;
 use crate::kernel::flight::{Contribution, FlightStart};
+use crate::kernel::reflect::SpeedRule;
 
 /// Adds a fixed gain to the launch speed for every return of the rally.
 ///
@@ -17,11 +17,11 @@ pub struct Speed {
 }
 
 impl Speed {
-    /// Speed at `tuning`'s per-hit increase.
+    /// Speed at `rule`'s per-hit increase: the rule of the mode played.
     #[must_use]
-    pub const fn new(tuning: &Tuning) -> Self {
+    pub const fn new(rule: SpeedRule) -> Self {
         Self {
-            per_return: tuning.ball().speed_rule().per_hit_increase(),
+            per_return: rule.per_hit_increase(),
         }
     }
 }
@@ -34,6 +34,7 @@ impl Effect for Speed {
     fn contribute(&self, start: &FlightStart) -> Contribution {
         Contribution {
             speed_gain: self.per_return * f32::from(start.returns),
+            paddle_height_factor: 1.0,
             field: None,
         }
     }
@@ -43,6 +44,7 @@ impl Effect for Speed {
 mod tests {
     use super::Speed;
     use crate::domain::EffectId;
+    use crate::domain::Mode;
     use crate::features::effects::Effect;
     use crate::features::tuning::{EMBEDDED_RON, Tuning};
     use crate::kernel::flight::{FlightStart, Hit, StepMotion};
@@ -50,7 +52,8 @@ mod tests {
     use crate::kernel::test_support::assert_near;
 
     fn speed() -> Speed {
-        Speed::new(&Tuning::from_ron(EMBEDDED_RON).expect("the embedded tuning is valid"))
+        let tuning = Tuning::from_ron(EMBEDDED_RON).expect("the embedded tuning is valid");
+        Speed::new(tuning.mode(Mode::Classic).speed_rule())
     }
 
     fn after(returns: u16) -> FlightStart {

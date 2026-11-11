@@ -15,7 +15,7 @@ use bevy::ui::widget::Text;
 use common::tap;
 use pong::overlay::{OverlayPlugin, OverlayText};
 use pong::ui::ScreensPlugin;
-use pong_core::domain::{Controller, Difficulty, MatchConfig, Seat, SeatPlayers};
+use pong_core::domain::{Controller, Difficulty, MatchConfig, Mode, Seat, SeatPlayers};
 use pong_core::testing::{boot, enter_match, frame, headless_app};
 
 fn overlay_app() -> App {
@@ -71,6 +71,7 @@ fn in_a_match_the_overlay_reads_the_ball_and_the_computers_aim() {
             right: Controller::Ai(Difficulty::TwoStars),
             players: SeatPlayers::GUESTS,
             points_to_win: NonZeroU8::new(10).expect("not zero"),
+            mode: Mode::Classic,
         },
     );
     tap(&mut app, KeyCode::F3);

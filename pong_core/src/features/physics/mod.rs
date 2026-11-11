@@ -21,7 +21,7 @@ use crate::flow::phases::{BallInPlay, FixedStepPhase};
 use crate::kernel::collide::{Face, Impact, swept_circle_rect};
 use crate::kernel::flight::{FlightStart, Hit};
 use crate::kernel::integrate::{Motion, advance_between_walls};
-use crate::kernel::reflect::{HitOffset, mirror, paddle_reflection};
+use crate::kernel::reflect::{HitOffset, launch_speed, mirror, paddle_reflection};
 
 /// Moves every ball in the integrate phase and resolves paddle contact in the
 /// collide phase. Emits [`BallHitWall`] and [`BallHitPaddle`].
@@ -147,9 +147,11 @@ fn collide_ball_with_paddles(
                     }),
                 }));
                 let offset = HitOffset::new(contact.y, paddle.center_y(), paddle.height() / 2.0);
-                let speed = ball
-                    .speed_rule()
-                    .launch(ball.serve_speed(), flight.flight().speed_gain());
+                let speed = launch_speed(
+                    ball.serve_speed(),
+                    flight.flight().speed_gain(),
+                    ball.speed_cap(),
+                );
                 paddle_reflection(paddle.side(), offset, speed, ball.max_deflection())
             }
             Face::Top | Face::Bottom => mirror(velocity.0, impact.face.normal()),
@@ -189,7 +191,9 @@ mod tests {
     use bevy::math::Vec2;
     use bevy::time::{Fixed, Time};
 
-    use crate::domain::{BallHitPaddle, BallHitWall, Controller, MatchConfig, Seat, SeatPlayers};
+    use crate::domain::{
+        BallHitPaddle, BallHitWall, Controller, MatchConfig, Mode, Seat, SeatPlayers,
+    };
     use crate::features::ball::{Ball, Position, Velocity};
     use crate::features::paddle::Paddle;
     use crate::features::sanity::SanityPlugin;
@@ -209,6 +213,7 @@ mod tests {
             right: Controller::Human(Seat::Right),
             players: SeatPlayers::GUESTS,
             points_to_win: NonZeroU8::new(10).expect("ten is non-zero"),
+            mode: Mode::Classic,
         }
     }
 
@@ -301,10 +306,8 @@ mod tests {
         assert!(velocity.x < 0.0 && velocity.y > 0.0, "{velocity:?}");
         // M2 spec 2.0.4: the launch speed follows the rally's return count,
         // here the first, whatever speed the ball arrived at.
-        let shape = tuning.ball();
-        let first_return = shape
-            .speed_rule()
-            .launch(shape.serve_speed(), shape.speed_rule().per_hit_increase());
+        let rule = tuning.mode(Mode::Classic).speed_rule();
+        let first_return = rule.launch(tuning.ball().serve_speed(), rule.per_hit_increase());
         assert_near(velocity.length(), first_return, 1e-3);
         assert_eq!(
             take_recorded::<BallHitPaddle>(&mut app),
@@ -374,7 +377,11 @@ mod tests {
     #[test]
     fn speed_rises_by_the_tuned_increase_on_every_paddle_hit_until_the_cap() {
         let mut app = match_app();
-        let rule = app.world().resource::<Tuning>().ball().speed_rule();
+        let rule = app
+            .world()
+            .resource::<Tuning>()
+            .mode(Mode::Classic)
+            .speed_rule();
         place_ball(&mut app, Vec2::ZERO, Vec2::new(80.0, 0.0));
         let mut expected = 80.0;
         let mut returns = 0_u16;

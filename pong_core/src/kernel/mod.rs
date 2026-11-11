@@ -12,6 +12,7 @@ pub mod flight;
 pub mod geometry;
 pub mod integrate;
 pub mod predict;
+pub mod ramp;
 pub mod random;
 pub mod reflect;
 

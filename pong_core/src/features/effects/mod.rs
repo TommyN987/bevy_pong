@@ -14,16 +14,18 @@ use bevy::ecs::message::MessageReader;
 use bevy::ecs::query::With;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
-use bevy::ecs::system::{Query, Res, ResMut};
+use bevy::ecs::system::{Local, Query, Res, ResMut};
 use bevy::state::state::OnEnter;
 
-use crate::domain::{EffectId, Serve};
+use crate::domain::{EffectId, Mode, Serve};
 use crate::features::ball::Ball;
+use crate::features::paddle::Paddle;
 use crate::features::tuning::Tuning;
 use crate::flow::phases::{BallInPlay, FixedStepPhase};
-use crate::flow::states::{AppState, MatchState};
+use crate::flow::states::MatchState;
 use crate::kernel::flight::{Contribution, Flight, FlightStart};
 
+pub mod shrink;
 pub mod speed;
 
 /// One effect's core half (ADR 0011).
@@ -42,9 +44,10 @@ pub trait Effect: Send + Sync + 'static {
 
 /// The core's registration of every effect: the one place in this crate that
 /// matches on [`EffectId`]. A new variant does not compile until it is built here.
-fn build(id: EffectId, tuning: &Tuning) -> Box<dyn Effect> {
+fn build(id: EffectId, tuning: &Tuning, mode: Mode) -> Box<dyn Effect> {
     match id {
-        EffectId::Speed => Box::new(speed::Speed::new(tuning)),
+        EffectId::Speed => Box::new(speed::Speed::new(tuning.mode(mode).speed_rule())),
+        EffectId::Shrink => Box::new(shrink::Shrink::new(tuning)),
     }
 }
 
@@ -53,23 +56,25 @@ fn build(id: EffectId, tuning: &Tuning) -> Box<dyn Effect> {
 ///
 /// - Makes [`BallFlight`] a required component of [`Ball`]. Precondition
 ///   (Bevy's): no `Ball` exists before this plugin builds.
-/// - Entering a match puts the mode's effects in play. Until modes exist
-///   (M2 plan phase 2) that is Speed alone: Classic Pong.
+/// - Which effects are in play is escalation's to decide, through
+///   [`ActiveEffects::set`]; this plugin starts with none.
 /// - Entering a countdown clears the ball's flight; the serve starts the
 ///   rally's first flight in the effects phase. Physics starts every later
 ///   flight at a paddle return, through [`ActiveEffects::start_flight`].
+/// - The flight's paddle height factor reaches the paddles in the effects
+///   phase (M2 spec 2.2.3).
 pub struct EffectsPlugin;
 
 impl Plugin for EffectsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ActiveEffects>()
             .register_required_components::<Ball, BallFlight>()
-            .add_systems(OnEnter(AppState::InMatch), put_classic_effects_in_play)
             .add_systems(OnEnter(MatchState::Countdown), clear_flights)
             .add_systems(
                 FixedUpdate,
                 (
                     rebuild_effects_from_changed_tuning.in_set(FixedStepPhase::Effects),
+                    fit_paddles_to_the_flight.in_set(FixedStepPhase::Effects),
                     start_flight_on_serve
                         .in_set(FixedStepPhase::Effects)
                         .in_set(BallInPlay),
@@ -81,18 +86,32 @@ impl Plugin for EffectsPlugin {
 /// The effects in play, in no meaningful order: every channel composes by sum.
 ///
 /// Invariant: `effects` holds exactly the effects `ids` names, each built
-/// from the tuning last seen.
-#[derive(Resource, Default)]
+/// from the tuning last seen, for `mode`.
+#[derive(Resource)]
 pub struct ActiveEffects {
+    mode: Mode,
     ids: Vec<EffectId>,
     effects: Vec<Box<dyn Effect>>,
 }
 
+/// No effects in play: what holds outside a match.
+impl Default for ActiveEffects {
+    fn default() -> Self {
+        Self {
+            mode: Mode::Classic,
+            ids: Vec::new(),
+            effects: Vec::new(),
+        }
+    }
+}
+
 impl ActiveEffects {
-    /// Puts exactly `ids` in play, each built from `tuning`.
-    pub fn set(&mut self, ids: &[EffectId], tuning: &Tuning) {
+    /// Puts exactly `ids` in play, each built from `tuning` for `mode`.
+    /// Escalation calls this; it takes hold at the next flight start.
+    pub fn set(&mut self, ids: &[EffectId], tuning: &Tuning, mode: Mode) {
+        self.mode = mode;
         self.ids = ids.to_vec();
-        self.effects = ids.iter().map(|id| build(*id, tuning)).collect();
+        self.effects = ids.iter().map(|id| build(*id, tuning, mode)).collect();
     }
 
     /// Puts one more effect in play, as given: a test's probe, which no
@@ -147,10 +166,6 @@ impl BallFlight {
     }
 }
 
-fn put_classic_effects_in_play(mut active: ResMut<ActiveEffects>, tuning: Res<Tuning>) {
-    active.set(&[EffectId::Speed], &tuning);
-}
-
 /// A reloaded tuning file (dev override) reaches the effects in play: each is
 /// rebuilt from the new values before the next flight starts.
 fn rebuild_effects_from_changed_tuning(mut active: ResMut<ActiveEffects>, tuning: Res<Tuning>) {
@@ -158,7 +173,42 @@ fn rebuild_effects_from_changed_tuning(mut active: ResMut<ActiveEffects>, tuning
         return;
     }
     let ids = active.ids().to_vec();
-    active.set(&ids, &tuning);
+    let mode = active.mode;
+    active.set(&ids, &tuning, mode);
+}
+
+/// Sets both paddles to the default height times the flight's factor
+/// (M2 spec 2.2.3), through the paddle's clamped setter.
+///
+/// Runs every step and writes only when the factor has changed since it last
+/// wrote, so a paddle's height is otherwise its own: a tuning reload still
+/// refits paddles as the paddle feature decides. A flight starts in the
+/// collide phase, so the paddles follow one step later, with the ball a
+/// flight away. The cleared flight of a countdown has factor one: the paddles
+/// are whole for every serve.
+fn fit_paddles_to_the_flight(
+    tuning: Res<Tuning>,
+    flights: Query<&BallFlight, With<Ball>>,
+    mut paddles: Query<&mut Paddle>,
+    mut applied: Local<Option<u32>>,
+) {
+    let Some(flight) = flights.iter().next() else {
+        return;
+    };
+    let factor = flight.flight().paddle_height_factor();
+    // Bit equality: "the very factor last applied", not a numeric comparison.
+    if *applied == Some(factor.to_bits()) {
+        return;
+    }
+    *applied = Some(factor.to_bits());
+    let shape = tuning.paddle();
+    for mut paddle in &mut paddles {
+        paddle.set_height(
+            shape.height_default() * factor,
+            shape.height_bounds(),
+            tuning.arena(),
+        );
+    }
 }
 
 /// Every countdown starts a new rally with the ball at rest (ADR 0003): no
@@ -196,8 +246,11 @@ mod tests {
     use bevy::state::state::NextState;
 
     use super::{ActiveEffects, BallFlight, Effect};
-    use crate::domain::{BallHitPaddle, Controller, EffectId, MatchConfig, Seat, SeatPlayers};
+    use crate::domain::{
+        BallHitPaddle, Controller, EffectId, MatchConfig, Mode, Seat, SeatPlayers,
+    };
     use crate::features::ball::{Ball, Position, Velocity};
+    use crate::features::paddle::Paddle;
     use crate::features::seats::PaddleIntent;
     use crate::features::tuning::{EMBEDDED_RON, Tuning};
     use crate::flow::states::MatchState;
@@ -217,6 +270,7 @@ mod tests {
             right: Controller::Human(Seat::Right),
             players: SeatPlayers::GUESTS,
             points_to_win: NonZeroU8::new(10).expect("ten is non-zero"),
+            mode: Mode::Classic,
         }
     }
 
@@ -245,10 +299,10 @@ mod tests {
 
     /// The speed a ball leaves its `returns`-th return at, by the tuning in `app`.
     fn launch_speed(app: &App, returns: u16) -> f32 {
-        let shape = app.world().resource::<Tuning>().ball();
-        let rule = shape.speed_rule();
+        let tuning = app.world().resource::<Tuning>();
+        let rule = tuning.mode(Mode::Classic).speed_rule();
         rule.launch(
-            shape.serve_speed(),
+            tuning.ball().serve_speed(),
             rule.per_hit_increase() * f32::from(returns),
         )
     }
@@ -270,6 +324,7 @@ mod tests {
                 .push(*start);
             Contribution {
                 speed_gain: 0.0,
+                paddle_height_factor: 1.0,
                 field: None,
             }
         }
@@ -428,6 +483,7 @@ mod tests {
         fn contribute(&self, _start: &FlightStart) -> Contribution {
             Contribution {
                 speed_gain: 0.0,
+                paddle_height_factor: 1.0,
                 field: Some(Box::new(Swing)),
             }
         }
@@ -489,5 +545,99 @@ mod tests {
             before = after;
         }
         panic!("the ball never reached x = {target_x}");
+    }
+
+    fn paddle_heights(app: &mut App) -> Vec<f32> {
+        app.world_mut()
+            .query::<&Paddle>()
+            .iter(app.world())
+            .map(|paddle| paddle.height())
+            .collect()
+    }
+
+    /// A match in play with Shrink beside Speed, as escalation would set it.
+    fn playing_with_shrink() -> App {
+        let mut app = playing();
+        let tuning = app.world().resource::<Tuning>().clone();
+        app.world_mut().resource_mut::<ActiveEffects>().set(
+            &[EffectId::Speed, EffectId::Shrink],
+            &tuning,
+            Mode::Classic,
+        );
+        app
+    }
+
+    /// M2 spec 2.6.1's done-condition: both paddles reach the tuned minimum
+    /// at full dial and are whole again for the next rally. The embedded
+    /// dial starts to move after return 3 and is full at return 15.
+    #[test]
+    fn both_paddles_shrink_to_the_minimum_at_full_dial_and_restore_for_the_next_rally() {
+        let mut app = playing_with_shrink();
+        for _ in 0..3 {
+            into_the_right_paddle(&mut app, Vec2::new(200.0, 0.0));
+        }
+        frame(&mut app);
+        assert_eq!(
+            paddle_heights(&mut app),
+            [14.0, 14.0],
+            "the dial has not started"
+        );
+
+        for _ in 3..9 {
+            into_the_right_paddle(&mut app, Vec2::new(200.0, 0.0));
+        }
+        frame(&mut app);
+        // Half way from return 3 to return 15: half way from 14 to 8.
+        for height in paddle_heights(&mut app) {
+            assert_near(height, 11.0, 1e-4);
+        }
+
+        for _ in 9..15 {
+            into_the_right_paddle(&mut app, Vec2::new(200.0, 0.0));
+        }
+        frame(&mut app);
+        for height in paddle_heights(&mut app) {
+            assert_near(height, 8.0, 1e-4);
+        }
+        into_the_right_paddle(&mut app, Vec2::new(200.0, 0.0));
+        frame(&mut app);
+        for height in paddle_heights(&mut app) {
+            assert_near(height, 8.0, 1e-4);
+        }
+
+        app.world_mut()
+            .resource_mut::<NextState<MatchState>>()
+            .set(MatchState::Countdown);
+        frame(&mut app);
+        frame(&mut app);
+        assert_eq!(match_state(&app), MatchState::Countdown);
+        assert_eq!(paddle_heights(&mut app), [14.0, 14.0]);
+    }
+
+    /// The paddles follow the flight one step after the return that starts it.
+    #[test]
+    fn the_paddles_take_a_flights_height_one_step_after_it_starts() {
+        let mut app = playing_with_shrink();
+        for _ in 0..9 {
+            into_the_right_paddle(&mut app, Vec2::new(200.0, 0.0));
+        }
+        let before = paddle_heights(&mut app);
+        frame(&mut app);
+        let after = paddle_heights(&mut app);
+        assert!(
+            after[0] < before[0] && after[1] < before[1],
+            "{before:?} then {after:?}"
+        );
+    }
+
+    /// Without Shrink in play the paddles keep their height however long the rally.
+    #[test]
+    fn with_speed_alone_the_paddles_keep_their_height() {
+        let mut app = playing();
+        for _ in 0..20 {
+            into_the_right_paddle(&mut app, Vec2::new(200.0, 0.0));
+        }
+        frame(&mut app);
+        assert_eq!(paddle_heights(&mut app), [14.0, 14.0]);
     }
 }
