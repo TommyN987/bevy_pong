@@ -2,8 +2,9 @@
 //! files now hold it. Confirm, by either seat, or Escape returns to the main
 //! menu.
 //!
-//! What a profile gained is its records now against a copy taken on entering
-//! the match, so the screen shows exactly what was recorded: nothing for a
+//! What a profile gained is its records now, in the mode the match was played
+//! in (M2 spec 2.8.4), against a copy taken on entering the match, so the
+//! screen shows exactly what was recorded: nothing for a
 //! Guest or the computer, nothing when one profile sat on both seats.
 //! Persistence records the result in the frame `MatchEnded` is sent, before
 //! the match enters `MatchOver`.
@@ -141,8 +142,10 @@ fn show_match_over(
         .into_iter()
         .filter_map(|id| {
             let after = find(&profiles, id)?;
-            let before = find(&at_start.0, id).map_or_else(Records::default, Profile::records);
-            gain_line(after.name().as_str(), before, after.records())
+            let mode = config.mode;
+            let before = find(&at_start.0, id)
+                .map_or_else(Records::default, |profile| profile.records(mode));
+            gain_line(after.name().as_str(), before, after.records(mode))
                 .map(|line| (line, after.color()))
         })
         .collect();

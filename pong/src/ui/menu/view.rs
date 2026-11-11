@@ -15,7 +15,7 @@ use bevy::ui::widget::Text;
 use bevy::ui::{
     AlignItems, BorderColor, Display, FlexDirection, JustifyContent, Node, UiRect, Val,
 };
-use pong_core::domain::{Player, ProfileId, Seat};
+use pong_core::domain::{Mode, Player, ProfileId, Seat};
 use pong_core::features::persistence::model::{Profile, Profiles, Settings, WindowMode};
 use pong_core::features::tuning::{SeatKeys, Tuning};
 
@@ -67,6 +67,10 @@ pub(super) fn label(item: MenuItem, profiles: &Profiles, settings: Settings) -> 
         MenuItem::OpenWindowMode => white(window(settings.window_mode)),
         MenuItem::SetVolume(volume) => white(&volume.percent().to_string()),
         MenuItem::SetWindowMode(mode) => white(window(mode)),
+        MenuItem::Mode(Mode::Classic) => white("Classic"),
+        MenuItem::Mode(Mode::Chaos { cap }) => {
+            white(&format!("Chaos {}", "●".repeat(usize::from(cap.get()))))
+        }
         MenuItem::Friend => white("Friend"),
         MenuItem::Computer(difficulty) => white(&"★".repeat(usize::from(difficulty.stars()))),
         MenuItem::PointsToWin(points) => white(&points.to_string()),
@@ -103,6 +107,7 @@ fn heading(screen: MenuScreen, editing: Option<&Profile>) -> String {
         MenuScreen::Settings => "Settings".to_owned(),
         MenuScreen::Volume => "Volume".to_owned(),
         MenuScreen::WindowMode => "Screen".to_owned(),
+        MenuScreen::Mode => "Mode".to_owned(),
         MenuScreen::Opponent => "vs".to_owned(),
         MenuScreen::PointsToWin => "Points".to_owned(),
         MenuScreen::PickProfile(_) => "Who?".to_owned(),
@@ -254,21 +259,23 @@ pub(super) fn follow_cursor(
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroU8;
+
     use bevy::color::Srgba;
-    use pong_core::domain::{Difficulty, Player, ProfileId};
+    use pong_core::domain::{Difficulty, Mode, Player, ProfileId};
     use pong_core::features::persistence::model::{
-        Profile, ProfileName, Profiles, Records, Settings, WindowMode,
+        Profile, ProfileName, Profiles, RecordsByMode, Settings, WindowMode,
     };
 
-    use super::label;
-    use crate::ui::menu::MenuItem;
+    use super::{heading, label};
+    use crate::ui::menu::{MenuItem, MenuScreen};
 
     fn mia() -> Profiles {
         let profile = Profile::new(
             ProfileId(4),
             ProfileName::new("Mia").expect("valid"),
             Srgba::BLUE,
-            Records::default(),
+            RecordsByMode::default(),
         )
         .expect("valid");
         Profiles::new(vec![profile]).expect("one profile")
@@ -299,6 +306,29 @@ mod tests {
         ] {
             assert_eq!(label(item, &mia(), settings).0, expected, "{item:?}");
         }
+    }
+
+    /// M2 spec 2.8.1: Classic, Chaos ●, Chaos ●●, Chaos ●●●.
+    #[test]
+    fn mode_rows_read_as_the_mode_and_a_dot_per_effect_at_once() {
+        let chaos = |cap| Mode::Chaos {
+            cap: NonZeroU8::new(cap).expect("above zero"),
+        };
+        for (mode, expected) in [
+            (Mode::Classic, "Classic"),
+            (chaos(1), "Chaos ●"),
+            (chaos(3), "Chaos ●●●"),
+        ] {
+            assert_eq!(
+                label(MenuItem::Mode(mode), &mia(), Settings::default()).0,
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn the_mode_screen_is_headed_by_one_word() {
+        assert_eq!(heading(MenuScreen::Mode, None), "Mode");
     }
 
     #[test]

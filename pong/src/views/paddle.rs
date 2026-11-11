@@ -108,7 +108,7 @@ mod tests {
     use pong_core::domain::{
         Controller, Difficulty, MatchConfig, Mode, Player, ProfileId, Seat, SeatPlayers,
     };
-    use pong_core::features::persistence::model::{Profile, ProfileName, Profiles, Records};
+    use pong_core::features::persistence::model::{Profile, ProfileName, Profiles, RecordsByMode};
     use pong_core::kernel::geometry::Side;
 
     use super::{GLOW, PADDLE, glowing, paddle_color};
@@ -118,7 +118,7 @@ mod tests {
             ProfileId(1),
             ProfileName::new("Zoë").expect("valid"),
             color,
-            Records::default(),
+            RecordsByMode::default(),
         )
         .expect("valid");
         Profiles::new(vec![zoe]).expect("one profile")

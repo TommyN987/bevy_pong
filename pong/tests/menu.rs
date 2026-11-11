@@ -30,7 +30,7 @@ use pong_core::domain::{
 use pong_core::features::persistence::document::{decode_profiles, decode_settings};
 use pong_core::features::persistence::io::SavePaths;
 use pong_core::features::persistence::model::{
-    Profile, ProfileName, Profiles, Records, Settings, Volume, WindowMode,
+    Profile, ProfileName, Profiles, RecordsByMode, Settings, Volume, WindowMode,
 };
 use pong_core::features::tuning::Tuning;
 use pong_core::flow::states::AppState;
@@ -64,7 +64,7 @@ fn menu_app_with_zoe_and_max() -> App {
             id,
             ProfileName::new(name).expect("valid"),
             Srgba::RED,
-            Records::default(),
+            RecordsByMode::default(),
         )
         .expect("valid")
     };
@@ -114,6 +114,17 @@ fn pick(app: &mut App, item: MenuItem, (down, confirm): (KeyCode, KeyCode)) {
 
 const LEFT: (KeyCode, KeyCode) = (LEFT_DOWN, LEFT_CONFIRM);
 const RIGHT: (KeyCode, KeyCode) = (RIGHT_DOWN, RIGHT_CONFIRM);
+
+/// Play, then Classic: the way to the opponent screen for a test that is
+/// not about the mode (M2 spec 2.8.1 put the mode screen first).
+fn play_classic(app: &mut App) {
+    pick(app, MenuItem::Play, LEFT);
+    pick(app, MenuItem::Mode(Mode::Classic), LEFT);
+}
+
+fn chaos(cap: u8) -> Mode {
+    Mode::Chaos { cap: points(cap) }
+}
 
 fn points(n: u8) -> NonZeroU8 {
     NonZeroU8::new(n).expect("not zero")
@@ -167,7 +178,7 @@ fn quit_ends_the_game() {
 #[test]
 fn points_to_win_offers_the_tuned_choices_with_the_default_under_the_cursor() {
     let mut app = menu_app();
-    pick(&mut app, MenuItem::Play, LEFT);
+    play_classic(&mut app);
     assert_eq!(screen(&app), MenuScreen::Opponent);
     assert_eq!(
         list(&app).items(),
@@ -190,7 +201,7 @@ fn points_to_win_offers_the_tuned_choices_with_the_default_under_the_cursor() {
 #[test]
 fn two_friends_pick_left_seat_first_then_right_and_the_match_starts() {
     let mut app = menu_app();
-    pick(&mut app, MenuItem::Play, LEFT);
+    play_classic(&mut app);
     pick(&mut app, MenuItem::Friend, RIGHT);
     pick(&mut app, MenuItem::PointsToWin(points(5)), LEFT);
     assert_eq!(screen(&app), MenuScreen::PickProfile(Seat::Left));
@@ -214,7 +225,7 @@ fn two_friends_pick_left_seat_first_then_right_and_the_match_starts() {
 #[test]
 fn during_a_seats_pick_the_other_seats_keys_do_nothing() {
     let mut app = menu_app_with_zoe_and_max();
-    pick(&mut app, MenuItem::Play, LEFT);
+    play_classic(&mut app);
     pick(&mut app, MenuItem::Friend, LEFT);
     pick(&mut app, MenuItem::PointsToWin(points(10)), LEFT);
     assert_eq!(screen(&app), MenuScreen::PickProfile(Seat::Left));
@@ -234,7 +245,7 @@ fn during_a_seats_pick_the_other_seats_keys_do_nothing() {
 #[test]
 fn the_right_seat_is_not_offered_the_left_seats_profile_and_both_get_it_in_the_match() {
     let mut app = menu_app_with_zoe_and_max();
-    pick(&mut app, MenuItem::Play, LEFT);
+    play_classic(&mut app);
     pick(&mut app, MenuItem::Friend, LEFT);
     pick(&mut app, MenuItem::PointsToWin(points(10)), LEFT);
     assert_eq!(
@@ -272,7 +283,7 @@ fn the_right_seat_is_not_offered_the_left_seats_profile_and_both_get_it_in_the_m
 #[test]
 fn the_seat_that_confirms_the_computer_plays_it_on_its_side_and_picks_alone() {
     let mut app = menu_app_with_zoe_and_max();
-    pick(&mut app, MenuItem::Play, LEFT);
+    play_classic(&mut app);
     pick(&mut app, MenuItem::Computer(Difficulty::TwoStars), RIGHT);
     assert_eq!(screen(&app), MenuScreen::PointsToWin);
     tap(&mut app, LEFT_DOWN);
@@ -296,7 +307,7 @@ fn the_seat_that_confirms_the_computer_plays_it_on_its_side_and_picks_alone() {
 #[test]
 fn back_and_escape_return_to_the_screen_before_and_the_new_path_is_the_one_played() {
     let mut app = menu_app_with_zoe_and_max();
-    pick(&mut app, MenuItem::Play, LEFT);
+    play_classic(&mut app);
     pick(&mut app, MenuItem::Friend, LEFT);
     pick(&mut app, MenuItem::PointsToWin(points(10)), LEFT);
     pick(&mut app, MenuItem::Player(Player::Profile(ZOE)), LEFT);
@@ -415,7 +426,7 @@ fn type_name(app: &mut App, name: &str) {
 
 /// From the main menu to the left seat's name screen, against the computer.
 fn to_the_left_name_screen(app: &mut App) {
-    pick(app, MenuItem::Play, LEFT);
+    play_classic(app);
     pick(app, MenuItem::Computer(Difficulty::OneStar), LEFT);
     pick(app, MenuItem::PointsToWin(points(10)), LEFT);
     pick(app, MenuItem::NewProfile, LEFT);
@@ -594,7 +605,7 @@ fn screen_alignment(app: &mut App) -> AlignItems {
 #[test]
 fn a_seats_screen_sits_on_its_half_under_its_keys() {
     let mut app = menu_app();
-    pick(&mut app, MenuItem::Play, LEFT);
+    play_classic(&mut app);
     assert_eq!(seat_cue(&mut app), Vec::<String>::new());
     assert_eq!(screen_alignment(&mut app), AlignItems::Center);
     pick(&mut app, MenuItem::Friend, LEFT);
@@ -618,7 +629,7 @@ fn the_name_screen_sits_on_its_seats_half_without_a_key_cue() {
 
 /// From the main menu to the left seat's profile list, against the computer.
 fn to_the_left_profile_list(app: &mut App) {
-    pick(app, MenuItem::Play, LEFT);
+    play_classic(app);
     pick(app, MenuItem::Computer(Difficulty::OneStar), LEFT);
     pick(app, MenuItem::PointsToWin(points(10)), LEFT);
     assert_eq!(screen(app), MenuScreen::PickProfile(Seat::Left));
@@ -748,7 +759,7 @@ fn a_profile_deleted_after_yes_is_gone_from_the_list_and_the_file() {
 #[test]
 fn the_other_seats_pick_cannot_be_edited() {
     let mut app = menu_app_with_zoe_and_max();
-    pick(&mut app, MenuItem::Play, LEFT);
+    play_classic(&mut app);
     pick(&mut app, MenuItem::Friend, LEFT);
     pick(&mut app, MenuItem::PointsToWin(points(10)), LEFT);
     pick(&mut app, MenuItem::Player(Player::Profile(ZOE)), LEFT);
@@ -942,7 +953,7 @@ fn a_list_opened_near_its_end_still_shows_a_full_window() {
 #[test]
 fn the_points_picked_are_saved_and_under_the_cursor_next_time() {
     let mut app = menu_app();
-    pick(&mut app, MenuItem::Play, LEFT);
+    play_classic(&mut app);
     pick(&mut app, MenuItem::Friend, LEFT);
     pick(&mut app, MenuItem::PointsToWin(points(15)), LEFT);
     assert_eq!(
@@ -961,7 +972,79 @@ fn the_points_picked_are_saved_and_under_the_cursor_next_time() {
 fn a_saved_pick_no_longer_offered_opens_on_the_tuned_default() {
     let mut app = menu_app();
     app.world_mut().resource_mut::<Settings>().points_to_win = Some(points(7));
-    pick(&mut app, MenuItem::Play, LEFT);
+    play_classic(&mut app);
     pick(&mut app, MenuItem::Friend, LEFT);
     assert_eq!(under_cursor(&app), MenuItem::PointsToWin(points(10)));
+}
+
+/// M2 spec 2.8.1: the mode screen comes first, before the opponent.
+#[test]
+fn play_leads_to_the_mode_screen_offering_classic_and_chaos_at_each_cap() {
+    let mut app = menu_app();
+    pick(&mut app, MenuItem::Play, LEFT);
+    assert_eq!(screen(&app), MenuScreen::Mode);
+    assert_eq!(
+        list(&app).items(),
+        [Mode::Classic, chaos(1), chaos(2), chaos(3)].map(MenuItem::Mode)
+    );
+    assert_eq!(under_cursor(&app), MenuItem::Mode(Mode::Classic));
+    pick(&mut app, MenuItem::Mode(chaos(2)), RIGHT);
+    assert_eq!(screen(&app), MenuScreen::Opponent);
+}
+
+/// M2 spec 2.8.1: all four playable keyboard-only from the menu.
+#[test]
+fn each_mode_row_starts_a_match_in_that_mode_by_keys_alone() {
+    for mode in [Mode::Classic, chaos(1), chaos(2), chaos(3)] {
+        let mut app = menu_app();
+        pick(&mut app, MenuItem::Play, LEFT);
+        pick(&mut app, MenuItem::Mode(mode), LEFT);
+        pick(&mut app, MenuItem::Computer(Difficulty::OneStar), LEFT);
+        pick(&mut app, MenuItem::PointsToWin(points(5)), LEFT);
+        pick(&mut app, MenuItem::Player(Player::Guest), LEFT);
+        assert_eq!(app_state(&app), AppState::InMatch, "{mode:?}");
+        assert_eq!(match_config(&app).mode, mode);
+    }
+}
+
+/// M2 spec 2.8.2: the last mode and cap picked are persisted, and the mode
+/// screen opens on them next time, here on the next Play.
+#[test]
+fn the_mode_picked_is_saved_and_under_the_cursor_next_time() {
+    let mut app = menu_app();
+    pick(&mut app, MenuItem::Play, LEFT);
+    pick(&mut app, MenuItem::Mode(chaos(2)), LEFT);
+    assert_eq!(app.world().resource::<Settings>().mode, chaos(2));
+    frame(&mut app);
+    assert_eq!(saved_settings(&app).mode, chaos(2));
+    tap(&mut app, KeyCode::Escape);
+    assert_eq!(screen(&app), MenuScreen::Mode);
+    assert_eq!(under_cursor(&app), MenuItem::Mode(chaos(2)));
+    tap(&mut app, LEFT_BACK);
+    assert_eq!(screen(&app), MenuScreen::Main);
+    pick(&mut app, MenuItem::Play, LEFT);
+    assert_eq!(under_cursor(&app), MenuItem::Mode(chaos(2)));
+}
+
+/// A saved cap the screen does not offer: the first row, Classic.
+#[test]
+fn a_saved_cap_the_mode_screen_does_not_offer_opens_on_classic() {
+    let mut app = menu_app();
+    app.world_mut().resource_mut::<Settings>().mode = chaos(9);
+    pick(&mut app, MenuItem::Play, LEFT);
+    assert_eq!(under_cursor(&app), MenuItem::Mode(Mode::Classic));
+}
+
+/// A mode picked on an abandoned path does not reach the match.
+#[test]
+fn backing_out_to_the_mode_screen_and_picking_again_plays_the_new_mode() {
+    let mut app = menu_app();
+    pick(&mut app, MenuItem::Play, LEFT);
+    pick(&mut app, MenuItem::Mode(chaos(3)), LEFT);
+    tap(&mut app, KeyCode::Escape);
+    pick(&mut app, MenuItem::Mode(Mode::Classic), LEFT);
+    pick(&mut app, MenuItem::Computer(Difficulty::OneStar), LEFT);
+    pick(&mut app, MenuItem::PointsToWin(points(5)), LEFT);
+    pick(&mut app, MenuItem::Player(Player::Guest), LEFT);
+    assert_eq!(match_config(&app).mode, Mode::Classic);
 }

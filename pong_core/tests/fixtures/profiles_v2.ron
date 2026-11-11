@@ -1,0 +1,51 @@
+// Released profiles format, version 2 (M2 spec 2.8.3): version 1 with each
+// profile's records kept per mode. Never edit this file: it is what a game of
+// that version wrote, and every later game must still read it.
+// Id 2 is absent on purpose: a deleted profile leaves a gap.
+(
+    version: 2,
+    profiles: [
+        (
+            id: 1,
+            name: "Zoë",
+            color: (
+                red: 1.0,
+                green: 0.3,
+                blue: 0.25,
+            ),
+            records: (
+                classic: (
+                    wins: 4,
+                    losses: 2,
+                    longest_rally: 17,
+                ),
+                chaos: (
+                    wins: 1,
+                    losses: 3,
+                    longest_rally: 9,
+                ),
+            ),
+        ),
+        (
+            id: 3,
+            name: "Max",
+            color: (
+                red: 0.2,
+                green: 0.8,
+                blue: 0.9,
+            ),
+            records: (
+                classic: (
+                    wins: 0,
+                    losses: 0,
+                    longest_rally: 0,
+                ),
+                chaos: (
+                    wins: 0,
+                    losses: 0,
+                    longest_rally: 0,
+                ),
+            ),
+        ),
+    ],
+)

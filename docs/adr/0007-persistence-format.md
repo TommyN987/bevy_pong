@@ -25,6 +25,7 @@ RON, one file per kind, each kind on its own version chain; the version is a top
 - A version above the one this game writes is `NewerVersion`; anything else that fails, an unknown older version or a value the model refuses included, is `Corrupt`.
 - Each released version's file types live in their own module (`v1`) and never change; version 2 adds `v2`, a variant, and a `v1 → v2` step.
   Amended 2026-11-09 at milestone close (plan 10.2): settings now have `v2`, which adds `points_to_win` as `Picked(n)` or `Unpicked`; a v1 file migrates to `Unpicked`.
+  Amended 2026-11-11 ([M2 phase 3 report](../plans/m2-phase3-report.md)): settings have `v3`, which adds `mode` as `Classic` or `Chaos(cap: n)`; a v2 file migrates to `Classic`. Profiles have `v2`, which keeps `records` per mode as `(classic: .., chaos: ..)`; a v1 file migrates with its records under `classic`. A version's module holds that version's shape of each kind, so `v2` holds a settings shape and a profiles shape, released at different times.
 - Colours are stored as the game's own `(red, green, blue)`, not Bevy's colour serialization; profiles are opaque.
 - Volume is a whole percent, `0..=100`, default 80; window mode defaults to borderless fullscreen.
 - Fixtures: `pong_core/tests/fixtures/<kind>_v<N>.ron`, never edited once released; per kind, a test asserts the fixture versions are exactly `1..=current`.
