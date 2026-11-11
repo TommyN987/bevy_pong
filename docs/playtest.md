@@ -23,6 +23,8 @@ Proposed change (at most one):
 
 - Menu with a single cursor and sequential seat selection: do the kids fight over the menu? If yes, revisit per-seat cursors (docs/architecture.md, Input). Outcome 2026-11-09: no fights reported (session below); single cursor kept.
 - Keyboard ghosting: both seats holding up, down, and action at once (six keys) all register on the kids' keyboard. Result required before C3 (spec 1.8.2). Outcome 2026-11-07: no; at most five of the six register. Every in-play hold of one direction plus action per seat registers (session below).
+- Catch-up bias (M2 spec 2.4.6): does one child win Chaos matches against the other so often that the loser stops wanting to play? M2 ships no bias; if yes, revisit one. No outcome yet.
+- Wind and Spin (M2 spec 2.6): they share one field with different causes. Do the children tell them apart in play? No outcome yet.
 
 ## Sessions
 
