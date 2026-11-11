@@ -15,7 +15,7 @@ use super::states::{AppState, MatchState};
 pub enum FixedStepPhase {
     /// Port resources become paddle intents (seats, AI).
     Intent,
-    /// Active effects adjust state and accumulate forces.
+    /// The effects in play are kept current; a serve starts a flight (ADR 0011).
     Effects,
     /// Paddles and ball move.
     Integrate,

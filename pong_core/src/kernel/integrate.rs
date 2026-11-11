@@ -16,8 +16,8 @@ pub struct Motion {
 
 /// Advances `motion` by `dt` seconds under `force`, semi-implicit Euler.
 ///
-/// The ball has unit mass, so `force` is also the acceleration. Field effects
-/// accumulate into it (spec 1.2.8 keeps the accumulator at zero for M1).
+/// The ball has unit mass, so `force` is also the acceleration. The caller
+/// asks the ball's flight for it ([`Flight::force`](super::flight::Flight::force)).
 /// Velocity updates first and the new velocity moves the position, which is
 /// stable for the oscillating forces that later effects add.
 ///

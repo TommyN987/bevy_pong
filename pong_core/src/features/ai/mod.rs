@@ -15,11 +15,13 @@ use bevy::time::{Fixed, Time};
 
 use crate::domain::{Controller, Difficulty, MatchConfig, Random};
 use crate::features::ball::{Ball, Position, Velocity};
+use crate::features::effects::BallFlight;
 use crate::features::paddle::Paddle;
 use crate::features::seats::{PaddleIntent, PaddleIntents};
 use crate::features::tuning::Tuning;
 use crate::flow::phases::FixedStepPhase;
 use crate::flow::states::AppState;
+use crate::kernel::flight::Flight;
 use crate::kernel::geometry::Side;
 use crate::kernel::integrate::Motion;
 use crate::kernel::predict::crossing_y;
@@ -72,14 +74,14 @@ fn steer_ai_paddles(
     time: Res<Time<Fixed>>,
     mut random: ResMut<Random>,
     mut intents: ResMut<PaddleIntents>,
-    balls: Query<(&Position, &Velocity), With<Ball>>,
+    balls: Query<(&Position, &Velocity, &BallFlight), With<Ball>>,
     paddles: Query<&Paddle>,
     mut controllers: Query<&mut MirrorController>,
 ) -> Result<(), BevyError> {
     if controllers.is_empty() {
         return Ok(());
     }
-    let (position, velocity) = balls
+    let (position, velocity, flight) = balls
         .single()
         .map_err(|err| BevyError::from(format!("AI steering needs exactly one ball: {err}")))?;
     let ball = Motion {
@@ -93,7 +95,14 @@ fn steer_ai_paddles(
                 "AI steering found no paddle on the {side:?} side"
             )));
         };
-        let intent = controller.steer(ball, *paddle, &tuning, time.delta(), &mut random);
+        let intent = controller.steer(
+            ball,
+            flight.flight(),
+            *paddle,
+            &tuning,
+            time.delta(),
+            &mut random,
+        );
         intents.set(side, intent);
     }
     Ok(())
@@ -168,12 +177,12 @@ impl MirrorController {
     }
 
     /// What this controller presses for one fixed step, given the ball's
-    /// motion now and its paddle (spec 1.4.6).
+    /// motion now, the flight it is in, and its paddle (spec 1.4.6).
     ///
     /// - The ball approaches when it flies toward this side's goal.
     /// - On the step the ball turns toward this side, the target becomes the
-    ///   kernel's predicted crossing of the paddle's contact line
-    ///   ([`crossing_y`] at [`Paddle::contact_x`]) plus an error drawn once
+    ///   kernel's predicted crossing of the paddle's contact line under
+    ///   `flight` ([`crossing_y`] at [`Paddle::contact_x`]) plus an error drawn once
     ///   from `±prediction_error`. It is not recomputed until the next approach.
     /// - The paddle holds still until `reaction_delay` has passed since the
     ///   turn, then steers to the target. A zero delay steers on the turn step.
@@ -187,6 +196,7 @@ impl MirrorController {
     pub fn steer(
         &mut self,
         ball: Motion,
+        flight: &Flight,
         paddle: Paddle,
         tuning: &Tuning,
         dt: Duration,
@@ -196,7 +206,7 @@ impl MirrorController {
         if !approaching {
             self.plan = Plan::Centre;
         } else if !self.was_approaching {
-            self.plan = self.plan_approach(ball, paddle, tuning, dt, random);
+            self.plan = self.plan_approach(ball, flight, paddle, tuning, dt, random);
         }
         self.was_approaching = approaching;
 
@@ -219,6 +229,7 @@ impl MirrorController {
     fn plan_approach(
         self,
         ball: Motion,
+        flight: &Flight,
         paddle: Paddle,
         tuning: &Tuning,
         dt: Duration,
@@ -228,6 +239,7 @@ impl MirrorController {
             tuning.arena(),
             tuning.ball().radius(),
             ball,
+            flight,
             paddle.contact_x(tuning),
             dt.as_secs_f32(),
         );
@@ -284,6 +296,7 @@ mod tests {
     use crate::features::tuning::{EMBEDDED_RON, Tuning};
     use crate::flow::FIXED_HZ;
     use crate::flow::states::MatchState;
+    use crate::kernel::flight::Flight;
     use crate::kernel::geometry::Side;
     use crate::kernel::integrate::Motion;
     use crate::kernel::random::Pcg32;
@@ -468,7 +481,7 @@ mod tests {
         for i in 0..steps {
             let flown = start.velocity * step().as_secs_f32() * f32::from(i);
             let now = ball(start.position + flown, start.velocity);
-            let intent = ai.steer(now, paddle, tuning, step(), random);
+            let intent = ai.steer(now, &Flight::default(), paddle, tuning, step(), random);
             let dy = match intent {
                 PaddleIntent::Up => travel,
                 PaddleIntent::Down => -travel,
@@ -509,7 +522,14 @@ mod tests {
         ] {
             let paddle = paddle_at(Side::Right, y, &tuning);
             for course in [away, at_rest] {
-                let intent = ai(Side::Right).steer(course, paddle, &tuning, step(), &mut random);
+                let intent = ai(Side::Right).steer(
+                    course,
+                    &Flight::default(),
+                    paddle,
+                    &tuning,
+                    step(),
+                    &mut random,
+                );
                 assert_eq!(intent, toward_centre, "paddle at {y}, ball {course:?}");
             }
         }
@@ -525,11 +545,25 @@ mod tests {
         let coming = ball(Vec2::ZERO, Vec2::new(60.0, 30.0));
         let returned = ball(Vec2::new(73.0, 36.5), Vec2::new(-60.0, 30.0));
         assert_eq!(
-            ai.steer(coming, paddle, &tuning, step(), &mut random),
+            ai.steer(
+                coming,
+                &Flight::default(),
+                paddle,
+                &tuning,
+                step(),
+                &mut random
+            ),
             PaddleIntent::Up
         );
         assert_eq!(
-            ai.steer(returned, paddle, &tuning, step(), &mut random),
+            ai.steer(
+                returned,
+                &Flight::default(),
+                paddle,
+                &tuning,
+                step(),
+                &mut random
+            ),
             PaddleIntent::Down
         );
     }
@@ -575,11 +609,27 @@ mod tests {
         let away = ball(Vec2::ZERO, Vec2::new(-60.0, 30.0));
         let coming = ball(Vec2::ZERO, Vec2::new(60.0, 30.0));
         assert_eq!(
-            ai.steer(away, paddle, &tuning, step(), &mut random),
+            ai.steer(
+                away,
+                &Flight::default(),
+                paddle,
+                &tuning,
+                step(),
+                &mut random
+            ),
             PaddleIntent::Down
         );
         let after_turn: Vec<PaddleIntent> = (0..5)
-            .map(|_| ai.steer(coming, paddle, &tuning, step(), &mut random))
+            .map(|_| {
+                ai.steer(
+                    coming,
+                    &Flight::default(),
+                    paddle,
+                    &tuning,
+                    step(),
+                    &mut random,
+                )
+            })
             .collect();
         assert_eq!(
             after_turn,
@@ -605,7 +655,14 @@ mod tests {
         let away = ball(Vec2::ZERO, Vec2::new(-60.0, 0.0));
         let mut rests = Vec::new();
         for approach in 0..20 {
-            ai.steer(away, paddle, &tuning, step(), &mut random);
+            ai.steer(
+                away,
+                &Flight::default(),
+                paddle,
+                &tuning,
+                step(),
+                &mut random,
+            );
             let (settled, intents) = steer_for(&mut ai, paddle, coming, 40, &tuning, &mut random);
             // One draw per approach: the target holds, so the paddle comes to rest.
             assert!(
@@ -639,6 +696,7 @@ mod tests {
         // Straight across: the crossing is at y = 0.
         ai.steer(
             ball(Vec2::ZERO, Vec2::new(60.0, 0.0)),
+            &Flight::default(),
             paddle,
             &tuning,
             step(),
@@ -650,6 +708,7 @@ mod tests {
         assert!(aim.error != 0.0, "a drawn error, not none");
         ai.steer(
             ball(Vec2::ZERO, Vec2::new(-60.0, 0.0)),
+            &Flight::default(),
             paddle,
             &tuning,
             step(),
@@ -667,6 +726,7 @@ mod tests {
         // The turn aims at the crossing at y = 36.5.
         ai.steer(
             ball(Vec2::ZERO, Vec2::new(60.0, 30.0)),
+            &Flight::default(),
             paddle,
             &tuning,
             step(),
@@ -692,7 +752,14 @@ mod tests {
         // Over a million seconds to reach the paddle: beyond the prediction's reach.
         let crawling = ball(Vec2::ZERO, Vec2::new(1e-4, 0.0));
         assert_eq!(
-            ai(Side::Right).steer(crawling, paddle, &tuning, step(), &mut random),
+            ai(Side::Right).steer(
+                crawling,
+                &Flight::default(),
+                paddle,
+                &tuning,
+                step(),
+                &mut random
+            ),
             PaddleIntent::Down
         );
     }

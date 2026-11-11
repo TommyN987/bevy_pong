@@ -4,8 +4,8 @@
 //! `Side` is also vocabulary; it is defined in [`crate::kernel::geometry`]
 //! because geometry needs it first. Count (ADR 0002, ADR 0008): eight capped
 //! types of twelve (`Side`, `Seat`, `Difficulty`, `Controller`, `MatchConfig`,
-//! `Random`, `Player`, `SeatPlayers`), one identifier type outside the cap
-//! (`ProfileId`), and seven messages, each with one emitting feature,
+//! `Random`, `Player`, `SeatPlayers`), two identifier types outside the cap
+//! (`ProfileId`, `EffectId`), and seven messages, each with one emitting feature,
 //! `Notice` excepted.
 
 use std::num::NonZeroU8;
@@ -13,6 +13,7 @@ use std::num::NonZeroU8;
 use bevy::ecs::message::Message;
 use bevy::ecs::resource::Resource;
 use bevy::math::Vec2;
+use serde::{Deserialize, Serialize};
 
 use crate::kernel::geometry::Side;
 use crate::kernel::random::Pcg32;
@@ -67,6 +68,26 @@ pub enum Controller {
 /// so outside the vocabulary cap (ADR 0002, amended 2026-11-08).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ProfileId(pub u32);
+
+/// An effect's identity (ADR 0011): the name a mode lists, and later a room
+/// composes and an item carries. An identifier, so outside the vocabulary cap
+/// (ADR 0008).
+///
+/// The enum is closed and its serialized names are stable: a name written to
+/// a file keeps meaning the same effect. Behaviour is not matched on this
+/// type; each crate matches it once, to register the effect's half, and
+/// reaches the behaviour through the effect's trait.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum EffectId {
+    /// The ball leaves each paddle return faster (M2 spec 2.6.0).
+    #[serde(rename = "speed")]
+    Speed,
+}
+
+impl EffectId {
+    /// Every effect, in declaration order.
+    pub const ALL: [Self; 1] = [Self::Speed];
+}
 
 /// Who a seated human plays as (ADR 0008): the built-in Guest, never saved,
 /// or a child's profile.
@@ -255,8 +276,8 @@ mod tests {
     use bevy::ecs::system::ResMut;
 
     use super::{
-        BallHitPaddle, BallHitWall, Controller, Difficulty, MatchConfig, MatchEnded, Notice,
-        Player, PointScored, ProfileId, Random, Seat, SeatPlayers, Serve, SimFault,
+        BallHitPaddle, BallHitWall, Controller, Difficulty, EffectId, MatchConfig, MatchEnded,
+        Notice, Player, PointScored, ProfileId, Random, Seat, SeatPlayers, Serve, SimFault,
     };
     use crate::kernel::geometry::Side;
 
@@ -415,5 +436,32 @@ mod tests {
             Some(Player::Profile(ProfileId(2)))
         );
         assert_eq!(config.player_on(Side::Right), None);
+    }
+
+    /// M2 spec 2.3.1: every effect's name survives a round trip, and the
+    /// names are the ones files already hold.
+    #[test]
+    fn every_effect_id_round_trips_through_its_stable_name() {
+        for id in EffectId::ALL {
+            let text = ron::to_string(&id).expect("an effect id serializes");
+            let back: EffectId = ron::from_str(&text).expect("its own name parses");
+            assert_eq!(back, id, "{text}");
+        }
+        assert_eq!(
+            ron::to_string(&EffectId::Speed).expect("an effect id serializes"),
+            "speed"
+        );
+    }
+
+    /// `ALL` is written by hand; this match stops compiling when a variant is
+    /// added, pointing at the list to extend.
+    #[test]
+    fn all_lists_every_effect_once() {
+        for (index, id) in EffectId::ALL.into_iter().enumerate() {
+            let declared = match id {
+                EffectId::Speed => 0,
+            };
+            assert_eq!(index, declared);
+        }
     }
 }

@@ -24,6 +24,7 @@ use pong_core::features::seats::PaddleIntent;
 use pong_core::features::tuning::Tuning;
 use pong_core::flow::phases::{BallInPlay, FixedStepPhase};
 use pong_core::flow::states::{AppState, MatchState};
+use pong_core::kernel::flight::Flight;
 use pong_core::kernel::geometry::Side;
 use pong_core::kernel::integrate::Motion;
 use pong_core::kernel::predict::crossing_y;
@@ -124,7 +125,8 @@ impl Player {
             Side::Left => face.max.x + radius.value(),
             Side::Right => face.min.x - radius.value(),
         };
-        let target = crossing_y(tuning.arena(), radius, ball, face_x, dt)
+        // Classic has no fields, so an empty flight predicts what the ball does.
+        let target = crossing_y(tuning.arena(), radius, ball, &Flight::default(), face_x, dt)
             .map_or(0.0, |y| y + self.aim_error);
         let gap = target - paddle.center_y();
         if gap > 1.0 {

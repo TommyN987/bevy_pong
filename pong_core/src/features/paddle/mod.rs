@@ -15,6 +15,7 @@ use crate::features::seats::{PaddleIntent, PaddleIntents};
 use crate::features::tuning::{PaddleTuning, Tuning};
 use crate::flow::phases::FixedStepPhase;
 use crate::flow::states::AppState;
+use crate::kernel::flight::StepMotion;
 use crate::kernel::geometry::{Arena, LengthBounds, Side};
 
 /// Spawns one paddle per side for the length of a match and moves each by its
@@ -77,12 +78,14 @@ fn move_paddles(
 /// One side's paddle: an axis-aligned rectangle that slides along y near its
 /// goal line.
 ///
-/// The component holds only what changes during a match: where the paddle is
-/// and how tall it is. Thickness and inset are tuning constants read at use,
-/// so a reloaded tuning file applies to paddles already on the field.
+/// The component holds only what changes during a match: where the paddle is,
+/// how tall it is, and what it did in the current step. Thickness and inset
+/// are tuning constants read at use, so a reloaded tuning file applies to
+/// paddles already on the field.
 ///
 /// Invariants, kept by the constructor and the setters: height within the
-/// tuning bounds; the whole paddle inside the walls. Both hold because tuning
+/// tuning bounds; the whole paddle inside the walls; the step motion is the
+/// displacement the last [`move_by`](Self::move_by) actually made. Both hold because tuning
 /// guarantees `height_max ≤ arena.height` (plan 3.17), and across a reload
 /// because the plugin refits every paddle to the new file before it moves.
 /// Precondition of [`move_by`](Self::move_by): `height ≤ arena.height`;
@@ -92,6 +95,7 @@ pub struct Paddle {
     side: Side,
     center_y: f32,
     height: f32,
+    step_motion: StepMotion,
 }
 
 impl Paddle {
@@ -103,6 +107,7 @@ impl Paddle {
             side,
             center_y: 0.0,
             height: tuning.height_default(),
+            step_motion: StepMotion::Still,
         }
     }
 
@@ -124,18 +129,36 @@ impl Paddle {
         self.height
     }
 
-    /// Sets the height, pulled into `bounds`, then moves the paddle back
-    /// inside the walls if growing pushed it through one. The center stays
-    /// put otherwise.
-    pub fn set_height(&mut self, height: f32, bounds: LengthBounds, arena: Arena) {
-        self.height = bounds.clamp(height);
-        self.move_by(0.0, arena);
+    /// What the paddle did in the current fixed step: the displacement the
+    /// last [`move_by`](Self::move_by) made after the wall clamp, so a paddle
+    /// pressed against a wall is still (M2 spec 2.0.3). The paddle moves in
+    /// the integrate phase; read this in the collide phase or later.
+    #[must_use]
+    pub const fn step_motion(self) -> StepMotion {
+        self.step_motion
     }
 
-    /// Slides the paddle by `dy`, then keeps the whole paddle inside the walls.
+    /// Sets the height, pulled into `bounds`, then moves the paddle back
+    /// inside the walls if growing pushed it through one. The center stays
+    /// put otherwise. A resize is not the player's motion: the step motion
+    /// is left as it was.
+    pub fn set_height(&mut self, height: f32, bounds: LengthBounds, arena: Arena) {
+        self.height = bounds.clamp(height);
+        self.center_y = self.inside_the_walls(self.center_y, arena);
+    }
+
+    /// Slides the paddle by `dy`, then keeps the whole paddle inside the
+    /// walls, and records the displacement made as this step's motion.
     pub fn move_by(&mut self, dy: f32, arena: Arena) {
+        let before = self.center_y;
+        self.center_y = self.inside_the_walls(before + dy, arena);
+        self.step_motion = StepMotion::of(self.center_y - before);
+    }
+
+    /// `center_y` pulled back so the whole paddle is inside the walls.
+    fn inside_the_walls(self, center_y: f32, arena: Arena) -> f32 {
         let limit = arena.half_extents().y - self.height / 2.0;
-        self.center_y = (self.center_y + dy).clamp(-limit, limit);
+        center_y.clamp(-limit, limit)
     }
 
     /// The rectangle the ball collides with, in arena units: `tuning`'s
@@ -175,6 +198,7 @@ mod tests {
     use crate::features::seats::PaddleIntent;
     use crate::features::tuning::{EMBEDDED_RON, Tuning};
     use crate::flow::states::{AppState, MatchState};
+    use crate::kernel::flight::StepMotion;
     use crate::kernel::geometry::{LengthBounds, Side};
     use crate::kernel::test_support::{assert_near, standard_arena};
     use crate::testing::{
@@ -437,5 +461,59 @@ mod tests {
         paddle.set_height(30.0, bounds(), arena);
         assert_near(paddle.center_y(), 30.0, 1e-6);
         assert!(paddle.rect(&tuning()).max.y <= 45.0 + 1e-6);
+    }
+
+    /// M2 spec 2.0.3: the motion is what the paddle did, not what was asked.
+    #[test]
+    fn the_step_motion_is_the_displacement_made_so_a_paddle_at_a_wall_is_still() {
+        let arena = standard_arena();
+        let mut paddle = paddle();
+        assert_eq!(paddle.step_motion(), StepMotion::Still);
+        paddle.move_by(1.5, arena);
+        assert_eq!(paddle.step_motion(), StepMotion::Up);
+        paddle.move_by(-1.5, arena);
+        assert_eq!(paddle.step_motion(), StepMotion::Down);
+        paddle.move_by(0.0, arena);
+        assert_eq!(paddle.step_motion(), StepMotion::Still);
+        paddle.move_by(1_000.0, arena);
+        assert_eq!(
+            paddle.step_motion(),
+            StepMotion::Up,
+            "the step that reaches the wall moves"
+        );
+        paddle.move_by(1.5, arena);
+        assert_eq!(
+            paddle.step_motion(),
+            StepMotion::Still,
+            "pressed against the wall"
+        );
+    }
+
+    #[test]
+    fn a_resize_leaves_the_step_motion_as_it_was() {
+        let arena = standard_arena();
+        let mut paddle = paddle();
+        paddle.move_by(1_000.0, arena);
+        paddle.set_height(30.0, bounds(), arena);
+        assert_eq!(paddle.step_motion(), StepMotion::Up);
+    }
+
+    /// M2 spec 2.0.3's done-condition: up, still, and down read from a paddle
+    /// driven by each intent.
+    #[test]
+    fn a_paddle_driven_by_each_intent_reports_that_steps_motion() {
+        let mut app = headless_app(1);
+        boot(&mut app);
+        start_match(&mut app, two_humans());
+        for (intent, expected) in [
+            (PaddleIntent::Up, StepMotion::Up),
+            (PaddleIntent::Still, StepMotion::Still),
+            (PaddleIntent::Down, StepMotion::Down),
+        ] {
+            report_intent(&mut app, Seat::Left, intent);
+            frame(&mut app);
+            assert_eq!(paddles(&mut app)[0].step_motion(), expected, "{intent:?}");
+            assert_eq!(paddles(&mut app)[1].step_motion(), StepMotion::Still);
+        }
     }
 }

@@ -1,6 +1,7 @@
 //! Physics (spec 1.4.4): thin systems over the kernel. Integrate moves the ball
-//! between the walls; collide sweeps it against the paddles. The AI predicts
-//! with the same kernel functions these systems call.
+//! between the walls under its flight's forces; collide sweeps it against the
+//! paddles, and a paddle return starts the ball's next flight (M2 spec 2.2.4).
+//! The AI predicts with the same kernel functions these systems call.
 
 use bevy::app::{App, FixedUpdate, Plugin};
 use bevy::ecs::component::Component;
@@ -13,26 +14,30 @@ use bevy::time::{Fixed, Time};
 
 use crate::domain::{BallHitPaddle, BallHitWall};
 use crate::features::ball::{Ball, Position, Velocity};
+use crate::features::effects::{ActiveEffects, BallFlight};
 use crate::features::paddle::Paddle;
 use crate::features::tuning::Tuning;
 use crate::flow::phases::{BallInPlay, FixedStepPhase};
 use crate::kernel::collide::{Face, Impact, swept_circle_rect};
+use crate::kernel::flight::{FlightStart, Hit};
 use crate::kernel::integrate::{Motion, advance_between_walls};
 use crate::kernel::reflect::{HitOffset, mirror, paddle_reflection};
 
 /// Moves every ball in the integrate phase and resolves paddle contact in the
 /// collide phase. Emits [`BallHitWall`] and [`BallHitPaddle`].
 ///
-/// Makes [`Force`] and [`StepStart`] required components of [`Ball`], so the
-/// ball feature spawns balls without naming them. Precondition (Bevy's): no
-/// `Ball` exists before this plugin builds; the ball feature spawns in systems.
+/// Makes [`StepStart`] a required component of [`Ball`], so the ball feature
+/// spawns balls without naming it. Precondition (Bevy's): no `Ball` exists
+/// before this plugin builds; the ball feature spawns in systems.
+///
+/// Reads the ball's [`BallFlight`] and the [`ActiveEffects`], which the
+/// effects feature provides.
 pub struct PhysicsPlugin;
 
 impl Plugin for PhysicsPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<BallHitWall>()
             .add_message::<BallHitPaddle>()
-            .register_required_components::<Ball, Force>()
             .register_required_components::<Ball, StepStart>()
             .add_systems(
                 FixedUpdate,
@@ -44,12 +49,6 @@ impl Plugin for PhysicsPlugin {
             );
     }
 }
-
-/// Force on a ball this step, in units per second squared (unit mass).
-/// Effects add to it in the effects phase; integration spends it and zeroes it.
-/// Nothing adds to it in M1 (spec 1.2.8).
-#[derive(Component, Debug, Default, Clone, Copy, PartialEq)]
-pub struct Force(pub Vec2);
 
 /// Where a ball's centre was when the current fixed step began: the start of
 /// the path the collide phase sweeps, and the earlier end of a view's
@@ -70,23 +69,28 @@ fn integrate_ball(
     tuning: Res<Tuning>,
     time: Res<Time<Fixed>>,
     mut walls: MessageWriter<BallHitWall>,
-    mut balls: Query<(&mut Position, &mut Velocity, &mut Force, &mut StepStart), With<Ball>>,
+    mut balls: Query<
+        (
+            &mut Position,
+            &mut Velocity,
+            &mut BallFlight,
+            &mut StepStart,
+        ),
+        With<Ball>,
+    >,
 ) {
-    for (mut position, mut velocity, mut force, mut step_start) in &mut balls {
+    let dt = time.delta_secs();
+    for (mut position, mut velocity, mut flight, mut step_start) in &mut balls {
         step_start.0 = position.0;
-        let step = advance_between_walls(
-            tuning.arena(),
-            tuning.ball().radius(),
-            Motion {
-                position: position.0,
-                velocity: velocity.0,
-            },
-            force.0,
-            time.delta_secs(),
-        );
+        let motion = Motion {
+            position: position.0,
+            velocity: velocity.0,
+        };
+        let force = flight.flight().force(motion, dt);
+        let step = advance_between_walls(tuning.arena(), tuning.ball().radius(), motion, force, dt);
+        flight.tick();
         position.0 = step.motion.position;
         velocity.0 = step.motion.velocity;
-        force.0 = Vec2::ZERO;
         if step.bounced {
             walls.write(BallHitWall);
         }
@@ -94,9 +98,12 @@ fn integrate_ball(
 }
 
 /// Sweeps each ball along the path it took this step against every paddle and
-/// resolves the earliest contact: a face hit reflects by hit offset and speeds
-/// up; an end hit mirrors the vertical velocity. The remainder of the step is
-/// travelled along the new velocity through the same wall-bounded step.
+/// resolves the earliest contact. A face hit is a return: it starts the
+/// ball's next flight, asking each effect in play once, and reflects by hit
+/// offset at the speed the new flight gives. An end hit mirrors the vertical
+/// velocity and starts no flight: the ball flies on toward the goal. The
+/// remainder of the step is travelled along the new velocity through the same
+/// wall-bounded step.
 ///
 /// The sweep uses the straight line from the step's start to its end. A step
 /// that also bounced off a wall is swept along the folded line, which is wrong
@@ -105,14 +112,15 @@ fn integrate_ball(
 fn collide_ball_with_paddles(
     tuning: Res<Tuning>,
     time: Res<Time<Fixed>>,
+    active: Res<ActiveEffects>,
     paddles: Query<&Paddle>,
     mut hits: MessageWriter<BallHitPaddle>,
     mut walls: MessageWriter<BallHitWall>,
-    mut balls: Query<(&StepStart, &mut Position, &mut Velocity), With<Ball>>,
+    mut balls: Query<(&StepStart, &mut Position, &mut Velocity, &mut BallFlight), With<Ball>>,
 ) {
     let arena = tuning.arena();
     let ball = tuning.ball();
-    for (step_start, mut position, mut velocity) in &mut balls {
+    for (step_start, mut position, mut velocity, mut flight) in &mut balls {
         let start = step_start.position();
         let displacement = position.0 - start;
         let mut earliest: Option<(Impact, Paddle)> = None;
@@ -130,22 +138,34 @@ fn collide_ball_with_paddles(
         let contact = start + displacement * impact.toi;
         let reflected = match impact.face {
             Face::Left | Face::Right => {
+                let returns = flight.flight().returns().saturating_add(1);
+                flight.begin(active.start_flight(FlightStart {
+                    returns,
+                    hit: Some(Hit {
+                        side: paddle.side(),
+                        paddle_motion: paddle.step_motion(),
+                    }),
+                }));
                 let offset = HitOffset::new(contact.y, paddle.center_y(), paddle.height() / 2.0);
-                let speed = ball.speed_rule().after_hit(velocity.0.length());
+                let speed = ball
+                    .speed_rule()
+                    .launch(ball.serve_speed(), flight.flight().speed_gain());
                 paddle_reflection(paddle.side(), offset, speed, ball.max_deflection())
             }
             Face::Top | Face::Bottom => mirror(velocity.0, impact.face.normal()),
         };
         // The rest of the step continues from the contact along the new
-        // velocity, between the walls like any other movement.
+        // velocity, between the walls and under the flight like any other
+        // movement.
+        let leaving = Motion {
+            position: contact,
+            velocity: reflected,
+        };
         let remainder = advance_between_walls(
             arena,
             ball.radius(),
-            Motion {
-                position: contact,
-                velocity: reflected,
-            },
-            Vec2::ZERO,
+            leaving,
+            flight.flight().force(leaving, time.delta_secs()),
             time.delta_secs() * (1.0 - impact.toi),
         );
         position.0 = remainder.motion.position;
@@ -174,6 +194,7 @@ mod tests {
     use crate::features::paddle::Paddle;
     use crate::features::sanity::SanityPlugin;
     use crate::features::tuning::Tuning;
+    use crate::kernel::flight::Flight;
     use crate::kernel::geometry::Side;
     use crate::kernel::integrate::Motion;
     use crate::kernel::predict::crossing_y;
@@ -268,7 +289,7 @@ mod tests {
     }
 
     #[test]
-    fn a_ball_faster_than_the_paddle_is_thick_still_hits_the_face_speeds_up_and_deflects() {
+    fn a_ball_faster_than_the_paddle_is_thick_still_hits_the_face_and_deflects() {
         let mut app = match_app();
         let tuning = app.world().resource::<Tuning>().clone();
         // Right paddle face at x = 74, ball radius 1: contact at 73. From 72 at
@@ -278,11 +299,13 @@ mod tests {
         let (position, velocity) = ball_state(&mut app);
         assert!(position.x < 73.0, "{position:?}");
         assert!(velocity.x < 0.0 && velocity.y > 0.0, "{velocity:?}");
-        assert_near(
-            velocity.length(),
-            tuning.ball().speed_rule().after_hit(200.0),
-            1e-3,
-        );
+        // M2 spec 2.0.4: the launch speed follows the rally's return count,
+        // here the first, whatever speed the ball arrived at.
+        let shape = tuning.ball();
+        let first_return = shape
+            .speed_rule()
+            .launch(shape.serve_speed(), shape.speed_rule().per_hit_increase());
+        assert_near(velocity.length(), first_return, 1e-3);
         assert_eq!(
             take_recorded::<BallHitPaddle>(&mut app),
             vec![BallHitPaddle { side: Side::Right }]
@@ -354,10 +377,12 @@ mod tests {
         let rule = app.world().resource::<Tuning>().ball().speed_rule();
         place_ball(&mut app, Vec2::ZERO, Vec2::new(80.0, 0.0));
         let mut expected = 80.0;
+        let mut returns = 0_u16;
         for _ in 0..3_000 {
             frame(&mut app);
             for _ in take_recorded::<BallHitPaddle>(&mut app) {
-                expected = rule.after_hit(expected);
+                returns += 1;
+                expected = rule.launch(80.0, rule.per_hit_increase() * f32::from(returns));
                 assert_near(ball_state(&mut app).1.length(), expected, 1e-2);
             }
             if expected >= 250.0 {
@@ -383,8 +408,15 @@ mod tests {
             .resource::<Time<Fixed>>()
             .timestep()
             .as_secs_f32();
-        let predicted = crossing_y(tuning.arena(), tuning.ball().radius(), start, target_x, dt)
-            .expect("the ball flies toward the target");
+        let predicted = crossing_y(
+            tuning.arena(),
+            tuning.ball().radius(),
+            start,
+            &Flight::default(),
+            target_x,
+            dt,
+        )
+        .expect("the ball flies toward the target");
         let mut before = start.position;
         for _ in 0..1_000 {
             frame(&mut app);

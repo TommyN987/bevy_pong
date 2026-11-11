@@ -18,8 +18,9 @@ Plain math is also unit-testable without an `App`.
 | `geometry.rs` | `Side`, `Radius`, `LengthBounds`, `Arena` | Private fields, checked `new` returning `Result`. Holding one proves it valid. |
 | `integrate.rs` | `Motion`, `integrate`, `advance_between_walls`, `WallStep` | Semi-implicit Euler: velocity first, then position, stable under the oscillating forces later twists add. |
 | `collide.rs` | `swept_circle_rect`, `Impact`, `Face` | A swept circle is a ray against the rectangle grown by the radius, solved per axis (slab method). Corners are square: every contact lands on a face. |
-| `reflect.rs` | `HitOffset`, `MaxDeflection`, `paddle_reflection`, `mirror`, `SpeedRule` | Paddles aim by hit offset instead of mirroring, which gives the player control. Walls mirror. |
-| `predict.rs` | `crossing_y` | Steps the same `advance_between_walls` at the same `dt` the physics uses. |
+| `reflect.rs` | `HitOffset`, `MaxDeflection`, `paddle_reflection`, `mirror`, `SpeedRule` | Paddles aim by hit offset instead of mirroring, which gives the player control. Walls mirror. `SpeedRule::launch` adds the effects' gain to the serve speed and applies the cap. |
+| `flight.rs` | `Field`, `Flight`, `FlightStart`, `Hit`, `Contribution`, `StepMotion` | What holds from a serve or return to the next (ADR 0011). A `Field` is a pure lateral force; a `Flight` sums the fields and gains contributed at its start. Its clock counts steps, not seconds, so physics and prediction read the same time exactly. |
+| `predict.rs` | `crossing_y` | Steps the same `advance_between_walls` at the same `dt` under the same `Flight` the physics uses, reading the flight's clock ahead without advancing it. |
 | `random.rs` | `Pcg32` | Hand-rolled: reproducible from one `u64`, with no crate on the dependency treadmill. |
 | `test_support.rs` | `assert_near`, `assert_vec_near`, fixtures | Tests only. Exact float equality is a lint error; every assertion states its tolerance. |
 

@@ -1023,7 +1023,14 @@ mod tests {
         let tuning = valid();
         assert_near(tuning.arena().half_extents().y, 45.0, 1e-6);
         assert_near(tuning.ball().radius().value(), 1.0, 1e-6);
-        assert_near(tuning.ball().speed_rule().after_hit(80.0), 87.0, 1e-6);
+        assert_near(
+            tuning
+                .ball()
+                .speed_rule()
+                .launch(80.0, tuning.ball().speed_rule().per_hit_increase()),
+            87.0,
+            1e-6,
+        );
         assert_near(tuning.ball().serve_speed(), 80.0, 1e-6);
         assert_near(tuning.ball().max_deflection().radians(), FRAC_PI_3, 1e-6);
         assert_near(tuning.ball().serve_cone().radians(), FRAC_PI_3 / 2.0, 1e-6);

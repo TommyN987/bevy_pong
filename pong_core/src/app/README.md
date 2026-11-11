@@ -16,7 +16,7 @@ Build order and why:
 | `SeededRandomPlugin` | Inserts `Random::seeded(seed)` before features draw from it. |
 | `FlowPlugin` | States and phases before the features that name them. |
 | `BootPlugin` | The gate out of `Boot`. |
-| `TuningPlugin`, `SeatsPlugin`, `BallPlugin`, `PaddlePlugin`, `PhysicsPlugin`, `RulesPlugin`, `AiPlugin`, `SanityPlugin`, `PersistencePlugin` | The declared feature order. |
+| `TuningPlugin`, `SeatsPlugin`, `BallPlugin`, `PaddlePlugin`, `EffectsPlugin`, `PhysicsPlugin`, `RulesPlugin`, `AiPlugin`, `SanityPlugin`, `PersistencePlugin` | The declared feature order. |
 
 `seed` decides every random draw in the core.
 The shell passes fresh entropy each launch (`pong::seed`, plan 4.5); tests pass a constant.
