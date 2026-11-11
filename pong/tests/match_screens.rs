@@ -27,7 +27,9 @@ use pong::ui::style::KeyHint;
 use pong_core::domain::{
     BallHitPaddle, Controller, Difficulty, MatchConfig, Mode, Player, ProfileId, Seat, SeatPlayers,
 };
-use pong_core::features::persistence::model::{Profile, ProfileName, Profiles, Records};
+use pong_core::features::persistence::model::{
+    Profile, ProfileName, Profiles, Records, RecordsByMode,
+};
 use pong_core::features::rules::{MatchControl, Score};
 use pong_core::features::tuning::Tuning;
 use pong_core::flow::states::{AppState, MatchState};
@@ -53,7 +55,7 @@ fn screens_app() -> App {
             id,
             ProfileName::new(name).expect("valid"),
             Srgba::RED,
-            Records::default(),
+            RecordsByMode::default(),
         )
         .expect("valid")
     };
@@ -108,7 +110,7 @@ fn records(app: &App, id: ProfileId) -> Records {
         .iter()
         .find(|profile| profile.id() == id)
         .expect("the profile")
-        .records()
+        .records(Mode::Classic)
 }
 
 fn until(app: &mut App, state: MatchState) {
@@ -243,6 +245,53 @@ fn match_over_names_the_winner_and_what_each_profile_gained() {
     until(&mut app, MatchState::MatchOver);
     frame(&mut app);
     assert_eq!(texts::<WinnerHeading>(&mut app), ["Zoë wins!"]);
+    assert_eq!(
+        texts::<GainLine>(&mut app),
+        ["Zoë +1 win, best rally 3", "Max +1 loss, best rally 3"]
+    );
+}
+
+/// M2 spec 2.8.4: match over shows the played mode's records delta.
+#[test]
+fn after_a_chaos_match_match_over_shows_what_each_profile_gained_in_chaos() {
+    let mut app = screens_app();
+    let chaos = MatchConfig {
+        mode: Mode::Chaos {
+            cap: NonZeroU8::MIN,
+        },
+        ..humans(zoe_and_max(), 1)
+    };
+    start_match(&mut app, chaos);
+    score_for(&mut app, Side::Left);
+    until(&mut app, MatchState::MatchOver);
+    frame(&mut app);
+    assert_eq!(texts::<GainLine>(&mut app), ["Zoë +1 win", "Max +1 loss"]);
+}
+
+/// A best rally in one mode is no gain in the other: Classic's 17 does not
+/// hide a first Chaos rally of 3.
+#[test]
+fn a_rally_record_in_classic_does_not_hide_a_shorter_first_one_in_chaos() {
+    let mut app = screens_app();
+    app.world_mut()
+        .resource_mut::<Profiles>()
+        .records_mut(ZOE, Mode::Classic)
+        .expect("Zoë exists")
+        .record_rally(17);
+    let chaos = MatchConfig {
+        mode: Mode::Chaos {
+            cap: NonZeroU8::MIN,
+        },
+        ..humans(zoe_and_max(), 1)
+    };
+    start_match(&mut app, chaos);
+    let mut hits = app.world_mut().resource_mut::<Messages<BallHitPaddle>>();
+    for _ in 0..3 {
+        hits.write(BallHitPaddle { side: Side::Left });
+    }
+    score_for(&mut app, Side::Left);
+    until(&mut app, MatchState::MatchOver);
+    frame(&mut app);
     assert_eq!(
         texts::<GainLine>(&mut app),
         ["Zoë +1 win, best rally 3", "Max +1 loss, best rally 3"]

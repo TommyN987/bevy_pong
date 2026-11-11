@@ -299,7 +299,7 @@ Profiles and settings kept between runs (spec 1.4.9); the file format is ADR 000
 | System | Runs | Does |
 |---|---|---|
 | `load_saves` | `OnEnter(Boot)` | Reads both files and inserts `Profiles`, `Settings`, and the private `SaveState`; the Boot gate waits for them (spec 1.4.10). |
-| `record_match_result` | `Update`, on `MatchEnded` | A win to the winning side's player, a loss to the loser's, and to both the match's longest rally if it beats their record, through `MatchConfig::player_on` (ADR 0008). Guest and computer sides record nothing; one profile on both seats records nothing. An unknown profile id is an error. |
+| `record_match_result` | `Update`, on `MatchEnded` | In the records of the match's mode (M2 spec 2.8.3): a win to the winning side's player, a loss to the loser's, and to both the match's longest rally if it beats their record, through `MatchConfig::player_on` (ADR 0008). Guest and computer sides record nothing; one profile on both seats records nothing. An unknown profile id is an error. |
 | `write_saves_at_match_end` | `Update`, on `MatchEnded`, after `record_match_result` | Writes each writable file whose encoding differs from what it last wrote. |
 | `write_saves_after_menu_change` | `Update`, in `Menu`, when `Profiles` or `Settings` changed since it last ran | The same write, so a change on the menu screens survives the game closing before a match ends (plan 8.1). |
 
@@ -313,8 +313,8 @@ Nothing is written during a match: a change made in one is written at its end, o
 
 | Module | Holds |
 |---|---|
-| `model` | `Profiles`, `Profile`, `ProfileName`, `Records`, `Settings`, `Volume`, `WindowMode`. Constructors check every value, so a model in hand is valid. `Profiles::create` gives a new profile the id after the highest, so ids stay unique (plan 8.1); `rename`, `recolor`, and `remove` hand back what they replace or take (plans 8.2, 8.4). |
-| `document` | `encode_*` and `decode_*` per kind; the frozen `v1` and `v2` shapes; the versioned enums and their migration chains. Settings are at version 2 (the last points-to-win picked, plan 10.2), reached from version 1 by `From<v1::SettingsFile>`; profiles are at version 1. |
+| `model` | `Profiles`, `Profile`, `ProfileName`, `Records`, `RecordsByMode`, `Settings`, `Volume`, `WindowMode`. Constructors check every value, so a model in hand is valid. A profile keeps one `Records` per mode, not per cap: `RecordsByMode::of` matches on `Mode` and ignores the cap, so a new mode does not compile until it has records. `Settings` holds the last mode picked, Classic before the first pick. `Profiles::create` gives a new profile the id after the highest, so ids stay unique (plan 8.1); `rename`, `recolor`, and `remove` hand back what they replace or take (plans 8.2, 8.4). |
+| `document` | `encode_*` and `decode_*` per kind; the frozen `v1`, `v2`, and `v3` shapes; the versioned enums and their migration chains, one `From` step per version. Settings are at version 3: version 2 added the last points-to-win picked (plan 10.2), version 3 the last mode picked (M2 spec 2.8.2), and a version 2 file migrates to Classic. Profiles are at version 2: records per mode (M2 spec 2.8.3), and a version 1 file migrates with its records under Classic. |
 | `io` | The `SavePaths` port and `write_atomically`. |
 | `load` | The per-file load policy: `load`, `Loaded`, `LoadError`, backup names. |
 

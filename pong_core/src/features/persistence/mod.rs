@@ -228,9 +228,10 @@ fn load_saves(
     });
 }
 
-/// Credits a finished match to the profiles that played it (spec 1.4.9): a
-/// win to the winning side's player, a loss to the losing side's, and to
-/// both the match's longest rally if it beats their record (plan 7.4). A Guest or
+/// Credits a finished match to the profiles that played it (spec 1.4.9), in
+/// the records of the mode it was played in (M2 spec 2.8.3): a win to the
+/// winning side's player, a loss to the losing side's, and to both the
+/// match's longest rally if it beats their record (plan 7.4). A Guest or
 /// a computer side records nothing; one profile on both seats records
 /// nothing at all (decided 2026-11-08). Runs before the match-end write, so
 /// the file holds the result.
@@ -259,23 +260,24 @@ fn record_match_result(
         Some(Player::Guest) | None => None,
     };
     let (winner_id, loser_id) = (profile_on(winner), profile_on(winner.opposite()));
+    let mode = config.mode;
     if winner_id.is_some() && winner_id == loser_id {
         return Ok(());
     }
     if let Some(unknown) = [winner_id, loser_id]
         .into_iter()
         .flatten()
-        .find(|&id| profiles.records_mut(id).is_none())
+        .find(|&id| profiles.records_mut(id, mode).is_none())
     {
         return Err(BevyError::from(format!(
             "the match named {unknown:?}, which no profile has"
         )));
     }
-    if let Some(records) = winner_id.and_then(|id| profiles.records_mut(id)) {
+    if let Some(records) = winner_id.and_then(|id| profiles.records_mut(id, mode)) {
         records.add_win();
         records.record_rally(longest_rally);
     }
-    if let Some(records) = loser_id.and_then(|id| profiles.records_mut(id)) {
+    if let Some(records) = loser_id.and_then(|id| profiles.records_mut(id, mode)) {
         records.add_loss();
         records.record_rally(longest_rally);
     }
@@ -358,7 +360,9 @@ mod tests {
 
     use super::document::{decode_profiles, decode_settings, encode_profiles};
     use super::io::SavePaths;
-    use super::model::{Profile, ProfileName, Profiles, Records, Settings, Volume, WindowMode};
+    use super::model::{
+        Profile, ProfileName, Profiles, Records, RecordsByMode, Settings, Volume, WindowMode,
+    };
     use crate::domain::{
         BallHitPaddle, Controller, Difficulty, MatchConfig, Mode, Notice, Player, ProfileId, Seat,
         SeatPlayers,
@@ -445,6 +449,7 @@ mod tests {
             volume: Volume::new(30).expect("in range"),
             window_mode: WindowMode::Windowed,
             points_to_win: None,
+            mode: Mode::Classic,
         }
     }
 
@@ -701,7 +706,7 @@ mod tests {
             ProfileId(1),
             ProfileName::new("Mia").expect("valid"),
             Srgba::RED,
-            Records::default(),
+            RecordsByMode::default(),
         )
         .expect("valid");
         app.insert_resource(Profiles::new(vec![mia]).expect("one profile"));
@@ -739,7 +744,7 @@ mod tests {
                 id,
                 ProfileName::new(name).expect("valid"),
                 Srgba::RED,
-                Records::default(),
+                RecordsByMode::default(),
             )
             .expect("valid")
         };
@@ -756,7 +761,7 @@ mod tests {
             .iter()
             .find(|profile| profile.id() == id)
             .expect("the profile exists")
-            .records()
+            .records(Mode::Classic)
     }
 
     fn seats(left_seat: Player, right_seat: Player) -> SeatPlayers {
@@ -813,6 +818,40 @@ mod tests {
         );
         assert_eq!(wins_losses(&app, ZOE), (1, 0));
         assert_eq!(wins_losses(&app, MAX), (0, 1));
+    }
+
+    /// M2 spec 2.8.3: a Chaos match leaves Classic's records untouched.
+    #[test]
+    fn a_chaos_match_is_recorded_under_chaos_and_leaves_classic_untouched() {
+        let mut app = zoe_and_max();
+        let chaos = MatchConfig {
+            mode: Mode::Chaos {
+                cap: NonZeroU8::MIN,
+            },
+            ..to_one_point(
+                Controller::Human(Seat::Left),
+                Controller::Human(Seat::Right),
+                seats(Player::Profile(ZOE), Player::Profile(MAX)),
+            )
+        };
+        start_match(&mut app, chaos);
+        left_scores_the_winning_point(&mut app);
+        leave_match(&mut app);
+
+        let by_mode = |id| {
+            app.world()
+                .resource::<Profiles>()
+                .as_slice()
+                .iter()
+                .find(|profile| profile.id() == id)
+                .expect("the profile exists")
+                .records_by_mode()
+        };
+        let (zoe, max) = (by_mode(ZOE), by_mode(MAX));
+        assert_eq!((zoe.chaos.wins, zoe.chaos.losses), (1, 0));
+        assert_eq!((max.chaos.wins, max.chaos.losses), (0, 1));
+        assert_eq!(zoe.classic, Records::default());
+        assert_eq!(max.classic, Records::default());
     }
 
     /// The side a seat plays decides, not the seat's name: here the right

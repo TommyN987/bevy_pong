@@ -1,0 +1,12 @@
+// Released settings format, version 3 (M2 spec 2.8.2): version 2 plus the
+// last mode picked, with its cap. Never edit this file: it is what a game of
+// that version wrote, and every later game must still read it.
+(
+    version: 3,
+    volume_percent: 70,
+    window_mode: Windowed,
+    points_to_win: Picked(5),
+    mode: Chaos(
+        cap: 2,
+    ),
+)

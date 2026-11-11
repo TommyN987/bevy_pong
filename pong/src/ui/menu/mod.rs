@@ -6,8 +6,8 @@
 //! sideways. Shared screens take either seat's keys; a seat's own screens
 //! take only its keys; Escape always backs out.
 //!
-//! The flow: `Main` → `Opponent` → `PointsToWin` → `PickProfile` per human seat →
-//! the match. Two friends pick left seat first, then right. Against the
+//! The flow: `Main` → `Mode` → `Opponent` → `PointsToWin` → `PickProfile` per
+//! human seat → the match (M2 spec 2.8.1 put the mode first). Two friends pick left seat first, then right. Against the
 //! computer, the seat that confirmed the computer plays on its own side and
 //! makes every later pick. New on a profile list leads to `NameProfile`, then
 //! `PickColor`, and back to the list with the new profile under the cursor.
@@ -89,6 +89,8 @@ pub enum MenuScreen {
     Volume,
     /// Fullscreen or a window.
     WindowMode,
+    /// Classic, or Chaos at a cap of one to three effects (M2 spec 2.8.1).
+    Mode,
     /// A friend or the computer at one to three stars.
     Opponent,
     /// The tuning's points-to-win choices.
@@ -127,6 +129,7 @@ impl MenuScreen {
             | Self::Settings
             | Self::Volume
             | Self::WindowMode
+            | Self::Mode
             | Self::Opponent
             | Self::PointsToWin => None,
         }
@@ -136,7 +139,7 @@ impl MenuScreen {
 /// One row of a menu list.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MenuItem {
-    /// Main: on to the opponent.
+    /// Main: on to the mode.
     Play,
     /// Main: the settings screen.
     Settings,
@@ -150,6 +153,8 @@ pub enum MenuItem {
     SetVolume(Volume),
     /// Window mode: this mode.
     SetWindowMode(WindowMode),
+    /// Mode: play this mode.
+    Mode(Mode),
     /// Opponent: two humans.
     Friend,
     /// Opponent: the computer at this difficulty.
@@ -322,9 +327,14 @@ impl Opponent {
     }
 }
 
+/// The most effects at once the mode screen offers: Chaos ● to Chaos ●●●
+/// (M2 spec 2.8.1), one row per count the schedule's thresholds can reach.
+const MAX_CHAOS_CAP: u8 = 3;
+
 /// The picks so far. Cleared when Play is picked.
 #[derive(Resource, Debug, Clone)]
 struct MatchDraft {
+    mode: Option<Mode>,
     opponent: Option<Opponent>,
     points_to_win: Option<NonZeroU8>,
     players: SeatPlayers,
@@ -340,6 +350,7 @@ struct MatchDraft {
 impl Default for MatchDraft {
     fn default() -> Self {
         Self {
+            mode: None,
             opponent: None,
             points_to_win: None,
             players: SeatPlayers::GUESTS,
@@ -354,9 +365,11 @@ impl MatchDraft {
     /// The match the picks describe. A seat the computer leaves empty is
     /// Guest, so a pick from an abandoned path never reaches the match.
     fn match_config(&self) -> Result<MatchConfig, BevyError> {
-        let (Some(opponent), Some(points_to_win)) = (self.opponent, self.points_to_win) else {
+        let (Some(mode), Some(opponent), Some(points_to_win)) =
+            (self.mode, self.opponent, self.points_to_win)
+        else {
             return Err(BevyError::from(
-                "the match started before its opponent and points were picked",
+                "the match started before its mode, opponent, and points were picked",
             ));
         };
         let (left, right) = opponent.controllers();
@@ -375,9 +388,7 @@ impl MatchDraft {
                 right_seat: player(Seat::Right),
             },
             points_to_win,
-            // The mode screen arrives with M2 plan phase 3; until then the
-            // menu starts Classic.
-            mode: Mode::Classic,
+            mode,
         })
     }
 
@@ -430,6 +441,7 @@ impl MatchDraft {
             | MenuScreen::Settings
             | MenuScreen::Volume
             | MenuScreen::WindowMode
+            | MenuScreen::Mode
             | MenuScreen::Opponent => Some(MenuDrivers::EitherSeat),
             MenuScreen::PointsToWin => Some(
                 self.opponent
@@ -449,7 +461,8 @@ impl MatchDraft {
     fn screen_before(&self, screen: MenuScreen) -> Option<MenuScreen> {
         Some(match screen {
             MenuScreen::Main => return None,
-            MenuScreen::Settings | MenuScreen::Opponent => MenuScreen::Main,
+            MenuScreen::Settings | MenuScreen::Mode => MenuScreen::Main,
+            MenuScreen::Opponent => MenuScreen::Mode,
             MenuScreen::Volume | MenuScreen::WindowMode => MenuScreen::Settings,
             MenuScreen::PointsToWin => MenuScreen::Opponent,
             MenuScreen::PickProfile(seat) => self
@@ -497,6 +510,9 @@ fn list_for(
                 .to_vec(),
             Some(MenuItem::SetWindowMode(settings.window_mode)),
         ),
+        // The last pick (M2 spec 2.8.2); a saved cap no row offers leaves
+        // the cursor on the first row.
+        MenuScreen::Mode => MenuList::new(mode_items(), Some(MenuItem::Mode(settings.mode))),
         MenuScreen::Opponent => MenuList::new(
             [
                 MenuItem::Friend,
@@ -575,6 +591,19 @@ fn list_for(
         }
         MenuScreen::PickColor(_) => MenuList::new(palette_items(tuning), None),
     }
+}
+
+/// One row per mode: Classic, then Chaos at each cap up to
+/// [`MAX_CHAOS_CAP`].
+fn mode_items() -> Vec<MenuItem> {
+    std::iter::once(Mode::Classic)
+        .chain(
+            (1..=MAX_CHAOS_CAP)
+                .filter_map(NonZeroU8::new)
+                .map(|cap| Mode::Chaos { cap }),
+        )
+        .map(MenuItem::Mode)
+        .collect()
 }
 
 /// One row per palette colour, in the palette's order.
@@ -665,7 +694,7 @@ fn choose(
     Ok(match item {
         MenuItem::Play => {
             *draft = MatchDraft::default();
-            Outcome::Show(MenuScreen::Opponent)
+            Outcome::Show(MenuScreen::Mode)
         }
         MenuItem::Settings => Outcome::Show(MenuScreen::Settings),
         MenuItem::Quit => Outcome::Quit,
@@ -678,6 +707,11 @@ fn choose(
         MenuItem::SetWindowMode(mode) => {
             settings.window_mode = mode;
             Outcome::Show(MenuScreen::Settings)
+        }
+        MenuItem::Mode(mode) => {
+            draft.mode = Some(mode);
+            settings.mode = mode;
+            Outcome::Show(MenuScreen::Opponent)
         }
         MenuItem::Friend => {
             draft.opponent = Some(Opponent::Friend);

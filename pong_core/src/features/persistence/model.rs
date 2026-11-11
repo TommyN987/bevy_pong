@@ -8,7 +8,7 @@ use std::num::NonZeroU8;
 use bevy::color::{Alpha, Srgba};
 use bevy::ecs::resource::Resource;
 
-use crate::domain::ProfileId;
+use crate::domain::{Mode, ProfileId};
 
 /// A save value a model refuses.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
@@ -50,6 +50,9 @@ pub enum InvalidSaveData {
     /// A saved points-to-win of zero: a match that ends before it starts.
     #[error("points to win is 0")]
     NoPointsToWin,
+    /// A saved Chaos cap of zero: Chaos with no effect ever in play.
+    #[error("the Chaos cap is 0")]
+    NoChaosCap,
 }
 
 /// A child's chosen name: one to twelve characters (spec 1.6.3), counted as
@@ -117,6 +120,35 @@ impl Records {
     }
 }
 
+/// A profile's records in each mode (M2 spec 2.8.3): one [`Records`] per
+/// mode, not per cap, so every Chaos cap shares Chaos's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct RecordsByMode {
+    /// Records from Classic matches; every record M1 kept is one.
+    pub classic: Records,
+    /// Records from Chaos matches, at any cap.
+    pub chaos: Records,
+}
+
+impl RecordsByMode {
+    /// The records `mode`'s matches count toward.
+    #[must_use]
+    pub const fn of(&self, mode: Mode) -> Records {
+        match mode {
+            Mode::Classic => self.classic,
+            Mode::Chaos { .. } => self.chaos,
+        }
+    }
+
+    /// The records `mode`'s matches count toward, to change.
+    pub const fn of_mut(&mut self, mode: Mode) -> &mut Records {
+        match mode {
+            Mode::Classic => &mut self.classic,
+            Mode::Chaos { .. } => &mut self.chaos,
+        }
+    }
+}
+
 /// One child's profile. The colour is the value the child picked, not a
 /// palette index, so reordering the palette leaves it alone (spec 1.4.8).
 #[derive(Debug, Clone, PartialEq)]
@@ -124,7 +156,7 @@ pub struct Profile {
     id: ProfileId,
     name: ProfileName,
     color: Srgba,
-    records: Records,
+    records: RecordsByMode,
 }
 
 impl Profile {
@@ -137,7 +169,7 @@ impl Profile {
         id: ProfileId,
         name: ProfileName,
         color: Srgba,
-        records: Records,
+        records: RecordsByMode,
     ) -> Result<Self, InvalidSaveData> {
         Ok(Self {
             id,
@@ -165,9 +197,15 @@ impl Profile {
         self.color
     }
 
-    /// Its records.
+    /// Its records in `mode`.
     #[must_use]
-    pub const fn records(&self) -> Records {
+    pub const fn records(&self, mode: Mode) -> Records {
+        self.records.of(mode)
+    }
+
+    /// Its records in every mode.
+    #[must_use]
+    pub const fn records_by_mode(&self) -> RecordsByMode {
         self.records
     }
 }
@@ -235,7 +273,7 @@ impl Profiles {
             ),
         };
         self.0
-            .push(Profile::new(id, name, color, Records::default())?);
+            .push(Profile::new(id, name, color, RecordsByMode::default())?);
         Ok(id)
     }
 
@@ -275,13 +313,13 @@ impl Profiles {
         Some(self.0.remove(index))
     }
 
-    /// The records of the profile with `id`, to change; `None` if no profile
-    /// has it. Ids cannot change through this, so they stay unique.
-    pub fn records_mut(&mut self, id: ProfileId) -> Option<&mut Records> {
+    /// The records in `mode` of the profile with `id`, to change; `None` if
+    /// no profile has it. Ids cannot change through this, so they stay unique.
+    pub fn records_mut(&mut self, id: ProfileId, mode: Mode) -> Option<&mut Records> {
         self.0
             .iter_mut()
             .find(|profile| profile.id == id)
-            .map(|profile| &mut profile.records)
+            .map(|profile| profile.records.of_mut(mode))
     }
 }
 
@@ -320,9 +358,9 @@ pub enum WindowMode {
     Windowed,
 }
 
-/// This device's settings (spec 1.4.9): master volume, window mode, and the
-/// last points-to-win picked (plan 10.2). A resource from `Boot` on (plan
-/// 7.2).
+/// This device's settings (spec 1.4.9): master volume, window mode, the last
+/// points-to-win picked (plan 10.2), and the last mode picked (M2 spec
+/// 2.8.2). A resource from `Boot` on (plan 7.2).
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Settings {
     /// Master volume.
@@ -332,6 +370,9 @@ pub struct Settings {
     /// The points-to-win picked last; `None` before the first pick. Not a
     /// default: tuning owns that, and the menu falls back to it.
     pub points_to_win: Option<NonZeroU8>,
+    /// The mode picked last, with its cap; Classic before the first pick.
+    /// Not an `Option`: no tuning default competes with it.
+    pub mode: Mode,
 }
 
 impl Default for Settings {
@@ -340,25 +381,29 @@ impl Default for Settings {
             volume: Volume(80),
             window_mode: WindowMode::BorderlessFullscreen,
             points_to_win: None,
+            mode: Mode::Classic,
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroU8;
+
     use bevy::color::Srgba;
 
     use super::{
-        InvalidSaveData, Profile, ProfileId, ProfileName, Profiles, Records, Settings, Volume,
-        WindowMode,
+        InvalidSaveData, Profile, ProfileId, ProfileName, Profiles, Records, RecordsByMode,
+        Settings, Volume, WindowMode,
     };
+    use crate::domain::Mode;
 
     fn profile(id: u32, color: Srgba) -> Result<Profile, InvalidSaveData> {
         Profile::new(
             ProfileId(id),
             ProfileName::new("Mia").expect("a valid name"),
             color,
-            Records::default(),
+            RecordsByMode::default(),
         )
     }
 
@@ -463,7 +508,12 @@ mod tests {
             panic!("expected one profile, got {profiles:?}");
         };
         assert_eq!(
-            (zoe.id(), zoe.name().as_str(), zoe.color(), zoe.records()),
+            (
+                zoe.id(),
+                zoe.name().as_str(),
+                zoe.color(),
+                zoe.records(Mode::Classic)
+            ),
             (ProfileId(1), "Zoë", Srgba::RED, Records::default())
         );
     }
@@ -519,7 +569,7 @@ mod tests {
     fn a_renamed_profile_keeps_its_id_colour_records_and_place() {
         let mut profiles = mia_and_max();
         profiles
-            .records_mut(ProfileId(1))
+            .records_mut(ProfileId(1), Mode::Classic)
             .expect("Mia exists")
             .add_win();
         assert_eq!(
@@ -534,7 +584,7 @@ mod tests {
                 zoe.id(),
                 zoe.name().as_str(),
                 zoe.color(),
-                zoe.records().wins
+                zoe.records(Mode::Classic).wins
             ),
             (ProfileId(1), "Zoë", Srgba::RED, 1)
         );
@@ -560,7 +610,7 @@ mod tests {
     fn a_recoloured_profile_keeps_its_id_name_records_and_place_and_turns_opaque() {
         let mut profiles = mia_and_max();
         profiles
-            .records_mut(ProfileId(1))
+            .records_mut(ProfileId(1), Mode::Classic)
             .expect("Mia exists")
             .add_win();
         assert_eq!(
@@ -575,7 +625,7 @@ mod tests {
                 mia.id(),
                 mia.name().as_str(),
                 mia.color(),
-                mia.records().wins
+                mia.records(Mode::Classic).wins
             ),
             (ProfileId(1), "Mia", Srgba::GREEN, 1)
         );
@@ -619,12 +669,39 @@ mod tests {
         ])
         .expect("distinct ids");
         profiles
-            .records_mut(ProfileId(2))
+            .records_mut(ProfileId(2), Mode::Classic)
             .expect("profile 2 exists")
             .add_win();
-        assert_eq!(profiles.as_slice()[1].records().wins, 1);
-        assert_eq!(profiles.as_slice()[0].records(), Records::default());
-        assert!(profiles.records_mut(ProfileId(9)).is_none());
+        assert_eq!(profiles.as_slice()[1].records(Mode::Classic).wins, 1);
+        assert_eq!(
+            profiles.as_slice()[0].records(Mode::Classic),
+            Records::default()
+        );
+        assert!(profiles.records_mut(ProfileId(9), Mode::Classic).is_none());
+    }
+
+    /// M2 spec 2.8.3: records are kept per mode, not per cap.
+    #[test]
+    fn records_are_kept_per_mode_and_every_chaos_cap_shares_one() {
+        let chaos = |cap| Mode::Chaos {
+            cap: NonZeroU8::new(cap).expect("above zero"),
+        };
+        let mut profiles = mia_and_max();
+        for cap in [1, 3] {
+            profiles
+                .records_mut(ProfileId(1), chaos(cap))
+                .expect("Mia exists")
+                .add_win();
+        }
+        let mia = &profiles.as_slice()[0];
+        assert_eq!(mia.records(chaos(2)).wins, 2);
+        assert_eq!(mia.records(Mode::Classic), Records::default());
+    }
+
+    /// M2 spec 2.8.2: before any pick, the mode screen starts on Classic.
+    #[test]
+    fn first_start_settings_name_classic_as_the_last_mode() {
+        assert_eq!(Settings::default().mode, Mode::Classic);
     }
 
     #[test]
