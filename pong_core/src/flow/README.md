@@ -36,7 +36,7 @@ so `OnEnter(Countdown)` sees entities spawned in `OnEnter(InMatch)`.
 | Phase | Work |
 |---|---|
 | `Intent` | Ports become paddle intents; serves launch. |
-| `Effects` | Active effects adjust state and add forces. Empty in M1. |
+| `Effects` | The effects in play are kept current, and a serve starts the rally's first flight (ADR 0011). |
 | `Integrate` | Paddles and ball move. |
 | `Collide` | Swept collisions, reflections, hit messages. |
 | `Rules` | Scoring and match end. |

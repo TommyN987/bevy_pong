@@ -8,6 +8,7 @@ use std::f32::consts::FRAC_PI_2;
 use std::fmt;
 
 pub mod collide;
+pub mod flight;
 pub mod geometry;
 pub mod integrate;
 pub mod predict;

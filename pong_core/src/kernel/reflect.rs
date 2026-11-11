@@ -76,7 +76,9 @@ pub fn mirror(velocity: Vec2, normal: Vec2) -> Vec2 {
     velocity - 2.0 * velocity.dot(normal) * normal
 }
 
-/// How ball speed changes on each paddle hit (spec 1.2.5, 1.2.7).
+/// How ball speed changes over a rally (spec 1.2.5, 1.2.7): what each paddle
+/// return adds, and the cap on the result. The Speed effect reads the
+/// increase; the base applies the cap in [`SpeedRule::launch`] (M2 spec 2.0.4).
 ///
 /// Invariants, enforced by [`SpeedRule::new`]: `per_hit_increase` is finite and
 /// at least zero, so speed never falls; `cap` is positive and finite, so speed
@@ -117,10 +119,19 @@ impl SpeedRule {
         })
     }
 
-    /// Speed after one paddle hit: `speed + per_hit_increase`, never above `cap`.
+    /// Speed a ball leaves a paddle at: `serve_speed` plus the effects' summed
+    /// `gain`, never above `cap`. The cap is the base's bound on the speed
+    /// channel (ADR 0011): whatever the effects add, the swept collision step
+    /// and the single wall fold stay valid.
     #[must_use]
-    pub fn after_hit(self, speed: f32) -> f32 {
-        (speed + self.per_hit_increase).min(self.cap)
+    pub fn launch(self, serve_speed: f32, gain: f32) -> f32 {
+        (serve_speed + gain).min(self.cap)
+    }
+
+    /// Units per second each paddle return adds, before the cap.
+    #[must_use]
+    pub const fn per_hit_increase(self) -> f32 {
+        self.per_hit_increase
     }
 
     /// The highest speed a hit can produce.
@@ -281,7 +292,8 @@ mod tests {
             } else {
                 Side::Left
             };
-            let speed = rule.after_hit(velocity.length());
+            let returns = f32::from(u16::try_from(hit + 1).expect("a thousand fits"));
+            let speed = rule.launch(80.0, rule.per_hit_increase() * returns);
             velocity = paddle_reflection(paddle, offset(2.0), speed, max_angle());
             assert!(
                 velocity.length() <= CAP + 1e-3,
@@ -295,18 +307,15 @@ mod tests {
     #[test]
     fn zero_increase_leaves_speed_unchanged() {
         let rule = speed_rule(0.0);
-        assert_near(rule.after_hit(80.0), 80.0, 1e-6);
-        assert_near(rule.after_hit(CAP), CAP, 1e-6);
+        assert_near(rule.launch(80.0, rule.per_hit_increase()), 80.0, 1e-6);
+        assert_near(rule.launch(CAP, rule.per_hit_increase()), CAP, 1e-6);
     }
 
     #[test]
     fn positive_increase_is_monotone_until_the_cap_then_flat() {
         let rule = speed_rule(60.0);
-        let speeds: Vec<f32> = (0..6)
-            .scan(80.0, |s, _| {
-                *s = rule.after_hit(*s);
-                Some(*s)
-            })
+        let speeds: Vec<f32> = (1..=6_u16)
+            .map(|returns| rule.launch(80.0, rule.per_hit_increase() * f32::from(returns)))
             .collect();
         for pair in speeds.windows(2) {
             assert!(pair[1] >= pair[0], "speed fell: {pair:?}");

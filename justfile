@@ -45,12 +45,13 @@ deny:
 
 # Layering (ADR 0002): flow imports no feature and not the roof; a feature imports
 # neither the roof nor a feature later in the order of pong_core/src/features/mod.rs.
+# ADR 0011: an effect's module imports the effects base and never another effect.
 # Production code only: each file is read up to its first `#[cfg(test)]` line, so
 # test modules must sit at the end of their file.
 arch-check:
     #!/usr/bin/env bash
     set -euo pipefail
-    order=(tuning seats ball paddle physics rules ai sanity persistence)
+    order=(tuning seats ball paddle effects physics rules ai sanity persistence)
     production() { sed '/^#\[cfg(test)\]/,$d' "$1"; }
     position() { local i; for i in "${!order[@]}"; do [[ ${order[$i]} == "$1" ]] && { echo "$i"; return; }; done; echo -1; }
     failed=0
@@ -76,6 +77,12 @@ arch-check:
                 fi
             done
         done
+    done
+    # ADR 0011: an effect reaches the effects base and nothing beside it.
+    for file in $(find pong_core/src/features/effects -name '*.rs' ! -path 'pong_core/src/features/effects/mod.rs'); do
+        if production "$file" | grep -nE '(super|features::effects)::(\{|[a-z_]+)'; then
+            echo "^ $file: an effect imports the effects base by name, never another effect"; failed=1
+        fi
     done
     exit "$failed"
 

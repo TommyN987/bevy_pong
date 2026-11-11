@@ -29,6 +29,7 @@ Add a `flow` layer between vocabulary and features, let features import data typ
   Amended 2026-11-09 at milestone close (`pong_core/src/app/boot.rs`): the gate reads all three, tuning, settings, and profiles.
 - Rule 1: a feature imports kernel, domain, flow, and the public components, resources, and messages of features earlier in the order declared in `features/mod.rs`:
   `tuning, seats, ball, paddle, physics, rules, ai, sanity, persistence`.
+  Amended 2026-11-11 (M2 spec 2.0.5, M2 plan 1.6): `effects` joins after `paddle` and before `physics`, which reads the flight the effects compose; `escalation` will join after `rules` in M2 plan phase 2. The order now reads `tuning, seats, ball, paddle, effects, physics, rules, ai, sanity, persistence`.
   Never another feature's systems or plugin internals; never `app/`.
 - Seats clears its own intents on entering `Countdown`; rules no longer imports seats.
 - Rule 3: the cap of twelve counts non-message vocabulary types.

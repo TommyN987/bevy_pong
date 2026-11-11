@@ -5,10 +5,11 @@ One directory per feature, each with a plugin at its root.
 ## Order and imports
 
 The order is declared in [`mod.rs`](mod.rs) (ADR 0002):
-`tuning, seats, ball, paddle, physics, rules, ai, sanity, persistence`.
+`tuning, seats, ball, paddle, effects, physics, rules, ai, sanity, persistence`.
 A feature may import the public components, resources, and messages of an earlier feature;
 never its systems, never a later feature, never the app roof.
-`just arch-check` enforces the order by grep.
+`just arch-check` enforces the order by grep,
+and that an effect's module imports the effects base and never another effect (ADR 0011).
 
 Every feature has one shape:
 its plugin registers its resources and messages,
@@ -93,8 +94,12 @@ Movement belongs to physics.
 ## paddle
 
 `Paddle` is a component that keeps its own invariants:
-height within the tuning bounds, and the whole paddle inside the walls.
-Its fields are private; `new`, `set_height`, and `move_by` maintain both.
+height within the tuning bounds, the whole paddle inside the walls,
+and a step motion that is the displacement its last move made.
+Its fields are private; `new`, `set_height`, and `move_by` maintain them.
+`step_motion()` reports what the paddle did, not what was asked:
+a paddle pressed against a wall is `Still` (M2 spec 2.0.3).
+The paddle moves in Integrate, so the motion is read in Collide or later.
 Thickness and inset are read from tuning at use by `rect(&Tuning)`, so a reload applies at once.
 
 | System | Runs | Does |
@@ -106,25 +111,64 @@ Thickness and inset are read from tuning at use by `rect(&Tuning)`, so a reload 
 Writing through `Query<&mut Paddle>` marks the component changed,
 which the view can use to know a paddle moved.
 
+## effects
+
+The contract every effect implements, the effects in play, and the flight they compose on the ball
+(ADR 0011, M2 spec 2.2 and 2.3).
+
+An effect never touches the simulation.
+At each flight start, a serve or a paddle return, it is asked once for a `Contribution`:
+its stance on every channel.
+The base composes the answers into a `Flight` (`kernel::flight`), which sits on the ball.
+Physics integrates under it and the AI predicts under it, so both see the same forces.
+Nothing changes in mid-flight but the flight's clock.
+
+| Piece | Shape and reason |
+|---|---|
+| `Effect` | A trait with no default methods: `id` and `contribute`. An effect that skips a part does not compile. |
+| `Contribution` (kernel) | A struct without `Default`. Adding a channel adds a field, and every effect stops compiling until it states its stance. |
+| `build` | The crate's one match on `EffectId`: the registration. A new variant does not compile until it is built there. |
+| `ActiveEffects` | Resource: the effects in play. `start_flight(start)` asks each once. Every channel composes by sum, so order does not matter. |
+| `BallFlight` | Component, required by `Ball`: the ball's flight. Replaced only at a flight start, cleared only between rallies. |
+| `speed.rs` | Speed: a launch-speed gain per return of the rally. One module per effect. |
+
+Two counts that look alike and are not:
+the flight counts returns, face hits that turn the ball back and start a flight;
+rules counts touches, every `BallHitPaddle`, an end clip included, for the rally record.
+M1 raised the speed on a face hit only, and the return count keeps that.
+
+Speed's gain depends on the return count alone, never on the ball's current speed (M2 spec 2.0.4),
+so a force that speeds the ball up in mid-air does not feed the ramp.
+The base adds the serve speed and applies the cap (`SpeedRule::launch`): bounds sit on the channel.
+
+| System | Runs | Does |
+|---|---|---|
+| `put_classic_effects_in_play` | `OnEnter(InMatch)` | Speed alone, until modes exist (M2 plan phase 2). |
+| `rebuild_effects_from_changed_tuning` | Effects | Rebuilds the effects in play when `Tuning` changed, so a dev reload reaches them. |
+| `clear_flights` | `OnEnter(Countdown)` | An empty flight: no returns, no forces. |
+| `start_flight_on_serve` | Effects, `BallInPlay` | On `Serve`, starts the rally's first flight, after the ball feature launched the ball in Intent. |
+
+Later flights start in physics, at a paddle return:
+the collide system needs the new flight's speed in the middle of its own run, so it calls `start_flight` directly.
+
 ## physics
 
 Thin systems over the kernel.
 
-`register_required_components::<Ball, Force>()` and `::<Ball, StepStart>()`
-make Bevy add both whenever a `Ball` is created.
+`register_required_components::<Ball, StepStart>()`
+makes Bevy add it whenever a `Ball` is created; effects does the same for `BallFlight`.
 A later feature extends an earlier feature's entity without the earlier one importing it.
 Bevy panics if a `Ball` archetype already exists at registration,
 so it happens at plugin build, before any system spawns a ball.
 
 | Component | Meaning |
 |---|---|
-| `Force` | Force this step (unit mass, so also acceleration). Effects add to it; integration spends and zeroes it. Zero in M1. |
 | `StepStart` | Centre at the start of the step: the sweep's start, and the view's earlier interpolation end (plan 4.8). |
 
 | System | Phase | Does |
 |---|---|---|
-| `integrate_ball` | Integrate | Saves `StepStart`, calls `advance_between_walls`, zeroes `Force`, writes `BallHitWall` on a bounce. |
-| `collide_ball_with_paddles` | Collide | Sweeps `StepStart → Position` against every paddle; takes the earliest contact; a face hit aims by offset and applies the speed rule, an end hit mirrors; the rest of the step continues along the new velocity. Writes `BallHitPaddle`. |
+| `integrate_ball` | Integrate | Saves `StepStart`, asks the flight for this step's force, calls `advance_between_walls`, ticks the flight's clock, writes `BallHitWall` on a bounce. |
+| `collide_ball_with_paddles` | Collide | Sweeps `StepStart → Position` against every paddle; takes the earliest contact; a face hit is a return: it starts the next flight, aims by offset, and leaves at the flight's launch speed; an end hit mirrors and starts no flight; the rest of the step continues along the new velocity. Writes `BallHitPaddle`. |
 
 Integration and collision are separate phases so `Effects` sits before one and `Sanity` after the other.
 The cost, documented on the system: a wall bounce and a paddle-end hit in the same step are swept along the folded line.

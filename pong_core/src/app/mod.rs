@@ -7,6 +7,7 @@ use bevy::app::{App, Plugin, PluginGroup, PluginGroupBuilder};
 use crate::domain::Random;
 use crate::features::ai::AiPlugin;
 use crate::features::ball::BallPlugin;
+use crate::features::effects::EffectsPlugin;
 use crate::features::paddle::PaddlePlugin;
 use crate::features::persistence::PersistencePlugin;
 use crate::features::physics::PhysicsPlugin;
@@ -52,6 +53,7 @@ impl PluginGroup for CorePlugins {
             .add(SeatsPlugin)
             .add(BallPlugin)
             .add(PaddlePlugin)
+            .add(EffectsPlugin)
             .add(PhysicsPlugin)
             .add(RulesPlugin)
             .add(AiPlugin)
@@ -84,6 +86,7 @@ mod tests {
     use crate::domain::Random;
     use crate::features::ai::AiPlugin;
     use crate::features::ball::BallPlugin;
+    use crate::features::effects::EffectsPlugin;
     use crate::features::paddle::PaddlePlugin;
     use crate::features::persistence::PersistencePlugin;
     use crate::features::physics::PhysicsPlugin;
@@ -123,6 +126,7 @@ mod tests {
         assert!(app.is_plugin_added::<SeatsPlugin>());
         assert!(app.is_plugin_added::<BallPlugin>());
         assert!(app.is_plugin_added::<PaddlePlugin>());
+        assert!(app.is_plugin_added::<EffectsPlugin>());
         assert!(app.is_plugin_added::<PhysicsPlugin>());
         assert!(app.is_plugin_added::<RulesPlugin>());
         assert!(app.is_plugin_added::<AiPlugin>());

@@ -25,6 +25,7 @@ Identifier types, which only name one thing of a kind, are outside the cap (ADR 
 | `Player` | enum | Who a seated human plays as: `Guest` (records nothing, never saved) or `Profile(ProfileId)` (ADR 0008). |
 | `SeatPlayers` | struct | A `Player` per seat; `GUESTS` for a match that records nothing. Keyed by seat, so a computer has none. |
 | `ProfileId` | identifier, outside the cap | A profile's identity, stable across renames. |
+| `EffectId` | identifier, outside the cap | An effect's identity, closed and serialized under a stable name (ADR 0011). Matched once per crate, to register; behaviour is reached through the effect's trait. |
 | `Random` | `Resource` | The core's only randomness, a seeded `Pcg32`. One seed reproduces a match. |
 
 ## Messages
