@@ -16,6 +16,9 @@ Obligation levels: MUST, SHOULD, MAY, WONT. Every item carries a done-condition.
 - The paddle has no velocity state; it moves by intent times speed, all or nothing. The collide phase does not know the paddle's motion. [confirmed, `features/paddle/mod.rs`, `features/physics/mod.rs`]
 - The collide phase resolves one contact per step and travels the remainder against the walls only. [confirmed, `features/physics/mod.rs`]
 - The AI plans once per approach and ignores later course changes. [confirmed, `features/ai/mod.rs`]
+- Tests call `crossing_y` in four files, and the speed rule in `sanity`, `ai`, and the soak. [confirmed, grep 2026-11-11]
+- Rules comes after physics in the feature order and counts hits in its own phase, after collide. [confirmed, `features/mod.rs`, `features/rules/mod.rs`]
+- The soak's running time, and so whether a soak per subset of six effects fits CI. [unknown; measured in M2 plan 4.3]
 - Sanity faults unless exactly one ball exists. [confirmed, `features/sanity/mod.rs`]
 - `Paddle` has a size setter clamped to tuning bounds: minimum 8, default 14; paddle thickness is 2. [confirmed, spec 1.4.3, `tuning.ron`]
 - The kernel has swept circle-versus-rectangle collision for axis-aligned rectangles. [confirmed, spec 1.2.3]
@@ -98,10 +101,11 @@ Each effect in 2.6 is held to these. A criterion's "falsified if" is its check.
 
 Phase one of the plan. No new behaviour.
 
-- **2.0.1 MUST** The flight (2.2), the contract (2.3), and Speed (2.6.0) exist, and Classic runs on them. Done: M1's suite passes unmodified under Classic; a test that differs only in the last float bits is named in the phase report.
+- **2.0.1 MUST** The flight (2.2), the contract (2.3), and Speed (2.6.0) exist, and Classic runs on them. Done: M1's suite passes under Classic with no assertion changed; call sites may change for a changed signature, each listed in the phase report; a test that differs only in the last float bits is named there too. Amended 2026-11-11 ([M2 plan](../plans/m2-plan.md)): the first wording, "passes unmodified", could not hold, since tests call `crossing_y` and the speed rule directly.
 - **2.0.2 MUST** M1's `Force` accumulator is removed. Done: no `Force` component remains in `pong_core`.
 - **2.0.3 MUST** The paddle exposes its motion in the current step. Done: a test reads up, still, and down from a paddle driven by each intent.
 - **2.0.4 MUST** Speed is a function of the rally's hit count, not of the ball's current speed. Done: a ball given extra vertical speed in flight leaves its next hit at the count's speed, by test.
+- **2.0.5 MUST** The feature order gains two places: `effects` after paddle and before physics, `escalation` after rules. Done: `features/mod.rs` and ADR 0002's list agree; `arch-check` is green. Added 2026-11-11 ([M2 plan](../plans/m2-plan.md)).
 
 ## 2.1 Modes
 
@@ -117,7 +121,7 @@ Each channel composes commutatively, so effects cannot see each other.
 - **2.2.1 MUST** Lateral force channel: the sum of the active fields, along y only; physics and the AI's prediction evaluate the same sum. Done: two dummy fields compose order-independently, by test; prediction equals simulation under the sum.
 - **2.2.2 MUST** Bounds sit on the channel. The base clamps vertical speed so the single-fold precondition holds at every tuned dial, and keeps the speed cap. Done: tuning validation rejects a configuration that could break the precondition; a test at the clamp folds once.
 - **2.2.3 MUST** Paddle modifier channel: a product on paddle height per side, clamped by `Paddle`'s API. Done: two dummy modifiers compose order-independently, by test.
-- **2.2.4 MUST** Flight-start hook: at a serve or a paddle hit each active effect is asked once for its contribution to the flight, given the hit count and, at a hit, the paddle's side and step motion. The composed flight sits on the ball. Done: a dummy effect is asked exactly once per flight and sees the paddle's motion at a hit, by test.
+- **2.2.4 MUST** Flight-start hook: at a serve or a paddle hit each active effect is asked once for its contribution to the flight, given the hit count and, at a hit, the paddle's side and step motion. The composed flight sits on the ball and owns the rally's hit count, since Speed needs the count inside the hit and rules counts only afterwards; rules keeps the records (amended 2026-11-11, [M2 plan](../plans/m2-plan.md)). Done: a dummy effect is asked exactly once per flight and sees the paddle's motion at a hit, by test.
 - **2.2.5 MUST** A view-only effect has no simulation contribution; its core half carries identity, the dial, and the AI flaw. Done: 2.6.3 ships with no kernel change.
 - **2.2.6 SHOULD** Obstacle channel: rectangles at any angle, swept by rotating the ball's path into the block's frame; a contact loop per step, bounded by a tuned count, in physics and prediction alike; a horizontal floor, so the ball keeps a minimum horizontal share of its speed after a block bounce. Done: a ball aimed level at a 45° face still reaches a paddle line; a ball in a wedge ends the step inside the contact bound; prediction equals simulation through two bounces.
   - **2.2.6.1 MAY** A bounce budget per flight. Done: only if a stall or trap is observed in play or in the soak.
@@ -147,7 +151,7 @@ Per [ADR 0011](../adr/0011-effect-identity-and-contract.md).
 
 ## 2.4 Escalation
 
-- **2.4.1 MUST** Breadth: the count of effects in play follows thresholds on the leader's progress toward the points target, capped by the match's cap. Defaults: one from the first point, two from 30%, three from 70%. Speed is always on and outside the count. Done: by test, a target of 5 gives one at leader scores 0–1, two at 2–3, three at 4; a target of 10 gives 0–2, 3–6, 7–9; a target of 21 gives 0–6, 7–14, 15–20; a cap of one or two holds the count there.
+- **2.4.1 MUST** Breadth: the count of effects in play follows thresholds on the leader's progress toward the points target, capped by the match's cap and by the number of shipped scheduled effects (the last added 2026-11-11, [M2 plan](../plans/m2-plan.md)). Defaults: one from the first point, two from 30%, three from 70%. Speed is always on and outside the count. Done: by test, a target of 5 gives one at leader scores 0–1, two at 2–3, three at 4; a target of 10 gives 0–2, 3–6, 7–9; a target of 21 gives 0–6, 7–14, 15–20; a cap of one or two holds the count there.
 - **2.4.2 MUST** Intensity: the rally's hit count, zero at the serve, reset on a point. Done: a scripted rally shows it rise per paddle hit and return to zero after `PointScored`.
 - **2.4.3 MUST** Effect parameters change only at a flight start; which effects are in play changes only between points. Done: 2.2.0's test, and a scripted match in which breadth never changes inside a rally.
 - **2.4.4 MUST** Selection: a bag of the shipped effects, shuffled per match from the seeded source. Every tuned interval of points scored, the oldest active effect leaves and the next from the bag joins. When the count rises, one joins and none leaves. Done: by seeded test, no effect repeats before the bag empties; exactly one effect changes per rotation; a fault restart rotates nothing; with an empty bench nothing rotates.
@@ -204,7 +208,7 @@ Coupling: Wind and Spin use the same field with different causes; whether they f
 
 ## 2.10 Playtest
 
-- **2.10.1 MUST** One logged session per shipped effect, in the observe-then-interpret template. Done: entries exist in `docs/playtest.md`.
+- **2.10.1 MUST** One logged session per shipped effect, in the observe-then-interpret template. Done: entries exist in `docs/playtest.md`. Amended 2026-11-11 ([M2 plan](../plans/m2-plan.md) 5.4): the kids first play Chaos after Wind lands, and that session covers Shrink and Wind.
 - **2.10.2 MUST** Drop rule: an effect is dropped by the user's ruling after its session, citing a logged observation, after one retune. A dropped effect is removed by its touch list. Done: the ruling is in the playtest log and the removal's diff in the phase report.
 - **2.10.3 MUST** The rotation interval (2.4.4) is chosen from play. Done: the value and the observation behind it are in the playtest log.
 
