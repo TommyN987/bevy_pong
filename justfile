@@ -39,6 +39,11 @@ test:
 test-core:
     cargo nextest run -p pong_core
 
+# The AI-versus-AI harness's numbers (M2 plan 4.2, E.4): rally lengths per pairing,
+# win rates per star, and the stack's R3 measure, printed by the tests that assert on them.
+ai-report:
+    cargo nextest run -p pong_core --test ai_matches --no-capture
+
 # License, advisory, and source checks.
 deny:
     cargo deny --log-level error check

@@ -245,16 +245,27 @@ pub struct Sandbox {
 }
 
 impl Sandbox {
+    /// Forces exactly `effects` into play, the always-on effects included:
+    /// what is not named is out. Kept in [`EffectId::ALL`]'s order, each
+    /// effect once, whatever the order and repeats of `effects`.
+    pub fn force_effects(&mut self, effects: &[EffectId]) {
+        let forced = EffectId::ALL
+            .into_iter()
+            .filter(|id| effects.contains(id))
+            .collect();
+        self.effects = Some(forced);
+        self.touched_match = true;
+    }
+
     /// Puts `effect` in the forced set, or takes it out. The first toggle
     /// starts from `in_play`, so it changes one effect and keeps the rest.
     pub fn toggle(&mut self, effect: EffectId, in_play: &[EffectId]) {
         let base = self.effects.as_deref().unwrap_or(in_play);
-        let forced = EffectId::ALL
+        let toggled: Vec<EffectId> = EffectId::ALL
             .into_iter()
             .filter(|id| base.contains(id) != (*id == effect))
             .collect();
-        self.effects = Some(forced);
-        self.touched_match = true;
+        self.force_effects(&toggled);
     }
 
     /// Holds every flight's return count at `returns`; `None` lets the rally
@@ -567,6 +578,25 @@ mod tests {
             Some([EffectId::Shrink].as_slice())
         );
         sandbox.toggle(EffectId::Shrink, &[]);
+        assert_eq!(
+            sandbox.forced_effects(),
+            Some([].as_slice()),
+            "no effect at all is a forced set too"
+        );
+    }
+
+    /// The whole set at once, for a harness that knows the set it wants:
+    /// the list is kept in the enum's order, each effect once.
+    #[test]
+    fn forcing_a_set_puts_exactly_that_set_in_play_and_touches_the_match() {
+        let mut sandbox = Sandbox::default();
+        sandbox.force_effects(&[EffectId::Shrink, EffectId::Speed, EffectId::Shrink]);
+        assert_eq!(
+            sandbox.forced_effects(),
+            Some([EffectId::Speed, EffectId::Shrink].as_slice())
+        );
+        assert!(sandbox.touched_match());
+        sandbox.force_effects(&[]);
         assert_eq!(
             sandbox.forced_effects(),
             Some([].as_slice()),
