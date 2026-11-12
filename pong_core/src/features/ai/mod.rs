@@ -1,5 +1,9 @@
 //! AI, mirror controller (spec 1.4.6): steers each paddle the match config
 //! gives to the computer, aiming where the kernel predicts the ball will cross.
+//!
+//! Under effects (M2 spec 2.3.12) the star's handicap is not the whole flaw:
+//! the effects in play add error and delay, and the AI predicts under the
+//! flight it believes in, which may not be the one the ball flies.
 
 use std::time::Duration;
 
@@ -8,14 +12,14 @@ use bevy::ecs::component::Component;
 use bevy::ecs::error::BevyError;
 use bevy::ecs::query::With;
 use bevy::ecs::schedule::IntoScheduleConfigs;
-use bevy::ecs::system::{Commands, Query, Res, ResMut};
+use bevy::ecs::system::{Commands, Query, Res, ResMut, SystemParam};
 use bevy::state::state::OnEnter;
 use bevy::state::state_scoped::DespawnOnExit;
 use bevy::time::{Fixed, Time};
 
 use crate::domain::{Controller, Difficulty, MatchConfig, Random};
 use crate::features::ball::{Ball, Position, Velocity};
-use crate::features::effects::BallFlight;
+use crate::features::effects::{ActiveEffects, BallFlight, FlightFlaw};
 use crate::features::paddle::Paddle;
 use crate::features::seats::{PaddleIntent, PaddleIntents};
 use crate::features::tuning::Tuning;
@@ -57,13 +61,23 @@ fn spawn_controllers(mut commands: Commands, config: Res<MatchConfig>) {
     }
 }
 
+/// What the controllers may see of the ball: the ball itself, and the
+/// effects in play that colour how an AI reads its flight.
+#[derive(SystemParam)]
+struct SeenBall<'w, 's> {
+    balls: Query<'w, 's, (&'static Position, &'static Velocity, &'static BallFlight), With<Ball>>,
+    effects: Res<'w, ActiveEffects>,
+}
+
 /// Each controller reads the ball as it is now and writes its side's intent.
 ///
-/// The serve also runs in the intent phase, unordered against this system:
-/// on the step the ball is served toward an AI, the AI sees the ball either
-/// still at rest or already served, as the schedule falls, so its reaction
-/// may start one step late. Every other turn comes from a collision in an
-/// earlier step and is seen at once.
+/// The serve also runs in the intent phase, unordered against this system,
+/// and the serve's flight begins in the effects phase after both. A ball in
+/// no flight is not an approach ([`Sighting::flight`]), so on the step of a
+/// serve the AI sees no approach, whether it ran before the serve or after:
+/// it plans on the next step, under the serve's flight. Every other turn
+/// comes from a return in an earlier step, which began its flight then, and
+/// is seen at once.
 ///
 /// # Errors
 /// With a controller to steer: not exactly one ball, or no paddle on the
@@ -74,19 +88,24 @@ fn steer_ai_paddles(
     time: Res<Time<Fixed>>,
     mut random: ResMut<Random>,
     mut intents: ResMut<PaddleIntents>,
-    balls: Query<(&Position, &Velocity, &BallFlight), With<Ball>>,
+    seen: SeenBall,
     paddles: Query<&Paddle>,
     mut controllers: Query<&mut MirrorController>,
 ) -> Result<(), BevyError> {
     if controllers.is_empty() {
         return Ok(());
     }
-    let (position, velocity, flight) = balls
+    let (position, velocity, flight) = seen
+        .balls
         .single()
         .map_err(|err| BevyError::from(format!("AI steering needs exactly one ball: {err}")))?;
-    let ball = Motion {
-        position: position.0,
-        velocity: velocity.0,
+    let sighting = Sighting {
+        ball: Motion {
+            position: position.0,
+            velocity: velocity.0,
+        },
+        flight: flight.in_flight(),
+        effects: &seen.effects,
     };
     for mut controller in &mut controllers {
         let side = controller.side;
@@ -95,17 +114,24 @@ fn steer_ai_paddles(
                 "AI steering found no paddle on the {side:?} side"
             )));
         };
-        let intent = controller.steer(
-            ball,
-            flight.flight(),
-            *paddle,
-            &tuning,
-            time.delta(),
-            &mut random,
-        );
+        let intent = controller.steer(sighting, *paddle, &tuning, time.delta(), &mut random);
         intents.set(side, intent);
     }
     Ok(())
+}
+
+/// What a controller sees of the ball in one fixed step.
+#[derive(Clone, Copy)]
+pub struct Sighting<'a> {
+    /// The ball's motion now.
+    pub ball: Motion,
+    /// The flight the ball is in. `None` while it is in none: between
+    /// rallies, and on the step a serve has launched it and its flight has
+    /// yet to begin.
+    pub flight: Option<&'a Flight>,
+    /// The effects in play: asked for their flaws when an approach is
+    /// planned (M2 spec 2.3.12).
+    pub effects: &'a ActiveEffects,
 }
 
 /// The computer's player on one side: an entity of its own, apart from the
@@ -129,11 +155,12 @@ enum Plan {
     /// The ball is coming: once `hold_for` has run out, meet it at the aim's
     /// target.
     Meet {
-        /// The predicted crossing plus this approach's error. Fixed for the
-        /// approach.
+        /// The crossing the AI believes in plus this approach's error. Fixed
+        /// for the approach.
         aim: Aim,
-        /// What remains of the reaction delay. The paddle holds still while
-        /// it is not zero; each held step spends one timestep of it.
+        /// What remains of the reaction delay, the star's plus the effects'.
+        /// The paddle holds still while it is not zero; each held step
+        /// spends one timestep of it.
         hold_for: Duration,
     },
 }
@@ -142,9 +169,11 @@ enum Plan {
 /// (plan 10.1).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Aim {
-    /// The y the paddle steers to: the predicted crossing plus `error`.
+    /// The y the paddle steers to: the crossing predicted under the flight
+    /// the AI believes in, plus `error`.
     pub target_y: f32,
-    /// This approach's draw from `±prediction_error`.
+    /// This approach's draw from the spread: the star's `prediction_error`
+    /// plus the error the effects in play add, either way.
     pub error: f32,
 }
 
@@ -176,39 +205,49 @@ impl MirrorController {
         }
     }
 
-    /// What this controller presses for one fixed step, given the ball's
-    /// motion now, the flight it is in, and its paddle (spec 1.4.6).
+    /// What this controller presses for one fixed step, given what it sees
+    /// of the ball and its paddle (spec 1.4.6, M2 spec 2.3.12).
     ///
-    /// - The ball approaches when it flies toward this side's goal.
-    /// - On the step the ball turns toward this side, the target becomes the
-    ///   kernel's predicted crossing of the paddle's contact line under
-    ///   `flight` ([`crossing_y`] at [`Paddle::contact_x`]) plus an error drawn once
-    ///   from `±prediction_error`. It is not recomputed until the next approach.
-    /// - The paddle holds still until `reaction_delay` has passed since the
-    ///   turn, then steers to the target. A zero delay steers on the turn step.
+    /// - The ball approaches when it is in a flight and flies toward this
+    ///   side's goal.
+    /// - On the step the approach begins, the effects in play are asked for
+    ///   their flaws at this controller's difficulty
+    ///   ([`ActiveEffects::flaw_over`]). The target becomes the kernel's
+    ///   predicted crossing of the paddle's contact line under the believed
+    ///   flight ([`crossing_y`] at [`Paddle::contact_x`]) plus an error drawn
+    ///   once from the spread, either way: the star's `prediction_error` plus
+    ///   the effects' added error. It is not recomputed until the next approach.
+    /// - The paddle holds still until the star's `reaction_delay` plus the
+    ///   effects' added delay has passed since then, then steers to the
+    ///   target. A zero delay steers on that step.
     /// - While the ball is not approaching, or an approach has no crossing,
     ///   the paddle steers to the centre.
     ///
     /// Preconditions (the caller's): `paddle` is on this controller's side;
-    /// `ball` is finite; `dt` is the fixed timestep.
-    /// Postcondition: `random` advanced by exactly one draw on a turn with a
-    /// crossing, by none otherwise.
+    /// `seen.ball` is finite; `seen.flight`, if any, was started with
+    /// `seen.effects` in play; `dt` is the fixed timestep.
+    /// Postcondition: `random` advanced by exactly one draw on the step an
+    /// approach with a crossing begins, by none otherwise.
     pub fn steer(
         &mut self,
-        ball: Motion,
-        flight: &Flight,
+        seen: Sighting,
         paddle: Paddle,
         tuning: &Tuning,
         dt: Duration,
         random: &mut Random,
     ) -> PaddleIntent {
-        let approaching = ball.velocity.x * self.side.sign() > 0.0;
-        if !approaching {
-            self.plan = Plan::Centre;
-        } else if !self.was_approaching {
-            self.plan = self.plan_approach(ball, flight, paddle, tuning, dt, random);
+        let approach = seen
+            .flight
+            .filter(|_| seen.ball.velocity.x * self.side.sign() > 0.0);
+        match approach {
+            None => self.plan = Plan::Centre,
+            Some(flight) if !self.was_approaching => {
+                let flaw = seen.effects.flaw_over(flight, self.difficulty);
+                self.plan = self.plan_approach(seen.ball, &flaw, paddle, tuning, dt, random);
+            }
+            Some(_) => {}
         }
-        self.was_approaching = approaching;
+        self.was_approaching = approach.is_some();
 
         let step_travel = tuning.paddle().speed() * dt.as_secs_f32();
         match &mut self.plan {
@@ -223,13 +262,15 @@ impl MirrorController {
         }
     }
 
-    /// The plan for an approach that begins now: meet the ball where the
-    /// kernel predicts it crosses the paddle's contact line, off by one draw
-    /// from `±prediction_error`, after the reaction delay. No crossing, no draw.
+    /// The plan for an approach that begins now, read with `flaw`: meet the
+    /// ball where the kernel predicts it crosses the paddle's contact line
+    /// under the believed flight, off by one draw from the star's spread
+    /// widened by the effects' added error, after the star's reaction delay
+    /// lengthened by the effects' added delay. No crossing, no draw.
     fn plan_approach(
         self,
         ball: Motion,
-        flight: &Flight,
+        flaw: &FlightFlaw,
         paddle: Paddle,
         tuning: &Tuning,
         dt: Duration,
@@ -239,7 +280,7 @@ impl MirrorController {
             tuning.arena(),
             tuning.ball().radius(),
             ball,
-            flight,
+            &flaw.believed,
             paddle.contact_x(tuning),
             dt.as_secs_f32(),
         );
@@ -247,14 +288,14 @@ impl MirrorController {
             return Plan::Centre;
         };
         let handicap = tuning.ai().level(self.difficulty);
-        let spread = handicap.prediction_error();
+        let spread = handicap.prediction_error() + flaw.added_error;
         let error = random.next_f32_in(-spread, spread);
         Plan::Meet {
             aim: Aim {
                 target_y: predicted_y + error,
                 error,
             },
-            hold_for: handicap.reaction_delay(),
+            hold_for: handicap.reaction_delay().saturating_add(flaw.added_delay),
         }
     }
 }
@@ -282,29 +323,36 @@ fn intent_toward(paddle: Paddle, target_y: f32, step_travel: f32) -> PaddleInten
 #[cfg(test)]
 mod tests {
     use std::num::NonZeroU8;
+    use std::sync::LazyLock;
     use std::time::Duration;
 
     use bevy::app::App;
+    use bevy::ecs::query::With;
     use bevy::math::Vec2;
 
-    use super::{MirrorController, intent_toward};
+    use super::{MirrorController, Sighting, intent_toward};
     use crate::domain::{
-        BallHitPaddle, Controller, Difficulty, MatchConfig, Mode, PointScored, Random, Seat,
-        SeatPlayers,
+        BallHitPaddle, Controller, Difficulty, EffectId, MatchConfig, Mode, PointScored, Random,
+        Seat, SeatPlayers,
     };
+    use crate::features::ball::Ball;
+    use crate::features::effects::probe::Misjudged;
+    use crate::features::effects::{ActiveEffects, BallFlight, Sandbox};
     use crate::features::paddle::Paddle;
     use crate::features::seats::PaddleIntent;
     use crate::features::tuning::{EMBEDDED_RON, Tuning};
     use crate::flow::FIXED_HZ;
     use crate::flow::states::MatchState;
     use crate::kernel::flight::Flight;
+    use crate::kernel::flight::FlightStart;
     use crate::kernel::geometry::Side;
     use crate::kernel::integrate::Motion;
+    use crate::kernel::predict::crossing_y;
     use crate::kernel::random::Pcg32;
     use crate::kernel::test_support::assert_near;
     use crate::testing::{
-        boot, enter_match, frame, headless_app, leave_match, match_state, place_ball, record,
-        recorded, start_match, take_recorded,
+        ball_state, boot, enter_match, fixed_timestep, frame, headless_app, leave_match,
+        match_state, place_ball, record, recorded, start_match, take_recorded,
     };
 
     fn match_of(left: Controller, right: Controller) -> MatchConfig {
@@ -463,6 +511,18 @@ mod tests {
         Motion { position, velocity }
     }
 
+    static EMPTY_FLIGHT: LazyLock<Flight> = LazyLock::new(Flight::default);
+    static NO_EFFECTS: LazyLock<ActiveEffects> = LazyLock::new(ActiveEffects::default);
+
+    /// `ball` as a controller sees it in a flight with no effect in play.
+    fn flying(ball: Motion) -> Sighting<'static> {
+        Sighting {
+            ball,
+            flight: Some(&EMPTY_FLIGHT),
+            effects: &NO_EFFECTS,
+        }
+    }
+
     fn step_travel(tuning: &Tuning) -> f32 {
         tuning.paddle().speed() * step().as_secs_f32()
     }
@@ -483,7 +543,7 @@ mod tests {
         for i in 0..steps {
             let flown = start.velocity * step().as_secs_f32() * f32::from(i);
             let now = ball(start.position + flown, start.velocity);
-            let intent = ai.steer(now, &Flight::default(), paddle, tuning, step(), random);
+            let intent = ai.steer(flying(now), paddle, tuning, step(), random);
             let dy = match intent {
                 PaddleIntent::Up => travel,
                 PaddleIntent::Down => -travel,
@@ -524,14 +584,8 @@ mod tests {
         ] {
             let paddle = paddle_at(Side::Right, y, &tuning);
             for course in [away, at_rest] {
-                let intent = ai(Side::Right).steer(
-                    course,
-                    &Flight::default(),
-                    paddle,
-                    &tuning,
-                    step(),
-                    &mut random,
-                );
+                let intent =
+                    ai(Side::Right).steer(flying(course), paddle, &tuning, step(), &mut random);
                 assert_eq!(intent, toward_centre, "paddle at {y}, ball {course:?}");
             }
         }
@@ -547,25 +601,11 @@ mod tests {
         let coming = ball(Vec2::ZERO, Vec2::new(60.0, 30.0));
         let returned = ball(Vec2::new(73.0, 36.5), Vec2::new(-60.0, 30.0));
         assert_eq!(
-            ai.steer(
-                coming,
-                &Flight::default(),
-                paddle,
-                &tuning,
-                step(),
-                &mut random
-            ),
+            ai.steer(flying(coming), paddle, &tuning, step(), &mut random),
             PaddleIntent::Up
         );
         assert_eq!(
-            ai.steer(
-                returned,
-                &Flight::default(),
-                paddle,
-                &tuning,
-                step(),
-                &mut random
-            ),
+            ai.steer(flying(returned), paddle, &tuning, step(), &mut random),
             PaddleIntent::Down
         );
     }
@@ -611,27 +651,11 @@ mod tests {
         let away = ball(Vec2::ZERO, Vec2::new(-60.0, 30.0));
         let coming = ball(Vec2::ZERO, Vec2::new(60.0, 30.0));
         assert_eq!(
-            ai.steer(
-                away,
-                &Flight::default(),
-                paddle,
-                &tuning,
-                step(),
-                &mut random
-            ),
+            ai.steer(flying(away), paddle, &tuning, step(), &mut random),
             PaddleIntent::Down
         );
         let after_turn: Vec<PaddleIntent> = (0..5)
-            .map(|_| {
-                ai.steer(
-                    coming,
-                    &Flight::default(),
-                    paddle,
-                    &tuning,
-                    step(),
-                    &mut random,
-                )
-            })
+            .map(|_| ai.steer(flying(coming), paddle, &tuning, step(), &mut random))
             .collect();
         assert_eq!(
             after_turn,
@@ -657,14 +681,7 @@ mod tests {
         let away = ball(Vec2::ZERO, Vec2::new(-60.0, 0.0));
         let mut rests = Vec::new();
         for approach in 0..20 {
-            ai.steer(
-                away,
-                &Flight::default(),
-                paddle,
-                &tuning,
-                step(),
-                &mut random,
-            );
+            ai.steer(flying(away), paddle, &tuning, step(), &mut random);
             let (settled, intents) = steer_for(&mut ai, paddle, coming, 40, &tuning, &mut random);
             // One draw per approach: the target holds, so the paddle comes to rest.
             assert!(
@@ -697,8 +714,7 @@ mod tests {
         assert_eq!(ai.aim(), None, "a fresh controller holds the centre");
         // Straight across: the crossing is at y = 0.
         ai.steer(
-            ball(Vec2::ZERO, Vec2::new(60.0, 0.0)),
-            &Flight::default(),
+            flying(ball(Vec2::ZERO, Vec2::new(60.0, 0.0))),
             paddle,
             &tuning,
             step(),
@@ -709,8 +725,7 @@ mod tests {
         assert!(aim.error.abs() <= spread, "{aim:?}");
         assert!(aim.error != 0.0, "a drawn error, not none");
         ai.steer(
-            ball(Vec2::ZERO, Vec2::new(-60.0, 0.0)),
-            &Flight::default(),
+            flying(ball(Vec2::ZERO, Vec2::new(-60.0, 0.0))),
             paddle,
             &tuning,
             step(),
@@ -727,8 +742,7 @@ mod tests {
         let paddle = paddle_at(Side::Right, 0.0, &tuning);
         // The turn aims at the crossing at y = 36.5.
         ai.steer(
-            ball(Vec2::ZERO, Vec2::new(60.0, 30.0)),
-            &Flight::default(),
+            flying(ball(Vec2::ZERO, Vec2::new(60.0, 30.0))),
             paddle,
             &tuning,
             step(),
@@ -754,16 +768,267 @@ mod tests {
         // Over a million seconds to reach the paddle: beyond the prediction's reach.
         let crawling = ball(Vec2::ZERO, Vec2::new(1e-4, 0.0));
         assert_eq!(
-            ai(Side::Right).steer(
-                crawling,
-                &Flight::default(),
-                paddle,
-                &tuning,
-                step(),
-                &mut random
-            ),
+            ai(Side::Right).steer(flying(crawling), paddle, &tuning, step(), &mut random),
             PaddleIntent::Down
         );
+    }
+
+    // M2 plan 4.1: the AI under effects. The effects in play add to the
+    // star's handicap and decide the flight the AI believes in (M2 spec 2.3.12).
+
+    /// The serve launches the ball one phase before its flight begins. A
+    /// ball in no flight is not yet coming: the AI plans once the flight is
+    /// there to plan under, whichever of the serve and the AI ran first.
+    #[test]
+    fn a_ball_flying_here_in_no_flight_is_not_an_approach_until_its_flight_begins() {
+        let tuning = perfect();
+        let mut random = Random::seeded(1);
+        let mut untouched = Random::seeded(1);
+        let mut ai = ai(Side::Right);
+        let paddle = paddle_at(Side::Right, 20.0, &tuning);
+        // Crossing at y = 36.5, above the paddle; the centre is below it.
+        let coming = ball(Vec2::ZERO, Vec2::new(60.0, 30.0));
+        let served = Sighting {
+            flight: None,
+            ..flying(coming)
+        };
+        assert_eq!(
+            ai.steer(served, paddle, &tuning, step(), &mut random),
+            PaddleIntent::Down,
+            "no flight yet: the centre"
+        );
+        assert_eq!(ai.aim(), None);
+        assert_eq!(
+            random.next_f32_in(0.0, 1.0).to_bits(),
+            untouched.next_f32_in(0.0, 1.0).to_bits(),
+            "no approach, no draw"
+        );
+        assert_eq!(
+            ai.steer(flying(coming), paddle, &tuning, step(), &mut random),
+            PaddleIntent::Up,
+            "the flight began: the crossing"
+        );
+        assert!(ai.aim().is_some());
+    }
+
+    /// A flight begun under `effects` at the serve.
+    fn served_under(effects: &ActiveEffects) -> Flight {
+        effects.start_flight(FlightStart::SERVE)
+    }
+
+    /// First form, error: an effect's added error widens the aim's spread
+    /// beyond the star's own, here none.
+    #[test]
+    fn an_effects_added_error_widens_the_spread_of_the_aim() {
+        let added = 10.0;
+        let tuning = perfect();
+        let mut effects = ActiveEffects::default();
+        effects.add(Box::new(Misjudged::costing(added, Duration::ZERO)));
+        let flight = served_under(&effects);
+        let mut random = Random::seeded(7);
+        let mut ai = ai(Side::Right);
+        let paddle = paddle_at(Side::Right, 0.0, &tuning);
+        // Straight across: the crossing is at y = 0.
+        let coming = ball(Vec2::ZERO, Vec2::new(60.0, 0.0));
+        let away = ball(Vec2::ZERO, Vec2::new(-60.0, 0.0));
+        let mut errors = Vec::new();
+        for _ in 0..20 {
+            ai.steer(flying(away), paddle, &tuning, step(), &mut random);
+            let seen = Sighting {
+                ball: coming,
+                flight: Some(&flight),
+                effects: &effects,
+            };
+            ai.steer(seen, paddle, &tuning, step(), &mut random);
+            let aim = ai.aim().expect("an approach aims");
+            assert_near(aim.target_y, aim.error, 1e-4);
+            assert!(aim.error.abs() <= added, "{aim:?}");
+            errors.push(aim.error);
+        }
+        let lowest = errors.iter().copied().fold(f32::INFINITY, f32::min);
+        let highest = errors.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        assert!(
+            highest - lowest > added / 2.0,
+            "the effect's error never reached the aim: {errors:?}"
+        );
+    }
+
+    /// First form, delay: an effect's added delay holds the paddle beyond
+    /// the star's own, here none.
+    #[test]
+    fn an_effects_added_delay_holds_the_paddle_longer() {
+        let tuning = perfect();
+        let mut effects = ActiveEffects::default();
+        // Two and a half steps: the delay ends between steps 2 and 3.
+        effects.add(Box::new(Misjudged::costing(
+            0.0,
+            Duration::from_secs_f32(2.5 / 60.0),
+        )));
+        let flight = served_under(&effects);
+        let mut random = Random::seeded(1);
+        let mut ai = ai(Side::Right);
+        let paddle = paddle_at(Side::Right, 20.0, &tuning);
+        // Crossing at y = 36.5, above the paddle.
+        let seen = Sighting {
+            ball: ball(Vec2::ZERO, Vec2::new(60.0, 30.0)),
+            flight: Some(&flight),
+            effects: &effects,
+        };
+        let after_turn: Vec<PaddleIntent> = (0..5)
+            .map(|_| ai.steer(seen, paddle, &tuning, step(), &mut random))
+            .collect();
+        assert_eq!(
+            after_turn,
+            vec![
+                PaddleIntent::Still,
+                PaddleIntent::Still,
+                PaddleIntent::Still,
+                PaddleIntent::Up,
+                PaddleIntent::Up,
+            ]
+        );
+    }
+
+    /// Where a perfect AI on the right aims at a ball from the centre spot,
+    /// level, pushed up by 20, when it believes the push to be `believed_push`.
+    fn aim_under_a_push_believed_as(believed_push: Option<f32>) -> f32 {
+        let tuning = perfect();
+        let mut effects = ActiveEffects::default();
+        effects.add(Box::new(Misjudged::pushing(20.0, believed_push)));
+        let flight = served_under(&effects);
+        let mut ai = ai(Side::Right);
+        let seen = Sighting {
+            ball: ball(Vec2::ZERO, Vec2::new(60.0, 0.0)),
+            flight: Some(&flight),
+            effects: &effects,
+        };
+        ai.steer(
+            seen,
+            paddle_at(Side::Right, 0.0, &tuning),
+            &tuning,
+            step(),
+            &mut Random::seeded(1),
+        );
+        ai.aim().expect("an approach aims").target_y
+    }
+
+    /// Second form: the AI predicts under the flight it believes in. Told
+    /// the truth it aims where the ball will cross; blind to the push it
+    /// aims straight across; underrating it, in between.
+    #[test]
+    fn the_ai_aims_where_the_flight_it_believes_in_takes_the_ball() {
+        let tuning = perfect();
+        let mut effects = ActiveEffects::default();
+        effects.add(Box::new(Misjudged::pushing(20.0, Some(20.0))));
+        let true_crossing = crossing_y(
+            tuning.arena(),
+            tuning.ball().radius(),
+            ball(Vec2::ZERO, Vec2::new(60.0, 0.0)),
+            &served_under(&effects),
+            73.0,
+            step().as_secs_f32(),
+        )
+        .expect("the ball flies toward the paddle");
+        // 73 units at 60 a second under a push of 20: about 15 up.
+        assert!(true_crossing > 10.0, "{true_crossing}");
+
+        assert_near(
+            aim_under_a_push_believed_as(Some(20.0)),
+            true_crossing,
+            1e-4,
+        );
+        assert_near(aim_under_a_push_believed_as(None), 0.0, 1e-4);
+        let underrated = aim_under_a_push_believed_as(Some(10.0));
+        assert!(
+            underrated > 1.0 && underrated < true_crossing - 1.0,
+            "{underrated} against {true_crossing}"
+        );
+    }
+
+    /// The controller on `side` in a running app.
+    fn controller_on(app: &mut App, side: Side) -> MirrorController {
+        app.world_mut()
+            .query::<&MirrorController>()
+            .iter(app.world())
+            .copied()
+            .find(|controller| controller.side == side)
+            .expect("a controller on that side")
+    }
+
+    /// The serve and the AI's steering share a phase with no order between
+    /// them, and the serve's flight begins a phase later. Whichever runs
+    /// first, the AI sees no approach on the serve's step and plans on the
+    /// next, under the serve's flight.
+    #[test]
+    fn whatever_the_system_order_the_ai_plans_a_served_ball_one_step_on_under_its_flight() {
+        for seed in 0..12 {
+            let mut app = headless_app(seed);
+            boot(&mut app);
+            app.insert_resource(perfect());
+            enter_match(
+                &mut app,
+                match_of(
+                    Controller::Ai(Difficulty::ThreeStars),
+                    Controller::Ai(Difficulty::ThreeStars),
+                ),
+            );
+            // A few steps into the countdown: escalation has set the effects
+            // in play, and the base has rebuilt them from the replaced
+            // tuning, which would drop a probe added before.
+            for _ in 0..5 {
+                frame(&mut app);
+            }
+            assert_eq!(match_state(&app), MatchState::Countdown);
+            app.world_mut()
+                .resource_mut::<ActiveEffects>()
+                .add(Box::new(Misjudged::pushing(20.0, Some(20.0))));
+            let aims = |app: &mut App| {
+                [Side::Left, Side::Right].map(|side| controller_on(app, side).aim())
+            };
+
+            let served = (0..1_000).any(|_| {
+                frame(&mut app);
+                ball_state(&mut app).1.x != 0.0
+            });
+            assert!(served, "seed {seed}: no serve");
+            assert_eq!(
+                aims(&mut app),
+                [None, None],
+                "seed {seed}: planned on the serve's step"
+            );
+
+            frame(&mut app);
+            let (position, velocity) = ball_state(&mut app);
+            let side = if velocity.x > 0.0 {
+                Side::Right
+            } else {
+                Side::Left
+            };
+            let aim = controller_on(&mut app, side)
+                .aim()
+                .unwrap_or_else(|| panic!("seed {seed}: no plan one step after the serve"));
+            let tuning = app.world().resource::<Tuning>().clone();
+            let dt = fixed_timestep(&app).as_secs_f32();
+            let contact_x = paddle_on(&mut app, side).contact_x(&tuning);
+            let now = Motion { position, velocity };
+            let mut flights = app.world_mut().query_filtered::<&BallFlight, With<Ball>>();
+            let flight = flights.single(app.world()).expect("exactly one ball");
+            assert_near(flight.flight().force(now, dt).y, 20.0, 1e-6);
+            let under_the_flight = crossing_y(
+                tuning.arena(),
+                tuning.ball().radius(),
+                now,
+                flight.flight(),
+                contact_x,
+                dt,
+            )
+            .expect("the served ball flies toward the paddle");
+            assert!(
+                (aim.target_y - under_the_flight).abs() < 1e-2,
+                "seed {seed}: aimed at {} with the ball crossing at {under_the_flight}",
+                aim.target_y
+            );
+        }
     }
 
     // Plan 5.1 done-conditions: launches as the left side could return them,
@@ -803,11 +1068,18 @@ mod tests {
     /// A match in play, a human seat idle on the left, three stars on the
     /// right playing with `tuning`'s handicap.
     fn ai_on_the_right_playing(tuning: Tuning) -> App {
+        ai_on_the_right_playing_after(tuning, |_| {})
+    }
+
+    /// [`ai_on_the_right_playing`], with `prepare` run on the booted app
+    /// before the match starts.
+    fn ai_on_the_right_playing_after(tuning: Tuning, prepare: impl FnOnce(&mut App)) -> App {
         let mut app = headless_app(5);
         record::<BallHitPaddle>(&mut app);
         record::<PointScored>(&mut app);
         boot(&mut app);
         app.insert_resource(tuning);
+        prepare(&mut app);
         start_match(
             &mut app,
             match_of(
@@ -880,6 +1152,70 @@ mod tests {
         assert!(
             missed,
             "thirty units of error never missed in twenty launches"
+        );
+    }
+
+    // M2 spec 2.3.12 for Shrink, whose flaw is inherent (M2 spec 2.6.1): the
+    // shorter paddle forgives less of the star's own error. Its raised flaw
+    // is its raised dial.
+
+    /// [`ai_on_the_right_playing`] with Shrink at its full dial: the sandbox
+    /// forces it beside Speed and holds the return count where the embedded
+    /// dial is full, so every flight, the serve's too, has the paddles at
+    /// their minimum.
+    fn ai_on_the_right_playing_at_shrinks_full_dial(tuning: Tuning) -> App {
+        let mut app = ai_on_the_right_playing_after(tuning, |app| {
+            let mut sandbox = app.world_mut().resource_mut::<Sandbox>();
+            sandbox.toggle(EffectId::Shrink, &[EffectId::Speed]);
+            sandbox.hold_returns(Some(15));
+        });
+        let shape = app.world().resource::<Tuning>().paddle();
+        assert_near(
+            paddle_on(&mut app, Side::Right).height(),
+            shape.height_bounds().min(),
+            1e-4,
+        );
+        app
+    }
+
+    #[test]
+    fn at_shrinks_full_dial_an_ai_with_no_delay_and_no_error_returns_every_ball() {
+        let tuning = perfect();
+        let balls = launches(200, &tuning);
+        let mut app = ai_on_the_right_playing_at_shrinks_full_dial(tuning);
+        for (i, launch) in balls.into_iter().enumerate() {
+            assert_eq!(
+                launch_at_ai(&mut app, launch),
+                Outcome::Returned,
+                "launch {i}: {launch:?}"
+            );
+        }
+    }
+
+    /// Six units of error: inside the whole paddle's reach of eight (half
+    /// its height of 14, plus the ball's radius), outside the shrunk
+    /// paddle's reach of five.
+    #[test]
+    fn an_error_whole_paddles_forgive_misses_some_balls_at_shrinks_full_dial() {
+        let tuning = three_stars_with(0.0, 6.0);
+        let balls = launches(40, &tuning);
+
+        let mut whole = ai_on_the_right_playing(tuning.clone());
+        for (i, launch) in balls.iter().enumerate() {
+            assert_eq!(
+                launch_at_ai(&mut whole, *launch),
+                Outcome::Returned,
+                "whole paddles, launch {i}: {launch:?}"
+            );
+        }
+
+        let mut shrunk = ai_on_the_right_playing_at_shrinks_full_dial(tuning);
+        let missed = balls
+            .into_iter()
+            .any(|launch| launch_at_ai(&mut shrunk, launch) == Outcome::Missed);
+        assert!(
+            missed,
+            "six units of error never missed in forty launches at the minimum height"
         );
     }
 }

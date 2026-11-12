@@ -1,8 +1,11 @@
 //! Speed (M2 spec 2.6.0): the ball leaves each paddle return faster. Classic
 //! Pong's one effect, and the rally's escalator there.
 
+use std::time::Duration;
+
 use super::Effect;
-use crate::domain::EffectId;
+use super::Flaw;
+use crate::domain::{Difficulty, EffectId};
 use crate::kernel::flight::{Contribution, FlightStart};
 use crate::kernel::reflect::SpeedRule;
 
@@ -38,11 +41,24 @@ impl Effect for Speed {
             field: None,
         }
     }
+
+    /// Inherent (M2 spec 2.6.0): a faster ball is harder to reach, and every
+    /// AI sees the speed as it is.
+    fn flaw(&self, start: &FlightStart, _difficulty: Difficulty) -> Flaw {
+        Flaw {
+            added_error: 0.0,
+            added_delay: Duration::ZERO,
+            believed: self.contribute(start),
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::Speed;
+    use crate::domain::Difficulty;
     use crate::domain::EffectId;
     use crate::domain::Mode;
     use crate::features::effects::Effect;
@@ -85,5 +101,23 @@ mod tests {
     #[test]
     fn it_pushes_no_field() {
         assert!(speed().contribute(&after(3)).field.is_none());
+    }
+
+    /// M2 spec 2.6.0: Speed's flaw is inherent. A faster ball is harder to
+    /// reach; no AI is told anything but the truth about it.
+    #[test]
+    fn it_adds_no_flaw_and_is_believed_as_it_is() {
+        for difficulty in [
+            Difficulty::OneStar,
+            Difficulty::TwoStars,
+            Difficulty::ThreeStars,
+        ] {
+            let flaw = speed().flaw(&after(10), difficulty);
+            assert_near(flaw.added_error, 0.0, 1e-6);
+            assert_eq!(flaw.added_delay, Duration::ZERO);
+            assert_near(flaw.believed.speed_gain, 70.0, 1e-4);
+            assert_near(flaw.believed.paddle_height_factor, 1.0, 1e-6);
+            assert!(flaw.believed.field.is_none());
+        }
     }
 }

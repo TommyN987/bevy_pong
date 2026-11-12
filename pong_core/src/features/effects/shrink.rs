@@ -1,8 +1,11 @@
 //! Shrink (M2 spec 2.6.1): both paddles shorten as the rally grows, from the
 //! default height toward the minimum, and are whole again for the next rally.
 
+use std::time::Duration;
+
 use super::Effect;
-use crate::domain::EffectId;
+use super::Flaw;
+use crate::domain::{Difficulty, EffectId};
 use crate::features::tuning::Tuning;
 use crate::kernel::flight::{Contribution, FlightStart};
 use crate::kernel::ramp::Ramp;
@@ -40,11 +43,24 @@ impl Effect for Shrink {
             field: None,
         }
     }
+
+    /// Inherent (M2 spec 2.6.1): a shorter paddle forgives less of the
+    /// star's own aim error, and every AI sees the paddles as they are.
+    fn flaw(&self, start: &FlightStart, _difficulty: Difficulty) -> Flaw {
+        Flaw {
+            added_error: 0.0,
+            added_delay: Duration::ZERO,
+            believed: self.contribute(start),
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::Shrink;
+    use crate::domain::Difficulty;
     use crate::domain::EffectId;
     use crate::features::effects::Effect;
     use crate::features::tuning::{EMBEDDED_RON, Tuning};
@@ -86,6 +102,30 @@ mod tests {
         let factors: Vec<f32> = (0..30).map(factor_after).collect();
         for pair in factors.windows(2) {
             assert!(pair[1] <= pair[0], "the paddles grew: {pair:?}");
+        }
+    }
+
+    /// M2 spec 2.6.1: Shrink's flaw is inherent in the smaller paddle. No
+    /// AI is told anything but the truth about it.
+    #[test]
+    fn it_adds_no_flaw_and_is_believed_as_it_is() {
+        for difficulty in [
+            Difficulty::OneStar,
+            Difficulty::TwoStars,
+            Difficulty::ThreeStars,
+        ] {
+            let flaw = shrink().flaw(
+                &FlightStart {
+                    returns: 15,
+                    hit: None,
+                },
+                difficulty,
+            );
+            assert_near(flaw.added_error, 0.0, 1e-6);
+            assert_eq!(flaw.added_delay, Duration::ZERO);
+            assert_near(flaw.believed.speed_gain, 0.0, 1e-6);
+            assert_near(flaw.believed.paddle_height_factor, 8.0 / 14.0, 1e-6);
+            assert!(flaw.believed.field.is_none());
         }
     }
 
