@@ -40,6 +40,8 @@ use crate::flow::phases::FixedStepPhase;
 use crate::flow::states::AppState;
 use crate::flow::states::MatchState;
 
+pub mod ai_match;
+
 /// A core app with no window and no real clock. Every [`frame`] advances one
 /// fixed step at the core's rate until [`set_frame_length`] changes it; `seed`
 /// seeds the random source and the schedule shuffle; a system error panics in

@@ -89,7 +89,7 @@ kernel  ←  domain  ←  flow  ←  features (tuning → seats → ball → pad
 | [flow](src/flow/README.md) | `src/flow/` | App and match states, fixed-step phases, step gate, `FIXED_HZ`. | kernel, domain, Bevy |
 | [features](src/features/README.md) | `src/features/` | One plugin per feature, in a declared order. | lower layers; earlier features' public data types |
 | [app](src/app/README.md) | `src/app/` | `CorePlugins`, error policy, the Boot gate. | everything |
-| [testing](src/testing/README.md) | `src/testing/`, `tests/` | Headless harness, soak. | everything; behind the `testing` feature |
+| [testing](src/testing/README.md) | `src/testing/`, `tests/` | Headless harness, AI-versus-AI matches, soak. | everything; behind the `testing` feature |
 
 ## One point, traced
 

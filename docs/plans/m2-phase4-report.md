@@ -3,7 +3,9 @@
 Started 2026-11-12. Branch `feat/ai-effects`. Roles: Claude drives; the user reviews and commits.
 Deviations from [m2-chaos-pong.md](../specs/m2-chaos-pong.md) and [m2-plan.md](m2-plan.md) per plan rule P.6, each with where it was recorded.
 
-Built so far: step 0 and step 1 (plan 4.1). Steps 2 to 4 (plan 4.2 to 4.4) are not started.
+Built so far: step 0, step 1 (plan 4.1), and step 2 (plan 4.2). Steps 3 and 4 (plan 4.3, 4.4) are not started.
+
+**Open, for the user's ruling:** spec 2.5.1 is not met between two three-star computers (step 2, "The finding").
 
 ## Deviations
 
@@ -18,7 +20,7 @@ All were proposed before implementation and approved by the user on 2026-11-12. 
 ## Decisions taken in this phase
 
 - **The serve and the AI.** The AI counts an approach only once the ball's flight has begun. The serve and the AI's steering both run in the intent phase, unordered, and the serve's flight starts in the effects phase after them: an AI that ran second planned under the cleared flight. Approved 2026-11-12; built in step 1, where its reason turned out narrower than proposed (below).
-- **`just ai-report`.** A recipe that prints the harness's tables, since every effect phase reports its R3 measure through it (plan E.4). Approved 2026-11-12; not built yet.
+- **`just ai-report`.** A recipe that prints the harness's tables, since every effect phase reports its R3 measure through it (plan E.4). Approved 2026-11-12; built in step 2: it runs `tests/ai_matches.rs` with the output shown.
 
 ## Step 0
 
@@ -97,9 +99,87 @@ The cost: in the order where the AI ran after the serve, Classic's AI reacts to 
 No API new to the repository, so `bevy-api-check` was not run.
 `#[derive(SystemParam)]` over a `Query<'w, 's, ..>` and a `Res<'w, ..>` is as in the shell's overlay and in escalation.
 
+## Step 2: the AI-versus-AI harness (plan 4.2)
+
+Built 2026-11-12. The harness and its own tests were written tests first; the spec tests measure behaviour that already existed.
+
+### What was built
+
+- **`testing::ai_match`.** `AiMatch { left, right, mode, points_to_win, forced, rally_hit_limit }` and `play(seed)`, which plays one match on an app of its own and returns a `MatchPlayed`: the winner and every `RallyPlayed` (paddle hits, who won it). `RallyLengths` summarises rallies: count, mean, median, longest, unended.
+- **`Forcing`.** What the sandbox forces for a whole match: the set of effects, a held return count, both, or neither.
+- **`Sandbox::force_effects(effects)`.** The whole forced set at once. `toggle` is now built on it. The harness needed it: toggling one effect at a time cannot name the empty set without knowing what is in play.
+- **`pong_core/tests/ai_matches.rs`.** Five tests on spec 2.5.1, 2.5.2, and 2.5.5, each printing its numbers.
+- **`just ai-report`.**
+
+### The finding: three stars never miss, and two stars miss only a shrunk paddle
+
+Spec 2.5.1 asks that seeded AI-versus-AI Chaos matches show bounded rally length. **It does not hold between two three-star computers.** The proposal estimated their rallies at about sixty returns; that estimate was wrong.
+
+Measured 2026-11-12, embedded tuning, matches to five points, hits per rally:
+
+| Pairing | Chaos, cap 3 (6 seeds) | Classic (6 seeds, limit 300) |
+|---|---|---|
+| 1 v 1 | 40 rallies, mean 2.3, longest 8 | mean 2.4, longest 11 |
+| 1 v 2 | 30 rallies, mean 4.7, longest 13 | mean 5.5, longest 22 |
+| 1 v 3 | 30 rallies, mean 4.1, longest 16 | mean 4.8, longest 16 |
+| 2 v 2 | 40 rallies, mean 44.3, longest 100 | no rally ended |
+| 2 v 3 | 30 rallies, mean 58.7, longest 176 | no rally ended |
+| 3 v 3 | no rally ended (limit 2,000 on a first run, 500 in the test) | no rally ended |
+
+Mirror matches at a held return count, forced sets, limit 200, 3 seeds (mean hits; "none" means no rally ended):
+
+| Held count | 1 v 1 Speed | 1 v 1 Speed+Shrink | 2 v 2 Speed | 2 v 2 Speed+Shrink | 3 v 3, either |
+|---|---|---|---|---|---|
+| 0 | 2.8 | 2.8 | none | none | none |
+| 6 | 2.6 | 1.8 | none | none | none |
+| 12 | 2.3 | 0.8 | none | none | none |
+| 15 | 2.6 | 0.8 | none | 24.0 | none |
+| 25 | 2.6 | 0.8 | none | 21.7 | none |
+| 57 (Chaos's speed cap) | 1.6 | 0.8 | none | 24.5 | none |
+
+One more measurement, by a temporary test since removed: of the AI tests' 200 seeded launches (any height, any angle the paddle can give, any speed from the serve to the cap, the AI resting at the centre), three stars as tuned missed none, and three stars with two stars' handicap missed none.
+
+What the numbers say:
+
+- **Speed alone ends no rally against two or three stars,** in Classic or in Chaos, at any count up to the cap. A likely cause, by arithmetic from the tuning and not isolated by a test: the paddle crosses its whole range of 76 units in 0.84 s, and at the cap the ball needs 1.17 s for the 292 units from one paddle's hit to the other's and back. The fact the spec relied on, that a competent defender returns every ball without escalation, is confirmed; the companion assumption, that the speed ramp is what ends rallies, is false for these AIs.
+- **The star's aim error is the only source of misses.** One star's 12 units exceed the whole paddle's reach of 8. Two stars' 5 units are inside it, and outside the shrunk paddle's reach of 5 only at Shrink's full dial, which is why two-star rallies end at a held count of 15 and not at 12. Three stars' 1 unit is inside every reach.
+- **In Classic, as M1 shipped it, two and three stars are not beaten by speed or placement** from a centred start. This predates M2. Whether a human beats them some other way is not measured: the harness has no model of a human.
+- **R3 per effect, in this instrument:** Shrink shortens rallies for one star (graded) and for two stars (a step at full dial); Speed shortens them for one star only, slightly. Step 4 reports Shrink's measure in full.
+
+What is and is not asserted:
+
+| Spec item | Test | State |
+|---|---|---|
+| 2.5.1, bounded under Chaos | `chaos_rallies_end_within_the_hit_limit_in_every_pairing_but_the_three_star_mirror` | Met for five of the six pairings. |
+| 2.5.1, the three-star mirror | `between_three_star_computers_no_chaos_rally_ends` | **Not met.** The test pins the falsification: it fails the day such a rally ends, and says to move the pairing into the test above. |
+| 2.5.1, the control | `with_no_effect_in_play_no_rally_between_competent_computers_ends` | Met: two-star and three-star mirrors, no effect forced, 300 hits with no point. |
+| 2.5.5, star order | `in_chaos_the_computer_with_more_stars_wins_more_matches` | Met: 8 matches to 0 in each of the three pairings, played from both sides. |
+| 2.5.2, R3 for the stack | `chaos_rallies_shorten_as_breadth_and_return_count_rise_together` | Met for one-star and two-star mirrors. Three stars cannot shorten: their rallies are unended at every level. |
+
+Options for the ruling, none taken:
+
+1. **Leave the tuning; let the later effects' flaws carry it.** Wind, Fog, Spin, Lens, and Blocks each bring a per-star flaw (spec 2.3.12), and three stars' numbers there decide whether its rallies end. Spec 2.5.1 is amended to hold for the three-star mirror by milestone close, and the pinned test fails when it starts to. Recommended: it changes nothing the kids have played, and the flaw numbers are tuning the spec already leaves to play.
+2. **Retune now:** a larger aim error for three stars, or a lower minimum paddle height. Either changes how Classic or Shrink feels without a session behind it.
+3. **Change the AI's model:** a slower return to the centre, or a paddle that cannot cross its range inside one crossing. A design change to M1's controller.
+
+### Decisions taken
+
+- **One app per match, seeded.** A match is reproduced from its seed alone, with no state from the match before it.
+- **Rally length is paddle hits,** as the longest-rally record counts them, not the flight's return count: a held count stands still.
+- **A hit limit, not a step limit,** gives up a rally: it does not depend on the frame length, and a ball that is never hit faults in sanity (spec 2.5.6).
+- **Four-step frames.** The simulation steps the same at any frame length; longer frames spend fewer on the countdowns. No timing against one-step frames was taken.
+- **Levels of the stack come from the mode's data:** the always-on effects plus the first `k` of the bag, at `k` times fifteen returns. A new effect in the bag lengthens the test's ladder with no edit.
+- **`RallyPlayed`, not `Rally`:** rules already has a `Rally`.
+
+### Not done
+
+- **No deliberate breaks were run** against the five spec tests. Their discriminating power rests on the tables above: the same pairing ends under Chaos and does not end with no effect forced.
+- **The spec tests were not red first.** They measure; the pinned test is the one that states a failure.
+- Running times, development machine: the five tests take 1.0 to 5.2 s each, 14.4 s in all, against nextest's 30 s per test. CI's times are not measured yet (plan 4.3 measures the soak's).
+
 ## Test changes
 
-372 core tests and 165 shell tests pass, 537 in all; 518 existed before this phase.
+386 core tests and 165 shell tests pass, 551 in all; 518 existed before this phase.
 
 Step 0: no assertion changed and no call site changed.
 One comment changed: the AI tests' `launches` said a touching start counts as struck; it now says an overlapping start does.
@@ -109,9 +189,13 @@ Step 1: no assertion changed. Call sites changed for a changed signature:
 - `MirrorController::steer` takes a `Sighting` where it took the ball's motion and a flight: eleven calls in the AI's tests pass `flying(ball)`, a sighting in an empty flight with no effect in play, where they passed the ball and `&Flight::default()`.
 - `Effect` gained `flaw`: the effects tests' two probes, `Probe` and `Swinger`, state one.
 
+Step 2: no assertion changed and no call site changed.
+
 ## Facts learned
 
 - The spec's open fact on sweeps that start inside the rectangle is answered in part and amended in the spec: a start on the edge moving away is no impact. The interior start stays with plan 9.1.
 - Both orders of the serve and the AI's steering occur across shuffle seeds 0 to 11: in eight of the twelve the AI ran after the serve.
 - Replacing the `Tuning` resource rebuilds the effects in play from their ids on the next step: a test probe added before that step is replaced by the effect whose name it borrows.
 - A belief composed from the effects in play does not depend on the ball's flight for anything but its start and clock.
+- The spec's fact "without escalation a competent defender returns every ball" is confirmed by the harness; its label in the spec is still "probable", owed at the next record step.
+- With escalation too, a two-star or three-star defender returns every ball that Speed alone throws at it (step 2, "The finding").

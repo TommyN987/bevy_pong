@@ -1,6 +1,7 @@
 # testing
 
-The headless test harness (spec 1.5.1) and, in `pong_core/tests/`, the soak (spec 1.5.2).
+The headless test harness (spec 1.5.1), the AI-versus-AI match harness (M2 plan 4.2),
+and, in `pong_core/tests/`, the soak (spec 1.5.2) and the AI matches (M2 spec 2.5).
 Compiled for this crate's tests and, behind the `testing` cargo feature, for integration and shell tests.
 A game build never compiles it.
 Every helper that cannot do what a test asked panics with the reason.
@@ -35,6 +36,26 @@ Bevy's first update has zero delta, so the first frame runs no fixed step.
 | `ball_state`, `place_ball` | Read or script the one ball. |
 | `TempSaveDir` | A fresh directory under the system temp directory, removed when dropped; `save_paths()` gives the `SavePaths` fake (spec 1.5.1). Std only. |
 | `unphased_fixed_step_systems` | Walks the built `FixedUpdate` schedule and names systems in no phase. |
+
+## AI-versus-AI matches (`ai_match.rs`, `tests/ai_matches.rs`)
+
+The instrument for whether rallies end (M2 spec 2.5.1), whether they shorten as effects escalate (R3, 2.5.2),
+and whether more stars win (2.5.5). Every effect phase reports through it (M2 plan E.4).
+
+| Piece | Does |
+|---|---|
+| `AiMatch` | One match between two computers: their stars, the mode, the points to win, what the sandbox forces, and the hit limit. `play(seed)` plays it on an app of its own, seeded for the random source and the system order: the same seed plays the same match. |
+| `Forcing` | What the developer `Sandbox` forces for the whole match: the whole set of effects in play, the return count every flight starts at, both, or neither. A held count holds every dial still, so a dial can be measured at one setting. |
+| `MatchPlayed`, `RallyPlayed` | The winner and every rally: its paddle hits, as the longest-rally record counts them, and who won it. |
+| `rally_hit_limit` | A rally that reaches it is reported unended and the match unfinished. It is how a test asks whether rallies end at all. |
+| `RallyLengths` | Count, mean, median, longest, and how many were unended. With any unended, the other numbers are lower bounds. |
+
+Frames are four fixed steps long: the simulation steps the same at any frame length, and longer frames spend fewer on the countdowns.
+
+`tests/ai_matches.rs` asserts the spec items and prints the numbers behind each assertion.
+`just ai-report` runs it with the output shown.
+One of its tests pins a finding instead of a done-condition:
+between two three-star computers no Chaos rally ends (M2 phase 4 report).
 
 ## Soak (`tests/soak.rs`)
 
