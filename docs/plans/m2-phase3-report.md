@@ -21,7 +21,7 @@ The first four were proposed before implementation and approved by the user on 2
 
 ## Test changes
 
-353 core tests and 164 shell tests pass, 517 in all; 468 existed before this phase.
+353 core tests and 165 shell tests pass, 518 in all; 468 existed before this phase.
 
 Call sites changed for a changed signature, assertions untouched:
 
@@ -62,7 +62,8 @@ The overlay's unit-test `readings()` literal gained three fields, all `None`; it
 - **Held count.** Copied into `ActiveEffects` each step and applied inside `start_flight`, the one place both the serve and physics start flights; physics is untouched. Released, the rally counts on from the held count.
 - **Forced effects are not announced.** Escalation advances the schedule as always, then sets the forced set and writes no message; a release finds the schedule where the score has brought it.
 - **Touched matches.** Any forcing marks the match; entering a match clears the mark unless something is still forced; persistence skips a touched match.
-- **Sandbox keys**, while the overlay shows in a match: `1` to `9` toggle the effect at that place in `EffectId::ALL`, `[` and `]` hold the count one lower or higher, `0` releases. The overlay lists them.
+- **Sandbox keys**, while the overlay shows in a match: `1` to `9` toggle the effect at that place in `EffectId::ALL`, `[` and `]` hold the count one lower or higher, `0` releases. The overlay lists them, each number with its effect's name.
+- **Waiting or in force.** Changed after the user's first hand check (2026-11-12), which read the forced set as what was in play. Each forced value has its own line: `effects from the next point: ..` and `returns from the next hit or serve: ..` while the match has not taken it up, `effects forced: ..` and `returns held: ..` once it has. The overlay decides which by comparing the sandbox with the effects in play and the ball's return count; the core is unchanged.
 - **Two systems passed clippy's seven-parameter limit** and group their messages in a `SystemParam`, as the menu's `MenuExits` does: escalation's `Announcements`, the cue map's `CoreEvents`. No lint was silenced.
 - **Bevy API.** `bevy-api-check` ran on 2026-11-12 before steps 3 to 5, against the pinned 0.20.1 source. Confirmed: `StateTransition` runs after `PreUpdate` and before `Update`, and messages are swapped only in `First`, so an `Update` reader sees a message written in `OnEnter` in the same frame; `KeyCode::Digit0` to `Digit9`, `BracketLeft`, `BracketRight`; `ButtonInput::just_pressed`; `Display::None` removes a node from layout and drawing. Not read by the agent: whether a sub-state's `OnEnter` runs in the same pass as its parent's; `the_joining_effect_shows_large_in_the_countdown_then_takes_its_place_in_the_row` shows it does. Steps 1 and 2 used no API new to the repository.
 
@@ -76,6 +77,8 @@ a v1 profile's records migrated under Chaos; a v2 settings file migrated to Chao
 - `#[serde(deny_unknown_fields)]` is a container attribute: on an enum it covers every struct variant; on a variant it does not compile.
 - A shell test build takes over two minutes after a shell source change; the core's takes about ten seconds.
 - **A return can count twice.** Found by a HUD test, not fixed. A ball at 60 units/s placed one unit from a paddle's face ends its step exactly on the face (`toi` 1, no remainder to travel); the next step's sweep starts on the grown rectangle's edge moving away, `slab` gives an exit of `-0.0`, which `t_exit < 0.0` does not refuse, and `swept_circle_rect` reports an impact at `toi` 0 on a left or right face. Physics counts a second return: a second speed step, a second `BallHitPaddle`, a second cue. The mechanism is read from `kernel/collide.rs`; the double count is observed (the HUD read 2). It needs a step to end on the face within float rounding, so it is rare in play, and it predates M2. It also answers part of the spec's open fact on sweeps that start inside the rectangle.
+- The sandbox's two delays read as a fault when the overlay showed only the forced values: a scripted run of the user's key sequence showed the core at the designed state at every stage.
+- The join cue is spawned on the real path into a Chaos match, by `entering_a_chaos_match_plays_the_joining_effects_cue`; the user confirmed it by ear.
 - A state change requested in a test applies in the next frame: `run_until(.. == Playing)` right after `NextState::set(Countdown)` returns at once, still in `Playing`.
 
 ## Open at handoff

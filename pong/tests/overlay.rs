@@ -85,7 +85,7 @@ fn in_a_match_the_overlay_reads_the_ball_and_the_computers_aim() {
             "effects Speed",
             "returns 0",
             "AI right: centre",
-            "sandbox keys: 1-2 effect, [ ] returns, 0 release",
+            "sandbox keys: 1 Speed, 2 Shrink, [ ] returns, 0 release",
             "InMatch / Countdown"
         ]
     );
@@ -121,6 +121,13 @@ fn with_the_overlay_shown_the_number_keys_toggle_effects_and_the_brackets_hold_t
     assert_eq!(
         sandbox(&app).forced_effects(),
         Some([EffectId::Speed].as_slice())
+    );
+    // Shrink plays on until the point: the overlay reads both.
+    let text = overlay(&mut app).1;
+    assert!(text.contains("\neffects Speed, Shrink\n"), "{text}");
+    assert!(
+        text.contains("\n  effects from the next point: Speed\n"),
+        "{text}"
     );
     tap(&mut app, KeyCode::Digit2);
     assert_eq!(
