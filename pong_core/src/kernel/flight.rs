@@ -104,7 +104,7 @@ pub struct Contribution {
 /// rather than wrap; both are `u16` because every `u16` is exact in `f32`.
 #[derive(Debug)]
 pub struct Flight {
-    returns: u16,
+    began_at: FlightStart,
     steps: u16,
     speed_gain: f32,
     paddle_height_factor: f32,
@@ -116,7 +116,7 @@ pub struct Flight {
 impl Default for Flight {
     fn default() -> Self {
         Self {
-            returns: 0,
+            began_at: FlightStart::SERVE,
             steps: 0,
             speed_gain: 0.0,
             paddle_height_factor: 1.0,
@@ -135,7 +135,7 @@ impl Flight {
         contributions: impl IntoIterator<Item = Contribution>,
     ) -> Self {
         let mut flight = Self {
-            returns: start.returns,
+            began_at: start,
             ..Self::default()
         };
         for contribution in contributions {
@@ -146,10 +146,33 @@ impl Flight {
         flight
     }
 
+    /// This flight as an observer believes it (M2 spec 2.3.12): the same
+    /// start and the same clock, composed from `believed` contributions in
+    /// place of the true ones. Prediction under the result is what an AI
+    /// with that belief expects the ball to do.
+    ///
+    /// Precondition (the caller's): `believed` holds what each effect of
+    /// this flight is believed to contribute. Believing every effect's true
+    /// contribution gives a flight that pushes exactly as this one.
+    #[must_use]
+    pub fn believed_as(&self, believed: impl IntoIterator<Item = Contribution>) -> Self {
+        Self {
+            steps: self.steps,
+            ..Self::start(self.began_at, believed)
+        }
+    }
+
+    /// The moment this flight began: what every effect was told when asked
+    /// for its contribution. [`FlightStart::SERVE`] for the empty flight.
+    #[must_use]
+    pub const fn began_at(&self) -> FlightStart {
+        self.began_at
+    }
+
     /// Paddle returns in the rally so far. Zero from the serve to the first return.
     #[must_use]
     pub const fn returns(&self) -> u16 {
-        self.returns
+        self.began_at.returns
     }
 
     /// The summed speed gain of the effects, before the serve speed and the cap.
@@ -294,6 +317,40 @@ mod tests {
         };
         assert_eq!(Flight::start(start, []).returns(), 4);
         assert_eq!(Flight::start(FlightStart::SERVE, []).returns(), 0);
+    }
+
+    #[test]
+    fn a_flight_remembers_the_start_it_began_at() {
+        let start = FlightStart {
+            returns: 4,
+            hit: Some(Hit {
+                side: Side::Left,
+                paddle_motion: StepMotion::Up,
+            }),
+        };
+        assert_eq!(Flight::start(start, []).began_at(), start);
+        assert_eq!(Flight::default().began_at(), FlightStart::SERVE);
+    }
+
+    /// M2 spec 2.3.12: an AI's degraded belief is the same flight composed
+    /// from what the AI believes each effect contributes.
+    #[test]
+    fn a_believed_flight_keeps_the_start_and_the_clock_and_pushes_as_believed() {
+        let start = FlightStart {
+            returns: 4,
+            hit: None,
+        };
+        let mut flown = Flight::start(start, [pushing(7.0, Steady(2.0)), pushing(0.0, Growing)]);
+        for _ in 0..30 {
+            flown.tick();
+        }
+        // The AI sees the growing push and misses the steady one.
+        let believed = flown.believed_as([pushing(0.0, Growing)]);
+        assert_eq!(believed.began_at(), start);
+        assert_eq!(believed.steps(), 30);
+        // Growing at height 5, half a second in: 5.5, without Steady's 2.
+        assert_vec_near(believed.force(at(5.0), DT), Vec2::new(0.0, 5.5), 1e-6);
+        assert_vec_near(flown.force(at(5.0), DT), Vec2::new(0.0, 7.5), 1e-6);
     }
 
     #[test]

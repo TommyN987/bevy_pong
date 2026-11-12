@@ -120,17 +120,26 @@ An effect never touches the simulation.
 At each flight start, a serve or a paddle return, it is asked once for a `Contribution`:
 its stance on every channel.
 The base composes the answers into a `Flight` (`kernel::flight`), which sits on the ball.
-Physics integrates under it and the AI predicts under it, so both see the same forces.
+Physics integrates under it and the AI predicts through the same math, so both see the same forces.
 Nothing changes in mid-flight but the flight's clock.
+
+An effect also states its `Flaw`: how an AI of each difficulty misjudges it (M2 spec 2.3.12).
+The flaw has two forms. The first adds to the star's own handicap: aim error and reaction delay.
+The second is a belief: the `Contribution` the AI thinks the effect makes, in place of the true one.
+The AI predicts under the flight composed from the beliefs, and the ball flies under the true one.
+An effect whose flaw is inherent, Speed's faster ball or Shrink's shorter paddle, adds nothing and is believed as it is.
 
 | Piece | Shape and reason |
 |---|---|
-| `Effect` | A trait with no default methods: `id` and `contribute`. An effect that skips a part does not compile. |
+| `Effect` | A trait with no default methods: `id`, `contribute`, and `flaw`. An effect that skips a part does not compile. |
+| `Flaw` | A struct without `Default`: `added_error`, `added_delay`, and `believed`, a `Contribution`. One effect's share of an AI's misjudgement of one flight. |
+| `FlightFlaw` | The flaws of the effects in play, composed: errors and delays by sum, beliefs into a `Flight` with the true flight's start and clock (`Flight::believed_as`). |
 | `Contribution` (kernel) | A struct without `Default`. Adding a channel adds a field, and every effect stops compiling until it states its stance. |
 | `build` | The crate's one match on `EffectId`: the registration. A new variant does not compile until it is built there. |
 | `Sandbox` | Port resource (M2 spec 2.9.1): the shell's overlay writes it. `toggle(effect, in_play)` forces the whole set in play, read by escalation at the next countdown; `hold_returns` holds the count every flight starts at, copied into `ActiveEffects` each step; `release` forces nothing. Any forcing marks the match touched, which persistence reads; entering a match clears the mark unless something is still forced. |
-| `ActiveEffects` | Resource: the effects in play, set by escalation through `set(ids, tuning, mode)`. `start_flight(start)` asks each once, at the sandbox's held count if one is held. Every channel composes commutatively, so order does not matter. |
-| `BallFlight` | Component, required by `Ball`: the ball's flight. Replaced only at a flight start, cleared only between rallies. |
+| `ActiveEffects` | Resource: the effects in play, set by escalation through `set(ids, tuning, mode)`. `start_flight(start)` asks each once, at the sandbox's held count if one is held. Every channel composes commutatively, so order does not matter. `flaw_over(flight, difficulty)` asks each for its flaw over the start the flight began at; the AI calls it when it plans an approach, so the per-star numbers cost nothing in a match without an AI. |
+| `BallFlight` | Component, required by `Ball`: the ball's flight. Replaced only at a flight start (`begin`), cleared only between rallies (`clear`). `flight()` is the empty flight while cleared; `in_flight()` is `None` then, since a begun flight with no effect in play is just as empty. |
+| `probe.rs` | Test only: `Misjudged`, an effect no tuning builds, with a push, a believed push, and an added error and delay, for the tests of the base and of the AI. |
 | `speed.rs` | Speed: a launch-speed gain per return of the rally, at the per-hit increase of the mode played. One module per effect. |
 | `shrink.rs` | Shrink: a factor on both paddles' height, riding a `Ramp` over the rally's returns from one to `height_min / height_default`. |
 
@@ -155,7 +164,7 @@ The base adds the serve speed and applies the cap (`SpeedRule::launch`): bounds 
 |---|---|---|
 | `rebuild_effects_from_changed_tuning` | Effects | Rebuilds the effects in play when `Tuning` changed, so a dev reload reaches them. |
 | `fit_paddles_to_the_flight` | Effects | Sets both paddles to the default height times the flight's factor, only when the factor changed since it last wrote. One step after the return that started the flight. |
-| `clear_flights` | `OnEnter(Countdown)` | An empty flight: no returns, no forces, factor one. So paddles are whole for every serve, and stay short through the point pause before it. |
+| `clear_flights` | `OnEnter(Countdown)` | The ball is in no flight: no returns, no forces, factor one. So paddles are whole for every serve, and stay short through the point pause before it. |
 | `start_flight_on_serve` | Effects, `BallInPlay` | On `Serve`, starts the rally's first flight, after the ball feature launched the ball in Intent. |
 
 Later flights start in physics, at a paddle return:
@@ -257,23 +266,27 @@ The mirror controller (spec 1.4.6): the computer's player writes the same `Paddl
 | System | Runs | Does |
 |---|---|---|
 | `spawn_controllers` | `OnEnter(InMatch)` | One `MirrorController` entity per side held by `Controller::Ai`, despawned with the match. |
-| `steer_ai_paddles` | Intent | Each controller reads the ball now and its paddle, and writes its side's intent. |
+| `steer_ai_paddles` | Intent | Each controller is handed a `Sighting` (the ball's motion, the flight it is in if any, the effects in play) and its paddle, and writes its side's intent. |
 
 A controller is an entity of its own, not a component on the paddle:
 spawning it needs no order against the paddle's spawn, which belongs to another feature.
 Seats writes the human sides and the AI the others, so the two writers of `PaddleIntents` need no order.
 
 `MirrorController::steer` holds the decisions and is a plain method, tested without an `App`.
-When the ball turns toward its side, it predicts the crossing with the kernel's `crossing_y`,
-the same stepping the physics uses, adds an error drawn once from `±prediction_error`,
+An approach is a ball in a flight, flying toward the controller's side.
+On the step an approach begins, the controller asks the effects in play for their flaws at its difficulty (`ActiveEffects::flaw_over`, M2 spec 2.3.12).
+It predicts the crossing with the kernel's `crossing_y`, the same stepping the physics uses, under the flight it believes in,
+adds an error drawn once from the spread, the star's `prediction_error` plus the effects' added error,
 and keeps that target for the approach.
-It holds still through `reaction_delay`, then steers to the target.
+It holds still through the star's `reaction_delay` plus the effects' added delay, then steers to the target.
+In Classic, Speed adds nothing and is believed as it is, so the star's handicap is the whole flaw, as in M1.
 When the ball is not coming it steers to the centre, where the next serve starts.
 `intent_toward` stops within half a step's travel of a target, so the paddle never jitters.
 Of its state, only `aim` (the approach's `Aim`: target and error) and `side` are readable, for the shell's overlay (plan 10.1).
 
 Steering is not in `BallInPlay`: the AI lines up between rallies as players do (ADR 0004).
-The serve shares the intent phase, unordered, so a reaction to a serve may start one step late.
+The serve shares the intent phase, unordered, and the serve's flight begins in the effects phase after both.
+A ball in no flight is not an approach, so the AI plans a served ball on the step after the serve, under the serve's flight, whichever of the two ran first.
 
 ## sanity
 

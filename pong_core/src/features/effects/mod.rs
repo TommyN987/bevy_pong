@@ -6,6 +6,11 @@
 //! [`Contribution`](crate::kernel::flight::Contribution); the base composes
 //! the answers into the ball's [`Flight`], which physics and the AI's
 //! prediction read. One module per effect; effects do not import each other.
+//!
+//! An effect also states its [`Flaw`]: how an AI of each difficulty
+//! misjudges it (M2 spec 2.3.12). The AI asks when it plans an approach.
+
+use std::time::Duration;
 
 use bevy::app::{App, FixedUpdate, Plugin};
 use bevy::ecs::change_detection::DetectChanges;
@@ -17,7 +22,7 @@ use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::{Local, Query, Res, ResMut};
 use bevy::state::state::OnEnter;
 
-use crate::domain::{EffectId, Mode, Serve};
+use crate::domain::{Difficulty, EffectId, Mode, Serve};
 use crate::features::ball::Ball;
 use crate::features::paddle::Paddle;
 use crate::features::tuning::Tuning;
@@ -30,9 +35,9 @@ pub mod speed;
 
 /// One effect's core half (ADR 0011).
 ///
-/// No method has a default body: an effect states its identity and its
-/// stance on every channel, or it does not compile. `Send + Sync + 'static`
-/// because the effects in play live in a resource.
+/// No method has a default body: an effect states its identity, its stance
+/// on every channel, and its AI flaw, or it does not compile.
+/// `Send + Sync + 'static` because the effects in play live in a resource.
 pub trait Effect: Send + Sync + 'static {
     /// Which effect this is.
     fn id(&self) -> EffectId;
@@ -40,6 +45,46 @@ pub trait Effect: Send + Sync + 'static {
     /// This effect's share of the flight that begins at `start`. Called once
     /// per flight; the answer holds until the next flight starts.
     fn contribute(&self, start: &FlightStart) -> Contribution;
+
+    /// How an AI of `difficulty` misjudges this effect over the flight that
+    /// began at `start` (M2 spec 2.3.12). Called when an AI plans an
+    /// approach, so any number of times per flight.
+    ///
+    /// Postcondition (the effect's): the same `start` and `difficulty` give
+    /// the same flaw for as long as the flight lasts, and
+    /// [`Flaw::added_error`] is not negative.
+    fn flaw(&self, start: &FlightStart, difficulty: Difficulty) -> Flaw;
+}
+
+/// How an AI misjudges one effect over one flight: the flaw's two forms
+/// (M2 spec 2.3.12).
+///
+/// Deliberately without `Default`, as [`Contribution`]: an effect whose flaw
+/// is inherent, in a faster ball or a shorter paddle, says so by adding
+/// nothing and believing what it contributes.
+#[derive(Debug)]
+pub struct Flaw {
+    /// First form: added to the spread of the AI's aim error, in arena units.
+    pub added_error: f32,
+    /// First form: added to the AI's reaction delay.
+    pub added_delay: Duration,
+    /// Second form: what the AI believes this effect contributes to the
+    /// flight, in place of [`Effect::contribute`]'s answer.
+    pub believed: Contribution,
+}
+
+/// What an AI of one difficulty makes of one flight: the [`Flaw`]s of the
+/// effects in play, composed. Errors and delays compose by sum; the believed
+/// contributions compose into a flight as the true ones do.
+#[derive(Debug)]
+pub struct FlightFlaw {
+    /// Added to the spread of the AI's aim error, in arena units.
+    pub added_error: f32,
+    /// Added to the AI's reaction delay.
+    pub added_delay: Duration,
+    /// The flight the AI believes the ball is in: it predicts under this
+    /// one, and the ball flies under the true one.
+    pub believed: Flight,
 }
 
 /// The core's registration of every effect: the one place in this crate that
@@ -154,6 +199,32 @@ impl ActiveEffects {
             self.effects.iter().map(|effect| effect.contribute(&start)),
         )
     }
+
+    /// What an AI of `difficulty` makes of `flight`: every effect in play
+    /// asked for its [`Flaw`] over the start `flight` began at.
+    ///
+    /// Precondition (the caller's): `flight` came from
+    /// [`start_flight`](Self::start_flight) with these effects in play, as
+    /// the ball's flight does within a rally. With no effect in play the
+    /// answer adds nothing and believes an empty flight.
+    #[must_use]
+    pub fn flaw_over(&self, flight: &Flight, difficulty: Difficulty) -> FlightFlaw {
+        let start = flight.began_at();
+        let mut added_error = 0.0;
+        let mut added_delay = Duration::ZERO;
+        let mut believed = Vec::with_capacity(self.effects.len());
+        for effect in &self.effects {
+            let flaw = effect.flaw(&start, difficulty);
+            added_error += flaw.added_error;
+            added_delay = added_delay.saturating_add(flaw.added_delay);
+            believed.push(flaw.believed);
+        }
+        FlightFlaw {
+            added_error,
+            added_delay,
+            believed: flight.believed_as(believed),
+        }
+    }
 }
 
 /// Port: the developer sandbox (M2 spec 2.9.1). The shell's overlay writes
@@ -222,26 +293,49 @@ impl Sandbox {
 /// the composed contributions of the effects in play.
 ///
 /// Invariant: the flight is replaced only at a flight start, by
-/// [`begin`](Self::begin), and cleared only between rallies; in between, only
-/// its clock advances.
+/// [`begin`](Self::begin), and cleared only between rallies, by
+/// [`clear`](Self::clear); in between, only its clock advances. While
+/// cleared, the flight is the empty one.
 #[derive(Component, Debug, Default)]
-pub struct BallFlight(Flight);
+pub struct BallFlight {
+    flight: Flight,
+    /// Whether a serve or a return began `flight`. A begun flight can be as
+    /// empty as the cleared one, with no effect in play, so the flight's
+    /// content cannot tell.
+    begun: bool,
+}
 
 impl BallFlight {
-    /// The flight, for physics and prediction to read.
+    /// The flight, for physics and the view to read: the empty flight while
+    /// the ball is in none.
     #[must_use]
     pub const fn flight(&self) -> &Flight {
-        &self.0
+        &self.flight
+    }
+
+    /// The flight the ball is in, or `None` between rallies: from a
+    /// countdown's start until the serve's flight begins, which is one
+    /// phase after the serve launches the ball.
+    #[must_use]
+    pub const fn in_flight(&self) -> Option<&Flight> {
+        if self.begun { Some(&self.flight) } else { None }
     }
 
     /// Starts a new flight in place of the old.
     pub fn begin(&mut self, flight: Flight) {
-        self.0 = flight;
+        self.flight = flight;
+        self.begun = true;
+    }
+
+    /// Ends the rally's last flight: the ball is in none until the next
+    /// [`begin`](Self::begin).
+    pub fn clear(&mut self) {
+        *self = Self::default();
     }
 
     /// Advances the flight's clock by one fixed step.
     pub const fn tick(&mut self) {
-        self.0.tick();
+        self.flight.tick();
     }
 }
 
@@ -311,7 +405,7 @@ fn fit_paddles_to_the_flight(
 /// returns yet, no forces.
 fn clear_flights(mut flights: Query<&mut BallFlight, With<Ball>>) {
     for mut flight in &mut flights {
-        flight.begin(Flight::default());
+        flight.clear();
     }
 }
 
@@ -332,18 +426,23 @@ fn start_flight_on_serve(
 }
 
 #[cfg(test)]
+pub(crate) mod probe;
+
+#[cfg(test)]
 mod tests {
     use std::num::NonZeroU8;
     use std::sync::{Arc, Mutex};
+    use std::time::Duration;
 
     use bevy::app::App;
     use bevy::ecs::query::With;
     use bevy::math::Vec2;
     use bevy::state::state::NextState;
 
-    use super::{ActiveEffects, BallFlight, Effect, Sandbox};
+    use super::probe::Misjudged;
+    use super::{ActiveEffects, BallFlight, Effect, Flaw, Sandbox};
     use crate::domain::{
-        BallHitPaddle, Controller, EffectId, MatchConfig, Mode, Seat, SeatPlayers,
+        BallHitPaddle, Controller, Difficulty, EffectId, MatchConfig, Mode, Seat, SeatPlayers,
     };
     use crate::features::ball::{Ball, Position, Velocity};
     use crate::features::paddle::Paddle;
@@ -527,6 +626,18 @@ mod tests {
                 field: None,
             }
         }
+
+        fn flaw(&self, _start: &FlightStart, _difficulty: Difficulty) -> Flaw {
+            Flaw {
+                added_error: 0.0,
+                added_delay: Duration::ZERO,
+                believed: Contribution {
+                    speed_gain: 0.0,
+                    paddle_height_factor: 1.0,
+                    field: None,
+                },
+            }
+        }
     }
 
     #[test]
@@ -586,6 +697,44 @@ mod tests {
             frame(&mut app);
         }
         assert_eq!(seen(&asked).len(), 2, "nothing is asked in mid-flight");
+    }
+
+    fn in_flight(app: &mut App) -> bool {
+        app.world_mut()
+            .query_filtered::<&BallFlight, With<Ball>>()
+            .single(app.world())
+            .expect("exactly one ball")
+            .in_flight()
+            .is_some()
+    }
+
+    /// The AI plans an approach under the ball's flight, so it must tell a
+    /// ball waiting for its flight from one flying in an empty flight.
+    #[test]
+    fn the_ball_is_in_no_flight_until_the_serve_begins_one_and_in_none_after_the_rally() {
+        let mut app = headless_app(1);
+        boot(&mut app);
+        enter_match(&mut app, two_humans());
+        assert!(!in_flight(&mut app), "the countdown before the first serve");
+        run_until(
+            &mut app,
+            |app| match_state(app) == MatchState::Playing,
+            1_000,
+            "play never began",
+        );
+        for _ in 0..3 {
+            frame(&mut app);
+        }
+        assert!(in_flight(&mut app), "the serve began a flight");
+        into_the_right_paddle(&mut app, Vec2::new(200.0, 0.0));
+        assert!(in_flight(&mut app), "a return begins the next");
+
+        app.world_mut()
+            .resource_mut::<NextState<MatchState>>()
+            .set(MatchState::Countdown);
+        frame(&mut app);
+        assert_eq!(match_state(&app), MatchState::Countdown);
+        assert!(!in_flight(&mut app), "the rally is over");
     }
 
     #[test]
@@ -684,6 +833,14 @@ mod tests {
                 speed_gain: 0.0,
                 paddle_height_factor: 1.0,
                 field: Some(Box::new(Swing)),
+            }
+        }
+
+        fn flaw(&self, start: &FlightStart, _difficulty: Difficulty) -> Flaw {
+            Flaw {
+                added_error: 0.0,
+                added_delay: Duration::ZERO,
+                believed: self.contribute(start),
             }
         }
     }
@@ -838,5 +995,103 @@ mod tests {
         }
         frame(&mut app);
         assert_eq!(paddle_heights(&mut app), [14.0, 14.0]);
+    }
+
+    const DT: f32 = 1.0 / 60.0;
+
+    fn level_ball() -> Motion {
+        Motion {
+            position: Vec2::ZERO,
+            velocity: Vec2::new(60.0, 0.0),
+        }
+    }
+
+    /// Classic's AI: nothing in play adds to the star's own handicap.
+    #[test]
+    fn with_no_effect_in_play_a_flight_is_read_without_flaw() {
+        let active = ActiveEffects::default();
+        let flight = active.start_flight(FlightStart::SERVE);
+        let flaw = active.flaw_over(&flight, Difficulty::OneStar);
+        assert_near(flaw.added_error, 0.0, 1e-6);
+        assert_eq!(flaw.added_delay, Duration::ZERO);
+        assert_eq!(flaw.believed.force(level_ball(), DT), Vec2::ZERO);
+    }
+
+    /// M2 spec 2.3.12, first form: added error and delay, composed by sum.
+    #[test]
+    fn the_flaws_of_the_effects_in_play_add_their_errors_and_their_delays() {
+        let mut active = ActiveEffects::default();
+        active.add(Box::new(Misjudged::costing(
+            2.0,
+            Duration::from_millis(100),
+        )));
+        active.add(Box::new(Misjudged::costing(
+            3.0,
+            Duration::from_millis(200),
+        )));
+        let flight = active.start_flight(FlightStart::SERVE);
+        let flaw = active.flaw_over(&flight, Difficulty::TwoStars);
+        assert_near(flaw.added_error, 5.0, 1e-6);
+        assert_eq!(flaw.added_delay, Duration::from_millis(300));
+    }
+
+    /// M2 spec 2.3.12, second form: the AI predicts under the flight it
+    /// believes in, which starts and ticks as the true one does.
+    #[test]
+    fn the_believed_flight_pushes_as_each_effect_is_believed_to_and_keeps_the_clock() {
+        let mut active = ActiveEffects::default();
+        active.add(Box::new(Misjudged::pushing(8.0, Some(6.0))));
+        active.add(Box::new(Misjudged::pushing(5.0, None)));
+        let start = FlightStart {
+            returns: 4,
+            hit: None,
+        };
+        let mut flight = active.start_flight(start);
+        for _ in 0..7 {
+            flight.tick();
+        }
+        let flaw = active.flaw_over(&flight, Difficulty::TwoStars);
+        assert_eq!(
+            flight.force(level_ball(), DT),
+            Vec2::new(0.0, 13.0),
+            "the ball feels both pushes"
+        );
+        assert_eq!(
+            flaw.believed.force(level_ball(), DT),
+            Vec2::new(0.0, 6.0),
+            "the AI underrates one and misses the other"
+        );
+        assert_eq!(flaw.believed.began_at(), start);
+        assert_eq!(flaw.believed.steps(), 7);
+    }
+
+    /// A flaw may depend on the dial and on the stars: each effect is asked
+    /// with the start its flight began at and the difficulty of the AI.
+    #[test]
+    fn an_effect_is_asked_for_its_flaw_with_the_flights_start_and_the_ais_difficulty() {
+        let probe = Misjudged::costing(0.0, Duration::ZERO);
+        let asked = Arc::clone(&probe.asked);
+        let mut active = ActiveEffects::default();
+        active.add(Box::new(probe));
+        let start = FlightStart {
+            returns: 9,
+            hit: Some(Hit {
+                side: Side::Left,
+                paddle_motion: StepMotion::Down,
+            }),
+        };
+        let flight = active.start_flight(start);
+        assert!(
+            asked
+                .lock()
+                .expect("the probe's log is not poisoned")
+                .is_empty(),
+            "starting a flight asks for no flaw"
+        );
+        let _ = active.flaw_over(&flight, Difficulty::ThreeStars);
+        assert_eq!(
+            *asked.lock().expect("the probe's log is not poisoned"),
+            [(start, Difficulty::ThreeStars)]
+        );
     }
 }
