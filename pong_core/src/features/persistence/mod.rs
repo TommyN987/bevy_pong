@@ -28,6 +28,7 @@ use self::io::{SavePaths, write_atomically};
 use self::load::{LoadError, Loaded, load};
 use self::model::{Profiles, Settings};
 use crate::domain::{MatchConfig, MatchEnded, Notice, Player};
+use crate::features::effects::Sandbox;
 use crate::flow::states::AppState;
 
 pub mod document;
@@ -233,7 +234,8 @@ fn load_saves(
 /// winning side's player, a loss to the losing side's, and to both the
 /// match's longest rally if it beats their record (plan 7.4). A Guest or
 /// a computer side records nothing; one profile on both seats records
-/// nothing at all (decided 2026-11-08). Runs before the match-end write, so
+/// nothing at all (decided 2026-11-08); a match the developer [`Sandbox`]
+/// touched records nothing (decided 2026-11-11). Runs before the match-end write, so
 /// the file holds the result.
 ///
 /// # Errors
@@ -243,6 +245,7 @@ fn load_saves(
 fn record_match_result(
     mut ended: MessageReader<MatchEnded>,
     config: Option<Res<MatchConfig>>,
+    sandbox: Res<Sandbox>,
     mut profiles: ResMut<Profiles>,
 ) -> Result<(), BevyError> {
     let Some(&MatchEnded {
@@ -252,6 +255,9 @@ fn record_match_result(
     else {
         return Ok(());
     };
+    if sandbox.touched_match() {
+        return Ok(());
+    }
     let Some(config) = config else {
         return Err(BevyError::from("a match ended with no MatchConfig"));
     };
@@ -367,6 +373,7 @@ mod tests {
         BallHitPaddle, Controller, Difficulty, MatchConfig, Mode, Notice, Player, ProfileId, Seat,
         SeatPlayers,
     };
+    use crate::features::effects::Sandbox;
     use crate::features::tuning::Tuning;
     use crate::flow::states::{AppState, MatchState};
     use crate::kernel::geometry::Side;
@@ -852,6 +859,30 @@ mod tests {
         assert_eq!((max.chaos.wins, max.chaos.losses), (0, 1));
         assert_eq!(zoe.classic, Records::default());
         assert_eq!(max.classic, Records::default());
+    }
+
+    /// M2 phase 3, approved 2026-11-11: the overlay ships in release builds,
+    /// and a match played with its effects or count forced is no record.
+    #[test]
+    fn a_match_the_sandbox_touched_records_nothing_and_the_next_one_records_again() {
+        let mut app = zoe_and_max();
+        let humans = (
+            Controller::Human(Seat::Left),
+            Controller::Human(Seat::Right),
+        );
+        let zoe_vs_max = seats(Player::Profile(ZOE), Player::Profile(MAX));
+        start_match(&mut app, to_one_point(humans.0, humans.1, zoe_vs_max));
+        let mut sandbox = app.world_mut().resource_mut::<Sandbox>();
+        sandbox.hold_returns(Some(5));
+        sandbox.release();
+        left_scores_the_winning_point(&mut app);
+        leave_match(&mut app);
+        assert_eq!(wins_losses(&app, ZOE), (0, 0), "forced, then released");
+        assert_eq!(wins_losses(&app, MAX), (0, 0));
+
+        left_side_wins(&mut app, humans.0, humans.1, zoe_vs_max);
+        assert_eq!(wins_losses(&app, ZOE), (1, 0));
+        assert_eq!(wins_losses(&app, MAX), (0, 1));
     }
 
     /// The side a seat plays decides, not the seat's name: here the right

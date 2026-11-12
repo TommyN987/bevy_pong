@@ -1,5 +1,5 @@
 //! Sound (spec 1.6.4): a cue for each core event, from a sound bank built
-//! when the app is.
+//! when the app is, and each effect's own cue when it joins (M2 spec 2.3.3).
 
 mod cues;
 pub mod sound;
@@ -11,9 +11,11 @@ use bevy::audio::{AddAudioSource, AudioPlugin};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::schedule::common_conditions::resource_exists;
+use pong_core::domain::EffectId;
 use pong_core::features::persistence::model::Settings;
 
 use self::sound::Sound;
+use crate::effects::shell_half;
 
 /// What a sound tells the players. The cue map knows only these names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,9 +49,21 @@ pub struct CueSounds {
     wall_hit: Handle<Sound>,
     point: Handle<Sound>,
     match_won: Handle<Sound>,
+    /// Each effect's join cue, for the effects that have one.
+    joins: Vec<(EffectId, Handle<Sound>)>,
 }
 
 impl CueSounds {
+    /// The sound played when `effect` joins the effects in play, if it has
+    /// one.
+    #[must_use]
+    pub fn join(&self, effect: EffectId) -> Option<&Handle<Sound>> {
+        self.joins
+            .iter()
+            .find(|(id, _)| *id == effect)
+            .map(|(_, sound)| sound)
+    }
+
     /// The sound `cue` plays.
     #[must_use]
     pub const fn get(&self, cue: Cue) -> &Handle<Sound> {
@@ -82,12 +96,19 @@ impl<B: SoundBank + Send + Sync + 'static> Plugin for SoundsPlugin<B> {
             app.init_asset::<Sound>();
         }
         let mut assets = app.world_mut().resource_mut::<Assets<Sound>>();
+        // An effect's join cue is its own shell half's, not the bank's: the
+        // bank knows the base cues by name, and no effect by name.
+        let joins = EffectId::ALL
+            .into_iter()
+            .filter_map(|id| Some((id, assets.add(shell_half(id).join_cue?))))
+            .collect();
         let mut add = |cue| assets.add(self.0.sound(cue));
         let sounds = CueSounds {
             paddle_hit: add(Cue::PaddleHit),
             wall_hit: add(Cue::WallHit),
             point: add(Cue::Point),
             match_won: add(Cue::MatchWon),
+            joins,
         };
         // `Settings` exists from `Boot` on; the core sends no event before.
         app.insert_resource(sounds)

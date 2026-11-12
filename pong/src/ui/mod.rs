@@ -2,6 +2,7 @@
 //! game's camera (docs/architecture.md, rule 8).
 
 pub mod boot_screen;
+pub mod effect_hud;
 pub mod font;
 pub mod hud;
 pub mod match_over;
@@ -12,9 +13,20 @@ pub mod pause;
 pub mod style;
 
 use bevy::app::{App, Plugin};
+use pong_core::domain::Mode;
+
+/// A mode's name as the screens show it (M2 spec 2.8.1): `Classic`, or
+/// `Chaos` and a dot per effect its cap allows at once.
+#[must_use]
+pub fn mode_label(mode: Mode) -> String {
+    match mode {
+        Mode::Classic => "Classic".to_owned(),
+        Mode::Chaos { cap } => format!("Chaos {}", "●".repeat(usize::from(cap.get()))),
+    }
+}
 
 /// Every screen: the game's font, the boot screen, the menus, the notice
-/// line, the match HUD, pause, and match over.
+/// line, the match HUD and its effects, pause, and match over.
 ///
 /// Preconditions: `DefaultPlugins` and the core plugin group.
 pub struct ScreensPlugin;
@@ -27,6 +39,7 @@ impl Plugin for ScreensPlugin {
             menu::MenuPlugin,
             notice_line::NoticeLinePlugin,
             hud::HudPlugin,
+            effect_hud::EffectHudPlugin,
             pause::PausePlugin,
             match_over::MatchOverPlugin,
         ));

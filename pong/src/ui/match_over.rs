@@ -1,5 +1,5 @@
-//! Match over (spec 1.6.3): who won, and what each profile gained, as the
-//! files now hold it. Confirm, by either seat, or Escape returns to the main
+//! Match over (spec 1.6.3): who won, in which mode, and what each profile
+//! gained, as the files now hold it. Confirm, by either seat, or Escape returns to the main
 //! menu.
 //!
 //! What a profile gained is its records now, in the mode the match was played
@@ -32,7 +32,8 @@ use pong_core::flow::states::{AppState, MatchState};
 use pong_core::kernel::geometry::Side;
 
 use crate::ui::menu_input::{MenuDrivers, MenuKey, MenuPress, key_doing, menu_press};
-use crate::ui::style::{font, hint};
+use crate::ui::mode_label;
+use crate::ui::style::{DIM, font, hint};
 
 /// The match over screen.
 ///
@@ -53,6 +54,10 @@ impl Plugin for MatchOverPlugin {
 /// The heading naming the winner.
 #[derive(Component, Debug, Default)]
 pub struct WinnerHeading;
+
+/// The mode the match was played in.
+#[derive(Component, Debug, Default)]
+pub struct ModeLine;
 
 /// One profile's gains.
 #[derive(Component, Debug, Default)]
@@ -169,6 +174,12 @@ fn show_match_over(
                 Text::new(format!("{winner_name} wins!")),
                 font(9.0),
                 TextColor(Color::from(winner_color)),
+            ));
+            screen.spawn((
+                ModeLine,
+                Text::new(mode_label(config.mode)),
+                font(4.0),
+                TextColor(DIM),
             ));
             for (line, color) in gains {
                 screen.spawn((

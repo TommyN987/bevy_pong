@@ -128,7 +128,8 @@ Nothing changes in mid-flight but the flight's clock.
 | `Effect` | A trait with no default methods: `id` and `contribute`. An effect that skips a part does not compile. |
 | `Contribution` (kernel) | A struct without `Default`. Adding a channel adds a field, and every effect stops compiling until it states its stance. |
 | `build` | The crate's one match on `EffectId`: the registration. A new variant does not compile until it is built there. |
-| `ActiveEffects` | Resource: the effects in play, set by escalation through `set(ids, tuning, mode)`. `start_flight(start)` asks each once. Every channel composes commutatively, so order does not matter. |
+| `Sandbox` | Port resource (M2 spec 2.9.1): the shell's overlay writes it. `toggle(effect, in_play)` forces the whole set in play, read by escalation at the next countdown; `hold_returns` holds the count every flight starts at, copied into `ActiveEffects` each step; `release` forces nothing. Any forcing marks the match touched, which persistence reads; entering a match clears the mark unless something is still forced. |
+| `ActiveEffects` | Resource: the effects in play, set by escalation through `set(ids, tuning, mode)`. `start_flight(start)` asks each once, at the sandbox's held count if one is held. Every channel composes commutatively, so order does not matter. |
 | `BallFlight` | Component, required by `Ball`: the ball's flight. Replaced only at a flight start, cleared only between rallies. |
 | `speed.rs` | Speed: a launch-speed gain per return of the rally, at the per-hit increase of the mode played. One module per effect. |
 | `shrink.rs` | Shrink: a factor on both paddles' height, riding a `Ramp` over the rally's returns from one to `height_min / height_default`. |
@@ -224,7 +225,8 @@ Entering a match clears both. It is public for C1's meter and a HUD; records rea
 Which effects are in play, decided between points (M2 spec 2.4).
 The match scale sets breadth here; the rally scale sets intensity in each effect, from the flight's return count.
 This feature knows no effect: it reads names from the mode's tuning and hands them to `ActiveEffects`.
-It is the one writer of that resource.
+It is the one writer of the effects in play; the effects feature itself writes only the sandbox's held count there.
+While the `Sandbox` forces a set, that set is in play instead, the always-on effects included, and nothing is announced; the schedule turns underneath, so a release finds it where the score has brought it.
 
 A mode is data (`tuning.mode(mode)`): effects that are `always` on, a `bag` to schedule,
 `thresholds_percent` of the leader's progress at which one more joins, and `rotate_every_points`.
@@ -299,7 +301,7 @@ Profiles and settings kept between runs (spec 1.4.9); the file format is ADR 000
 | System | Runs | Does |
 |---|---|---|
 | `load_saves` | `OnEnter(Boot)` | Reads both files and inserts `Profiles`, `Settings`, and the private `SaveState`; the Boot gate waits for them (spec 1.4.10). |
-| `record_match_result` | `Update`, on `MatchEnded` | In the records of the match's mode (M2 spec 2.8.3): a win to the winning side's player, a loss to the loser's, and to both the match's longest rally if it beats their record, through `MatchConfig::player_on` (ADR 0008). Guest and computer sides record nothing; one profile on both seats records nothing. An unknown profile id is an error. |
+| `record_match_result` | `Update`, on `MatchEnded` | In the records of the match's mode (M2 spec 2.8.3): a win to the winning side's player, a loss to the loser's, and to both the match's longest rally if it beats their record, through `MatchConfig::player_on` (ADR 0008). Guest and computer sides record nothing; one profile on both seats records nothing; a match the `Sandbox` touched records nothing. An unknown profile id is an error. |
 | `write_saves_at_match_end` | `Update`, on `MatchEnded`, after `record_match_result` | Writes each writable file whose encoding differs from what it last wrote. |
 | `write_saves_after_menu_change` | `Update`, in `Menu`, when `Profiles` or `Settings` changed since it last ran | The same write, so a change on the menu screens survives the game closing before a match ends (plan 8.1). |
 
