@@ -227,3 +227,62 @@ fn chaos_rallies_shorten_as_breadth_and_return_count_rise_together() {
         );
     }
 }
+
+/// Held return counts an effect's dial is measured at: from zero, where
+/// every dial is mild (R9), past where the embedded dials are full.
+const DIAL_LADDER: [u16; 6] = [0, 5, 10, 15, 20, 30];
+
+/// R3 per effect (M2 spec 2.5.2, plan E.4): each effect of Chaos's bag alone,
+/// with no speed ramp beside it, at each rung of the ladder. Mean hits per
+/// rally of the mirror match of `stars_each`, rung by rung.
+fn mean_hits_up_the_dial(effect: EffectId, stars_each: Difficulty) -> Vec<f32> {
+    DIAL_LADDER
+        .iter()
+        .map(|&returns| {
+            let setup = AiMatch {
+                forced: Forcing {
+                    effects: Some(vec![effect]),
+                    returns: Some(returns),
+                },
+                rally_hit_limit: 200,
+                ..chaos_match(stars_each, stars_each)
+            };
+            let lengths = lengths(&play_seeds(&setup, 0..3));
+            println!(
+                "dial, {effect:?} alone at {returns} returns, {}: {lengths}",
+                stars(&setup)
+            );
+            lengths.mean
+        })
+        .collect()
+}
+
+/// M2 spec 2.5.2 and R3, per effect (plan E.4): an effect raises the miss
+/// probability, monotone in its dial; falsified if rally length does not
+/// shorten as the dial rises. Every effect of Chaos's bag is measured, so a
+/// new one is held to this with no edit here.
+///
+/// Mirror matches of one and of two stars. Three stars' aim error is inside
+/// the reach of the shortest paddle, so Shrink alone ends none of their
+/// rallies at any rung (M2 phase 4 report).
+#[test]
+fn each_bag_effect_alone_shortens_rallies_as_its_dial_rises() {
+    let tuning = Tuning::from_ron(EMBEDDED_RON).expect("the embedded tuning is valid");
+    for &effect in tuning.mode(chaos()).bag() {
+        for stars_each in [ONE, TWO] {
+            let means = mean_hits_up_the_dial(effect, stars_each);
+            for pair in means.windows(2) {
+                assert!(
+                    pair[1] <= pair[0],
+                    "{effect:?}, {} stars: rallies grew as the dial rose: {means:?}",
+                    stars_each.stars()
+                );
+            }
+            assert!(
+                means[means.len() - 1] < means[0],
+                "{effect:?}, {} stars: the full dial is no shorter than none: {means:?}",
+                stars_each.stars()
+            );
+        }
+    }
+}
