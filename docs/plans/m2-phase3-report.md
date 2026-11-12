@@ -3,7 +3,8 @@
 Started 2026-11-11. Branch `feat/chaos-shell`. Roles: Claude drives; the user reviews and commits.
 Deviations from [m2-chaos-pong.md](../specs/m2-chaos-pong.md) and [m2-plan.md](m2-plan.md) per plan rule P.6, each with where it was recorded.
 
-Built 2026-11-11 and 2026-11-12: all five steps, plan 3.1 to 3.5. Plan 3.6, the hand check, is the user's.
+Built 2026-11-11 and 2026-11-12: all five steps, plan 3.1 to 3.5.
+Closed 2026-11-12: the user played a Chaos match with Shrink in `just run` and declared plan 3.6 done; the work is committed on the branch (`0d7a661`, `6948c34`, `af7ea0d`).
 
 ## Deviations
 
@@ -81,9 +82,17 @@ a v1 profile's records migrated under Chaos; a v2 settings file migrated to Chao
 - The join cue is spawned on the real path into a Chaos match, by `entering_a_chaos_match_plays_the_joining_effects_cue`; the user confirmed it by ear.
 - A state change requested in a test applies in the next frame: `run_until(.. == Playing)` right after `NextState::set(Countdown)` returns at once, still in `Playing`.
 
-## Open at handoff
+## Hand check (plan 3.6)
 
-- Plan 3.6: the user's hand check of a Chaos match with Shrink in `just run`. To look at: whether the paddles' shrinking reads without an eased height; the large icon and its cue in the countdown; the row and count's size and place; `F3`, then `2`, `[`, `]`, `0`.
+Done by the user on 2026-11-12, in two rounds.
+
+- Round one: the match behaved correctly on its own. The sandbox read as faulty: the overlay showed only the forced values, not when they land. The join cue was first reported missing; the user had expected it at each shrink, and confirmed it plays at the join.
+- Between the rounds: the overlay's waiting-or-in-force lines and named keys (`af7ea0d`).
+- Round two: the user followed the five-step sandbox script and confirmed it works.
+- No change to Shrink's view was asked for: the eased height of the spec 2.6.1 deviation was not built.
+
+## Open at phase close
+
 - The double-counted return above: the user's ruling on when to fix it. Blocks (plan 9.1) reads the same function.
 - Only Shrink is in Chaos's bag, so the three Chaos rows play alike until Wind lands.
 - Spec 2.7.1's done-condition, a viewer naming the effects without reading, waits for the kids' session (plan 5.4).
