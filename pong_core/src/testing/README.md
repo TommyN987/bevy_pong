@@ -50,6 +50,15 @@ and whether more stars win (2.5.5). Every effect phase reports through it (M2 pl
 | `rally_hit_limit` | A rally that reaches it is reported unended and the match unfinished. It is how a test asks whether rallies end at all. |
 | `RallyLengths` | Count, mean, median, longest, and how many were unended. With any unended, the other numbers are lower bounds. |
 
+`tests/ai_matches.rs` asks, of the embedded tuning:
+
+| Question | How |
+|---|---|
+| Do rallies end? (M2 spec 2.5.1) | Every pairing of stars, Chaos and Classic, nothing forced: no rally reaches the hit limit. The control: with no effect forced into play, two-star and three-star mirrors score no point. |
+| Do more stars win? (2.5.5) | Each pairing from both sides, in both modes. |
+| Does the stack shorten rallies? (2.5.2) | Levels of breadth and held count rising together. |
+| Does each effect shorten rallies as its dial rises? (R3, plan E.4) | Each effect of the bag alone, no speed ramp beside it, up a ladder of held counts. |
+
 Frames are four fixed steps long: the simulation steps the same at any frame length, and longer frames spend fewer on the countdowns.
 
 `tests/ai_matches.rs` asserts the spec items and prints the numbers behind each assertion.
@@ -61,9 +70,18 @@ Classic is held to the same questions as Chaos: every rally ends in every pairin
 
 At least 100,000 fixed steps of live play, counted in the Sanity phase,
 under nextest's 30-second slow-timeout.
-Each seat tracks the ball with `kernel::predict::crossing_y`, off by a seeded aim error of up to ±9 per approach,
+Each seat tracks the ball with `kernel::predict::crossing_y` under the ball's own flight, off by a seeded aim error of up to ±9 per approach,
 and presses a random key one step in four.
 Each frame's length is drawn from half a step, one, two, or four.
 The invariants are the Sanity phase's, checked after every step; under the dev policy a fault panics the run.
 The soak asserts that `SanityPlugin` is present, so it cannot go quiet.
-At the end it asserts at least one match ended, the speed cap was reached, and at least 1,000 paddle hits.
+
+| Test | Plays | Asserts at the end |
+|---|---|---|
+| Classic (spec 1.5.2) | M1's soak: the mode's own schedule, 100,000 live steps. | A match ended, the speed cap was reached, at least 1,000 paddle hits. |
+| Chaos, one test per subset size 1, 2, 3 (M2 spec 2.5.3, 2.5.4) | Every choice of that many effects from Chaos's bag, forced beside the always-on effects, the return count held at `u16::MAX` so every dial is full. The test's 100,000 live steps are divided evenly among its subsets. | Per subset: the forced effects were in play, a return reached the speed cap, a match ended. |
+
+The subsets come from the mode's data, so an effect added to the bag is soaked with no edit.
+A size the bag cannot fill yet has no subset: its test says so and passes.
+Dividing one budget among the subsets keeps each test's running time the same however many effects ship:
+6.8 s for the Chaos test and 3.8 s for Classic on the development machine (M2 phase 4 report).

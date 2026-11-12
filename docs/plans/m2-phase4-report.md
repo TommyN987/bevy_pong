@@ -3,19 +3,21 @@
 Started 2026-11-12. Branch `feat/ai-effects`. Roles: Claude drives; the user reviews and commits.
 Deviations from [m2-chaos-pong.md](../specs/m2-chaos-pong.md) and [m2-plan.md](m2-plan.md) per plan rule P.6, each with where it was recorded.
 
-Built so far: step 0, step 1 (plan 4.1), and step 2 (plan 4.2). Steps 3 and 4 (plan 4.3, 4.4) are not started.
+Built 2026-11-12: step 0, and steps 1 to 4 (plan 4.1 to 4.4). Not closed: see "Open at phase close".
 
 **Ruled 2026-11-12:** the finding of step 2, that no rally between three-star computers ends, was answered by a retune of the AI's reaction delays (step 2, "The retune"). Spec 2.5.1 is met for every pairing. The numbers are a first candidate: the user's hand check is owed.
 
 ## Deviations
 
-All were proposed before implementation and approved by the user on 2026-11-12. The first two are built, in step 1; the third waits for step 3.
+All were proposed before implementation and approved by the user on 2026-11-12, and all are built.
 
 | Item | Deviation | Recorded |
 |---|---|---|
 | plan 4.1 | The per-star flaw section of an effect's tuning is not built. Shrink's flaw is inherent (spec 2.6.1), so no effect has numbers to read; Wind is the section's first user, in plan phase 5. Phase 4 proves the flaw's two forms with probe effects. | This report. Plan amendment at the next record step. |
 | spec 2.3.12 | For Shrink, "a raised flaw misses some" is read as a raised dial: a fixed handicap returns every ball at dial zero and misses some at full dial. | This report. Spec amendment at the next record step. |
-| spec 2.5.3, plan 4.3 | The Chaos soak is one test per subset size, with a step budget per subset chosen from the measured running time, not M1's hundred thousand steps per subset. The tests for pairs and triples hold no subset until Wind and Spin ship. | This report. Spec amendment at the next record step. |
+| spec 2.5.3, plan 4.3 | The Chaos soak is one test per subset size, not one soak per subset. Each test divides M1's hundred thousand live steps evenly among its subsets (built so in step 3, in place of the budget "chosen from the measured running time" first proposed: an even split needs no number to maintain). The tests for pairs and triples hold no subset until Wind and Spin ship. | This report. Spec amendment at the next record step. |
+| spec 2.5.1, 2.5.5 | Both are held for Classic as well as Chaos, by the user's ruling with the retune: every rally ends in every pairing, and more stars win, in both modes. | This report; `tests/ai_matches.rs`. Spec amendment at the next record step. |
+| `tuning.ron`, `ai` | The stars' handicaps changed by the user's ruling (step 2, "The retune"): delays 0.35, 0.29, 0.24 s and errors 12, 7, 3, from 0.35, 0.18, 0.05 s and 12, 5, 1. | This report. Playtest-log entry owed. |
 
 ## Decisions taken in this phase
 
@@ -282,9 +284,74 @@ Against the first try, Classic and the three-star mirror moved little; two stars
 - **The spec tests were not red first.** They measure; the pinned test is the one that states a failure.
 - Running times, development machine: the five tests take 1.0 to 5.2 s each, 14.4 s in all, against nextest's 30 s per test. CI's times are not measured yet (plan 4.3 measures the soak's).
 
+## Step 3: the soak over subsets (plan 4.3)
+
+Built 2026-11-12.
+
+- **One runner.** `tests/soak.rs` has a `Soak` (app seed, player seed, mode, a forced set at full dial or none, live steps) whose `run` is M1's soak loop. The Classic test calls it with M1's seeds and steps.
+- **The refactor changed nothing in Classic.** Before and after, the seeded run printed the same line: 67,714 frames, 16 matches, 1,025 paddle hits, top speed 250.00002. Its three assertions are untouched.
+- **The players predict under the ball's own flight,** not an empty one, so a field effect is tracked from the phase it ships in. Without fields the two are the same.
+- **Chaos, one test per subset size 1, 2, 3.** Every choice of that many effects from Chaos's bag is forced beside the mode's always-on effects, with the return count held at `u16::MAX`: full for every dial whatever return its ramp is full at. Per subset the test asserts the forced effects were in play, a return reached the speed cap, and a match ended.
+- **The subsets come from the mode's tuning,** so an effect added to the bag is soaked with no edit to the test (spec 2.3.8's touch list).
+- **`subsets_of`** was written test first (red by compile failure).
+
+Spec 2.5.3 and 2.5.4, measured: Speed and Shrink at full dial, 100,000 live steps in 128,802 frames, 85 matches, 1,387 paddle hits, no fault. The pair and triple tests found no subset: the bag ships one effect.
+
+**Running time, development machine:** Classic 3.8 s, the Chaos test 6.8 s alone (5.7 s and 8.8 s inside the full parallel run), against nextest's 30 s per test.
+
+**The spec's open fact,** whether a soak per subset of six effects fits CI, is answered by construction: a test's time does not grow with the roster, since its steps are divided. With six effects in the bag a subset gets 16,666 steps as one of 6 singles, 6,666 as one of 15 pairs, and 5,000 as one of 20 triples; with seven, 14,285, 4,761, and 2,857. At full dial the measured run played 85 matches of at least five points each in its 100,000 steps, so a rally took at most about 235 live steps, and the smallest share still plays a dozen rallies or more. No spec amendment is needed for fit. **CI's own times are not measured:** they are read from the first push's run.
+
+Not done: no deliberate break was run against the Chaos soak. What it would catch is what sanity catches; that the forcing took hold is asserted per subset.
+
+**Noticed, not changed:** the Classic soak's floor of 1,000 paddle hits has little room left. The run makes 1,025; it made 1,118 when the floor was set. The drop came before this step (the double-return fix of step 0 is the only change to a soak of human seats); the floor is the user's to move.
+
+## Step 4: Shrink's R3 measure (plan 4.4, E.4)
+
+Built 2026-11-12, at the retuned handicaps (delays 0.35, 0.29, 0.24 s; errors 12, 7, 3).
+
+`each_bag_effect_alone_shortens_rallies_as_its_dial_rises` forces each effect of Chaos's bag alone, with no speed ramp beside it, up a ladder of held return counts, and asserts for one-star and two-star mirrors that mean rally length never rises from one rung to the next and is lower at the top than at the bottom. A new effect in the bag is held to it with no edit.
+
+Shrink alone, mean hits per rally, mirror matches to five points, 3 seeds, hit limit 200 (Shrink's dial starts to move after return 3 and is full at 15):
+
+| Held count | Paddle height | 1 v 1 | 2 v 2 | 3 v 3 |
+|---|---|---|---|---|
+| 0 | 14 | 2.8 | none ended | none ended |
+| 5 | 13 | 2.5 | 195.2 (3 of 4 unended) | none ended |
+| 10 | 10.5 | 1.3 | 7.4 | none ended |
+| 15 | 8 | 0.8 | 4.0 | none ended |
+| 20 | 8 | 0.8 | 4.0 | none ended |
+| 30 | 8 | 0.8 | 4.0 | none ended |
+
+- **R3 holds for Shrink against one and two stars:** rally length falls as the dial rises and never rises.
+- **R3 does not show against three stars.** Their aim error of 3 is inside the reach of the shortest paddle, and the ball here stays at the serve speed, so no rally ends at any rung. The three-star row was measured by a temporary variant of the test; the test itself plays one and two stars.
+- **The soak's subsets include Shrink** (step 3), which completes E.4.
+
+The stack's measure (spec 2.5.2), from `just ai-report` at the same handicaps: one-star mirror, Speed at 0 returns 2.8 hits, Speed and Shrink at 15 returns 0.8; two-star mirror, none ended at the first level, 3.5 hits at the second.
+
+## Spec items of this phase
+
+| Item | State |
+|---|---|
+| 2.3.12, the flaw's two forms | Done for the contract and the AI (step 1). For Shrink read as a raised dial (deviation). The per-star tuning section waits for Wind (deviation). |
+| 2.5.1, rallies end under Chaos; the control | Done for all six pairings, after the retune; held for Classic too. |
+| 2.5.2, R3 for the stack and per effect | Done for one and two stars. Not shown for three stars: with Speed and Shrink alone they miss only near the speed cap. |
+| 2.5.3, soak per mode | Done for the shipped roster; CI's times unmeasured. |
+| 2.5.4, sanity under Chaos | Done: the soak and every harness match run under the panicking policy with no fault. |
+| 2.5.5, stars order | Done, in both modes: 8 matches to 0 in every pairing. |
+
+## Open at phase close
+
+- **The user's hand check of the retuned stars.** The first candidate lost the user a match 10 to 0 against three stars; the second (errors 12, 7, 3) is unplayed. By the launch table of step 2 it gives a player no points below the speed cap.
+- **A playtest-log entry** for the two observations behind the retune and for the hand check.
+- **R3 against three stars** (spec 2.5.2): to be shown once an effect's flaw reaches them, from Wind on.
+- **CI's running times** for the soak and the AI matches: read from the first push.
+- **The Classic soak's paddle-hit floor:** 1,025 against 1,000.
+- **The next record step** owes the spec and plan the five deviations above, the confirmed fact ("without escalation a competent defender returns every ball"), and the answered fact (the soak's fit).
+- **`docs/specs/CURRENT`** still names phase 4: the bump is the user's word.
+
 ## Test changes
 
-388 core tests and 165 shell tests pass, 553 in all; 518 existed before this phase.
+393 core tests and 165 shell tests pass, 558 in all; 518 existed before this phase.
 
 Step 0: no assertion changed and no call site changed.
 One comment changed: the AI tests' `launches` said a touching start counts as struck; it now says an overlapping start does.
@@ -296,7 +363,11 @@ Step 1: no assertion changed. Call sites changed for a changed signature:
 
 Step 2: no assertion changed and no call site changed.
 
-The retune: the AI tests' `three_stars_with` finds the embedded three-star entry by its text, which now reads 0.24; no assertion of an earlier test changed. Two tests of step 2 were replaced and one deleted, as listed under "The retune".
+The retune: the AI tests' `three_stars_with` finds the embedded three-star entry by its text, which now reads 0.24 and 3.0; no assertion of an earlier test changed. Two tests of step 2 were replaced and one deleted, as listed under "The retune".
+
+Step 3: the soak's `Player::intent` takes the ball's velocity along x and its crossing where it took the tuning and the ball's motion and predicted for itself; the Classic test's three assertions are unchanged, and its seeded run is the same to the last number.
+
+Step 4: no assertion changed and no call site changed.
 
 ## Facts learned
 
