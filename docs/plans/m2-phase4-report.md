@@ -5,7 +5,7 @@ Deviations from [m2-chaos-pong.md](../specs/m2-chaos-pong.md) and [m2-plan.md](m
 
 Built so far: step 0, step 1 (plan 4.1), and step 2 (plan 4.2). Steps 3 and 4 (plan 4.3, 4.4) are not started.
 
-**Open, for the user's ruling:** spec 2.5.1 is not met between two three-star computers (step 2, "The finding").
+**Ruled 2026-11-12:** the finding of step 2, that no rally between three-star computers ends, was answered by a retune of the AI's reaction delays (step 2, "The retune"). Spec 2.5.1 is met for every pairing. The numbers are a first candidate: the user's hand check is owed.
 
 ## Deviations
 
@@ -146,21 +146,126 @@ What the numbers say:
 - **In Classic, as M1 shipped it, two and three stars are not beaten by speed or placement** from a centred start. This predates M2. Whether a human beats them some other way is not measured: the harness has no model of a human.
 - **R3 per effect, in this instrument:** Shrink shortens rallies for one star (graded) and for two stars (a step at full dial); Speed shortens them for one star only, slightly. Step 4 reports Shrink's measure in full.
 
-What is and is not asserted:
+What was and was not asserted before the ruling (the first two tests have since been replaced, see "The retune"):
 
-| Spec item | Test | State |
+| Spec item | Test | State before the retune |
 |---|---|---|
 | 2.5.1, bounded under Chaos | `chaos_rallies_end_within_the_hit_limit_in_every_pairing_but_the_three_star_mirror` | Met for five of the six pairings. |
-| 2.5.1, the three-star mirror | `between_three_star_computers_no_chaos_rally_ends` | **Not met.** The test pins the falsification: it fails the day such a rally ends, and says to move the pairing into the test above. |
+| 2.5.1, the three-star mirror | `between_three_star_computers_no_chaos_rally_ends` | Not met. The test pinned the falsification. |
 | 2.5.1, the control | `with_no_effect_in_play_no_rally_between_competent_computers_ends` | Met: two-star and three-star mirrors, no effect forced, 300 hits with no point. |
 | 2.5.5, star order | `in_chaos_the_computer_with_more_stars_wins_more_matches` | Met: 8 matches to 0 in each of the three pairings, played from both sides. |
 | 2.5.2, R3 for the stack | `chaos_rallies_shorten_as_breadth_and_return_count_rise_together` | Met for one-star and two-star mirrors. Three stars cannot shorten: their rallies are unended at every level. |
 
-Options for the ruling, none taken:
+Options put to the user; the second was taken:
 
 1. **Leave the tuning; let the later effects' flaws carry it.** Wind, Fog, Spin, Lens, and Blocks each bring a per-star flaw (spec 2.3.12), and three stars' numbers there decide whether its rallies end. Spec 2.5.1 is amended to hold for the three-star mirror by milestone close, and the pinned test fails when it starts to. Recommended: it changes nothing the kids have played, and the flaw numbers are tuning the spec already leaves to play.
 2. **Retune now:** a larger aim error for three stars, or a lower minimum paddle height. Either changes how Classic or Shrink feels without a session behind it.
 3. **Change the AI's model:** a slower return to the centre, or a paddle that cannot cross its range inside one crossing. A design change to M1's controller.
+
+### The retune
+
+Ruled by the user on 2026-11-12: retune now. Three stars are to be harder to beat than two, and two than one, and no star unbeatable, in Chaos or in Classic. The user's own play behind it: one point scored against three stars, in a long rally, over all attempts.
+
+**The knob is the reaction delay.** A sweep of delay (0.05 to 0.35 s) against aim error (1, 3, 5), by a temporary test since removed, three-star mirror matches and 50 launches per speed:
+
+| Delay | Classic mirror, mean hits (error 1 / 3 / 5) | Chaos mirror, mean hits (error 1 / 3 / 5) | Random launches missed at the cap |
+|---|---|---|---|
+| 0.05 | not run / none ended / none ended | not run / none ended / 45.0 | 0% |
+| 0.12 | not run / none ended / none ended | not run / none ended / 45.0 | 0% |
+| 0.18 | not run / none ended / none ended | not run / 2 of 3 unended / 44.7 | 0% |
+| 0.22 | 52.2 / 53.2 / 71.8 | 69.9 / 73.6 / 37.9 | 0% |
+| 0.25 | 47.4 / 43.2 / 51.4 | 59.9 / 64.9 / 38.5 | 2% |
+| 0.28 | 33.6 / 29.5 / 33.3 | 53.3 / 61.6 / 40.0 | 2% |
+| 0.31 | 29.6 / 26.0 / 29.7 | 50.7 / 52.3 / 40.5 | 4% |
+| 0.35 | 26.5 / 24.9 / 24.8 | 45.6 / 50.8 / 36.5 | 6% |
+
+The error-1 rows for delays up to 0.18 did not run (the sweep's first case failed on its own fixture); the embedded 0.05 and error 1 is the "no rally ended" of the finding above.
+At speeds of 100, 150, and 200 no launch was missed at any delay.
+
+- **Under about 0.2 s nothing ends in Classic; above it everything does.** That matches the arithmetic: at the cap a level ball takes 0.584 s to cross, and a paddle at the centre needs up to 0.4 s to reach the far end of its range, so a delay under 0.184 s always arrives.
+- **The error does almost nothing in Classic** below the paddle's reach of 8. In Chaos an error of 5 ends rallies through Shrink, whatever the delay.
+- **A delay-made miss is earned.** It needs speed and placement: a ball far from the centre the AI waits at. An error past the paddle's reach would instead roll dice at any speed, and would break the fact the spec relies on, that without escalation a competent defender returns every ball.
+
+**The change,** in `tuning.ron`, delays only:
+
+| Stars | Before | After |
+|---|---|---|
+| One | 0.35 s, error 12 | unchanged |
+| Two | 0.18 s, error 5 | **0.29 s**, error 5 |
+| Three | 0.05 s, error 1 | **0.24 s**, error 1 |
+
+What that means for a player, by arithmetic from the tuning (a level ball, the AI at the centre):
+three stars are beaten at the cap by a ball crossing more than about 39 units from the centre (the ball's centre turns at 44), and from a speed of about 228, which Classic reaches at the 22nd return;
+two stars by a ball more than about 34.5 out at the cap, and from about 212, the 19th return.
+In Chaos the ramp is 3 a return, so those speeds come at the 50th and 44th return: there Shrink, and the effects to come, do the work.
+
+**Measured after the change** (`just ai-report`, 4 seeds a pairing, matches to five points, hits per rally):
+
+| Pairing | Classic | Chaos, cap 3 |
+|---|---|---|
+| 1 v 1 | mean 2.4, longest 11 | mean 2.3, longest 6 |
+| 1 v 2 | mean 5.3, longest 14 | mean 4.2, longest 12 |
+| 1 v 3 | mean 5.2, longest 16 | mean 4.4, longest 16 |
+| 2 v 2 | mean 29.0, longest 52 | mean 38.0, longest 68 |
+| 2 v 3 | mean 31.9, longest 57 | mean 45.1, longest 72 |
+| 3 v 3 | mean 49.1, longest 137 | mean 60.6, longest 73 |
+
+No rally was unended. More stars won 8 matches to 0 in each of the three pairings, in each mode. With no effect forced, two-star and three-star mirrors still score no point in 300 hits.
+
+**Tests, red first.** Written against the old numbers, where four failed, then green with the new:
+
+| Test | Asks |
+|---|---|
+| `chaos_rallies_end_within_the_hit_limit_in_every_pairing` | Spec 2.5.1 for all six pairings. Replaces the test that left the three-star mirror out. |
+| `classic_rallies_end_within_the_hit_limit_in_every_pairing` | The same of Classic: no star unbeatable there. New. |
+| `in_both_modes_the_computer_with_more_stars_wins_more_matches` | Spec 2.5.5, and the same of Classic. Replaces the Chaos-only test. |
+| `at_the_speed_cap_a_level_ball_along_the_wall_beats_three_stars` | The earned miss: one unit inside either wall at 250. New. |
+| `three_stars_return_the_same_ball_sent_slower_or_nearer_the_centre` | Passed before and after: at 80 and at 150 along the wall, and at 250 from 20 out. New. |
+
+`between_three_star_computers_no_chaos_rally_ends` is deleted: the gap it pinned is closed.
+The stack's R3 test still plays one and two stars only: three stars miss only near the speed cap, beyond the counts its levels hold.
+
+**Second try, the same evening.** The user played three stars at the delays above and lost 10 to 0. Ruled: nerf the errors to 12, 7, and 3. In `tuning.ron` now:
+
+| Stars | Delay | Error |
+|---|---|---|
+| One | 0.35 s | 12 |
+| Two | 0.29 s | **7** (was 5) |
+| Three | 0.24 s | **3** (was 1) |
+
+Every test of the retune passes unchanged at these numbers. Measured (`just ai-report`, hits per rally):
+
+| Pairing | Classic | Chaos, cap 3 |
+|---|---|---|
+| 2 v 2 | mean 33.5, longest 65 | mean 14.7, longest 26 |
+| 2 v 3 | mean 30.1, longest 46 | mean 19.2, longest 30 |
+| 3 v 3 | mean 41.7, longest 143 | mean 66.0, longest 105 |
+
+More stars still won 8 matches to 0 in every pairing and mode; the control still holds.
+Against the first try, Classic and the three-star mirror moved little; two stars' Chaos rallies shortened to under half, since an error of 7 is outside the shrinking paddle's reach long before full dial.
+
+**What the errors do and do not do,** by a temporary test since removed: 100 launches per speed at the three-star AI resting at the centre, any height, any angle, percent missed.
+
+| Delay, error | at 100 | at 150 | at 200 | at 250 (cap) |
+|---|---|---|---|---|
+| 0.24, 3 (three stars now) | 0 | 0 | 0 | 2 |
+| 0.29, 7 (two stars now) | 0 | 0 | 0 | 5 |
+| 0.24, 8 | 1 | 1 | 1 | 3 |
+| 0.24, 9 | 4 | 3 | 2 | 4 |
+| 0.29, 9 | 4 | 3 | 2 | 7 |
+| 0.29, 9.5 | 6 | 5 | 13 | 12 |
+| 0.29, 10 | 14 | 13 | 12 | 15 |
+| 0.35, 12 (one star; 20 launches per speed) | 30 | 30 | 30 | 30 |
+
+- **An error inside the paddle's reach causes no miss.** The misses begin near 8.6, a little past the 8 of half the paddle plus the ball's radius, and grow as about `1 - 8.6 / error`.
+- **So 7 and 3 leave two and three stars missing nothing below the speed cap** against a whole paddle. A player who cannot yet carry a rally to the cap is given no points by this change.
+- **A longer delay does not reach lower speeds either:** at 0.6 s and error 3, nothing was missed at 100 or 150 (20 launches per speed).
+- **In this AI model, only an error past the reach makes a star miss at ordinary speeds,** and it does so by chance, at any speed, not by the shot's merit. It would also end the control of spec 2.5.1: a rally with no effect in play would then end.
+
+**Owed.**
+
+- The user's hand check of both delays in `just run`. They are a first candidate from the harness, which has no model of a human; `tuning.ron` reloads while the game runs.
+- A playtest-log entry for the observation behind the ruling and for the hand check, by the spec's rule that numbers are found by play.
 
 ### Decisions taken
 
@@ -179,7 +284,7 @@ Options for the ruling, none taken:
 
 ## Test changes
 
-386 core tests and 165 shell tests pass, 551 in all; 518 existed before this phase.
+388 core tests and 165 shell tests pass, 553 in all; 518 existed before this phase.
 
 Step 0: no assertion changed and no call site changed.
 One comment changed: the AI tests' `launches` said a touching start counts as struck; it now says an overlapping start does.
@@ -190,6 +295,8 @@ Step 1: no assertion changed. Call sites changed for a changed signature:
 - `Effect` gained `flaw`: the effects tests' two probes, `Probe` and `Swinger`, state one.
 
 Step 2: no assertion changed and no call site changed.
+
+The retune: the AI tests' `three_stars_with` finds the embedded three-star entry by its text, which now reads 0.24; no assertion of an earlier test changed. Two tests of step 2 were replaced and one deleted, as listed under "The retune".
 
 ## Facts learned
 

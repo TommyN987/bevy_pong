@@ -54,8 +54,8 @@ Frames are four fixed steps long: the simulation steps the same at any frame len
 
 `tests/ai_matches.rs` asserts the spec items and prints the numbers behind each assertion.
 `just ai-report` runs it with the output shown.
-One of its tests pins a finding instead of a done-condition:
-between two three-star computers no Chaos rally ends (M2 phase 4 report).
+Classic is held to the same questions as Chaos: every rally ends in every pairing of stars, and more stars win
+(the AI retune of M2 plan phase 4, in its report).
 
 ## Soak (`tests/soak.rs`)
 

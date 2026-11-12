@@ -63,10 +63,13 @@
 
     // Stars in the menu: one, two, three. Delay is how long the AI waits after
     // the ball turns toward it; error is the spread added to its predicted target.
+    // The delay is what makes a star beatable by play: under about 0.18 the
+    // paddle reaches every ball at the speed cap, however it is placed. The
+    // error only rolls dice, and only once it exceeds the paddle's reach of 8.
     ai: (
         one_star: (reaction_delay_seconds: 0.35, prediction_error: 12.0),
-        two_stars: (reaction_delay_seconds: 0.18, prediction_error: 5.0),
-        three_stars: (reaction_delay_seconds: 0.05, prediction_error: 1.0),
+        two_stars: (reaction_delay_seconds: 0.29, prediction_error: 7.0),
+        three_stars: (reaction_delay_seconds: 0.24, prediction_error: 3.0),
     ),
 
     // Key names are Bevy `KeyCode` variants. Escape is global and not bound here.

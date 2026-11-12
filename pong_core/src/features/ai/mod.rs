@@ -483,7 +483,7 @@ mod tests {
     /// The embedded tuning with three stars' handicap replaced.
     fn three_stars_with(delay_seconds: f32, error: f32) -> Tuning {
         let ron = EMBEDDED_RON.replace(
-            "three_stars: (reaction_delay_seconds: 0.05, prediction_error: 1.0)",
+            "three_stars: (reaction_delay_seconds: 0.24, prediction_error: 3.0)",
             &format!(
                 "three_stars: (reaction_delay_seconds: {delay_seconds:?}, prediction_error: {error:?})"
             ),
@@ -1153,6 +1153,32 @@ mod tests {
             missed,
             "thirty units of error never missed in twenty launches"
         );
+    }
+
+    // The stars as tuned (the user's ruling, M2 phase 4 report): no star is
+    // unbeatable. What beats three stars is earned, not rolled: a ball fast
+    // enough, placed far enough from the centre the AI waits at.
+
+    /// How three stars as tuned answer one ball sent level from the left.
+    fn three_stars_as_tuned_against(y: f32, speed: f32) -> Outcome {
+        let tuning = Tuning::from_ron(EMBEDDED_RON).expect("the embedded tuning is valid");
+        let from_x = Paddle::new(Side::Left, tuning.paddle()).contact_x(&tuning) + 1.0;
+        let mut app = ai_on_the_right_playing(tuning);
+        launch_at_ai(&mut app, ball(Vec2::new(from_x, y), Vec2::new(speed, 0.0)))
+    }
+
+    #[test]
+    fn at_the_speed_cap_a_level_ball_along_the_wall_beats_three_stars() {
+        // One unit inside the wall, where the ball's centre turns at 44.
+        assert_eq!(three_stars_as_tuned_against(43.0, 250.0), Outcome::Missed);
+        assert_eq!(three_stars_as_tuned_against(-43.0, 250.0), Outcome::Missed);
+    }
+
+    #[test]
+    fn three_stars_return_the_same_ball_sent_slower_or_nearer_the_centre() {
+        assert_eq!(three_stars_as_tuned_against(43.0, 80.0), Outcome::Returned);
+        assert_eq!(three_stars_as_tuned_against(43.0, 150.0), Outcome::Returned);
+        assert_eq!(three_stars_as_tuned_against(20.0, 250.0), Outcome::Returned);
     }
 
     // M2 spec 2.3.12 for Shrink, whose flaw is inherent (M2 spec 2.6.1): the
