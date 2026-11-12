@@ -22,7 +22,7 @@ Obligation levels: MUST, SHOULD, MAY, WONT. Every item carries a done-condition.
 - Sanity faults unless exactly one ball exists. [confirmed, `features/sanity/mod.rs`]
 - `Paddle` has a size setter clamped to tuning bounds: minimum 8, default 14; paddle thickness is 2. [confirmed, spec 1.4.3, `tuning.ron`]
 - The kernel has swept circle-versus-rectangle collision for axis-aligned rectangles. [confirmed, spec 1.2.3]
-- What `swept_circle_rect` returns for a sweep that starts inside the rectangle. [unknown; read before 2.2.6 is planned]
+- What `swept_circle_rect` returns for a sweep that starts inside the rectangle. [unknown; read before 2.2.6 is planned] In part known since 2026-11-12 ([phase 3 report](../plans/m2-phase3-report.md), "Facts learned"): a sweep that starts on the grown rectangle's edge and moves away is no impact. [confirmed, `pong_core/src/kernel/collide.rs` and its tests] It was one, at time zero, until M2 plan phase 4.
 - A level ball on a 45° face leaves vertical, and a vertical ball between the walls reaches no goal. [confirmed, reflection geometry]
 - A ball between a block and its mirror copy leaves in a few bounces unless the pair is within about a degree of upright. [probable, derived]
 - Blocks may lengthen rallies by shielding goals. [uncertain; 2.5.2 decides]
@@ -174,7 +174,7 @@ Coupling: 2.4.2 hands 2.3.4 its number.
 Each package is held to R1 to R11 by its own tests. Numbers are tuning, found by playtest; the spec fixes each dial's meaning.
 
 - **2.6.0 MUST** Speed. Link: reach. Channel: 2.2.4. Dial: ball speed after the hit, from serve speed to the cap. Chaos's gain is smaller than Classic's. AI flaw: inherent. Shell half: declared empty. Done: after the same number of hits a Chaos ball is slower than a Classic one, by test.
-- **2.6.1 MUST** Shrink. Link: reach. Channel: 2.2.3. Dial: height of both paddles, from the default to the minimum. AI flaw: inherent in the smaller paddle. Done: both paddles reach the tuned minimum at full dial and restore on a point, by test. Coupling: the hit offset is relative to paddle height, so the angle mapping scales with it. Amended 2026-11-11 ([phase 2 report](../plans/m2-phase2-report.md)): the paddles restore at the countdown, not at the instant of the point; the flight is cleared on entering `Countdown`, so they stay short through the point pause.
+- **2.6.1 MUST** Shrink. Link: reach. Channel: 2.2.3. Dial: height of both paddles, from the default to the minimum. AI flaw: inherent in the smaller paddle. Done: both paddles reach the tuned minimum at full dial and restore on a point, by test. Coupling: the hit offset is relative to paddle height, so the angle mapping scales with it. Amended 2026-11-11 ([phase 2 report](../plans/m2-phase2-report.md)): the paddles restore at the countdown, not at the instant of the point; the flight is cleared on entering `Countdown`, so they stay short through the point pause. Amended 2026-11-12 ([phase 3 report](../plans/m2-phase3-report.md)): the shell half has no view system of its own, since the paddle view already draws the paddle at its height. An eased height was not built: the hand check (M2 plan 3.6) asked for none.
 - **2.6.2 MUST** Wind. Link: predict. Channel: 2.2.1. Dial: drift over one full crossing, in arena units, from zero to a tuned maximum under half the playable height. Its direction is drawn per rally from the seeded source and shown in the countdown. AI flaw: prediction error scales with strength. Done: prediction equals simulation within one unit at every tested dial; the drift at the paddle matches the dial at two ball speeds.
   - **SHOULD** The wall cue is rate-limited, since wind can pin a slow ball against a wall. Done: a pinned ball produces a bounded number of cues per second, by test.
 - **2.6.3 MUST** Fog. Link: perceive. Channel: 2.2.5. Dial: width of one band centred on midfield, from zero to a tuned maximum that leaves a visible run before each paddle. AI flaw: synthetic, prediction error scales with width. Done: the ball, its trail, and its glow are absent inside the band, by a shell test on visibility.
@@ -189,8 +189,8 @@ Coupling: Wind and Spin use the same field with different causes; whether they f
 
 ## 2.7 Display
 
-- **2.7.1 MUST** An icon per active effect; the one joining enters large during the countdown. Done: a viewer names the active effects during the countdown without reading text.
-- **2.7.2 MUST** The rally's hit count is shown as a number. Done: visible in Chaos, rising per hit.
+- **2.7.1 MUST** An icon per active effect; the one joining enters large during the countdown. Done: a viewer names the active effects during the countdown without reading text. Amended 2026-11-12 ([phase 3 report](../plans/m2-phase3-report.md)): the joining icon is not in the row while it shows large; it takes its place there when play begins, with no glide between the two.
+- **2.7.2 MUST** The rally's hit count is shown as a number. Done: visible in Chaos, rising per hit. Amended 2026-11-12 ([phase 3 report](../plans/m2-phase3-report.md)): the number is the flight's return count (2.2.4), not rules' touches. Match over's longest rally still counts touches, so the two can differ by a rally's end clips.
 - **2.7.3 WONT** A meter bar.
 - **2.7.4 MUST** No presentation element violates R11. Done: review item at milestone close.
 
@@ -199,11 +199,11 @@ Coupling: Wind and Spin use the same field with different causes; whether they f
 - **2.8.1 MUST** The mode screen comes first, before opponent: Classic, Chaos ●, Chaos ●●, Chaos ●●●. Done: all four playable keyboard-only from the menu.
 - **2.8.2 MUST** The last mode and cap picked are persisted in settings. Done: the last row is preselected on next start; settings fixture v3 and a v2 migration test.
 - **2.8.3 MUST** Records are kept per mode, not per cap; M1's records become Classic's. Done: profiles fixture v2; a v1 file migrates with its records under Classic; a Chaos match leaves Classic's records untouched, by test.
-- **2.8.4 MUST** Match over shows the played mode's records delta. Done: by test after a Chaos match.
+- **2.8.4 MUST** Match over shows the played mode's records delta. Done: by test after a Chaos match. Amended 2026-11-12 ([phase 3 report](../plans/m2-phase3-report.md)): match over also names the mode played, in one small line.
 
 ## 2.9 Developer tooling
 
-- **2.9.1 SHOULD** A sandbox forces the active effects and the hit count from the overlay. Done: reachable in a release build.
+- **2.9.1 SHOULD** A sandbox forces the active effects and the hit count from the overlay. Done: reachable in a release build. Amended 2026-11-12 ([phase 3 report](../plans/m2-phase3-report.md)): forcing keeps 2.4.3, so it is not immediate: a forced set takes hold at the next countdown, a held count at the next flight start, and the overlay says which is waiting and which is in force. A match in which anything was forced records nothing, since the overlay ships in release builds.
 - **2.9.2 SHOULD** The overlay lists active effects and the hit count. Done: visible.
 
 ## 2.10 Playtest

@@ -780,9 +780,10 @@ mod tests {
     /// its contact line at a seeded height, at any angle the paddle can give,
     /// at any speed from the serve to the cap.
     ///
-    /// One unit in front, not on the line: a ball touching the idle left
-    /// paddle's face counts as struck by it at time zero (`swept_circle_rect`
-    /// treats a touching start as an overlap) and leaves on another course.
+    /// One unit in front, not on the line: a start that rounding puts a hair
+    /// inside the idle left paddle's reach counts as struck by it at time
+    /// zero (`swept_circle_rect` deflects an overlapping start) and leaves on
+    /// another course.
     fn launches(count: usize, tuning: &Tuning) -> Vec<Motion> {
         let mut random = Pcg32::seed(2026);
         let shape = tuning.ball();

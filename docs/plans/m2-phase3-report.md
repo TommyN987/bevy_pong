@@ -12,13 +12,13 @@ The first four were proposed before implementation and approved by the user on 2
 
 | Item | Deviation | Recorded |
 |---|---|---|
-| spec 2.7.2 | The HUD shows the flight's return count, not rules' touches. Match over's best rally still counts touches, so the two can differ by a rally's end clips. | This report; `effect_hud.rs`. |
-| spec 2.6.1 | Shrink's shell half has no view systems of its own: the paddle view already draws the paddle's rectangle. An eased height is added only if the hand check (plan 3.6) shows the step does not read. | This report; `effects/shrink.rs`. |
-| spec 2.9.1 | The sandbox takes hold at a countdown (effects) or a flight start (return count), not at once. | This report; features README; `docs/architecture.md`. |
-| spec 2.9.1 | A match the sandbox touched records nothing. | This report; features README; `docs/architecture.md`. |
-| spec 2.7.1 | The joining icon is not in the row while it shows large: it takes its place there when play begins. No glide between the two was built. | This report. |
-| ADR 0010 | An effect's join cue is not a `Cue` and does not come from the sound bank: it is a `Sound` in the effect's shell half. | This report; ADR 0010, amended. |
-| spec 2.8.4 | Match over also names the mode played, in one small line. | This report. |
+| spec 2.7.2 | The HUD shows the flight's return count, not rules' touches. Match over's best rally still counts touches, so the two can differ by a rally's end clips. | This report; `effect_hud.rs`. Spec amended 2026-11-12. |
+| spec 2.6.1 | Shrink's shell half has no view systems of its own: the paddle view already draws the paddle's rectangle. An eased height is added only if the hand check (plan 3.6) shows the step does not read. | This report; `effects/shrink.rs`. Spec amended 2026-11-12. |
+| spec 2.9.1 | The sandbox takes hold at a countdown (effects) or a flight start (return count), not at once. | This report; features README; `docs/architecture.md`. Spec amended 2026-11-12. |
+| spec 2.9.1 | A match the sandbox touched records nothing. | This report; features README; `docs/architecture.md`. Spec amended 2026-11-12. |
+| spec 2.7.1 | The joining icon is not in the row while it shows large: it takes its place there when play begins. No glide between the two was built. | This report. Spec amended 2026-11-12. |
+| ADR 0010 | An effect's join cue is not a `Cue` and does not come from the sound bank: it is a `Sound` in the effect's shell half. | This report; ADR 0010, amended 2026-11-12. |
+| spec 2.8.4 | Match over also names the mode played, in one small line. | This report. Spec amended 2026-11-12. |
 
 ## Test changes
 
@@ -78,6 +78,7 @@ a v1 profile's records migrated under Chaos; a v2 settings file migrated to Chao
 - `#[serde(deny_unknown_fields)]` is a container attribute: on an enum it covers every struct variant; on a variant it does not compile.
 - A shell test build takes over two minutes after a shell source change; the core's takes about ten seconds.
 - **A return can count twice.** Found by a HUD test, not fixed. A ball at 60 units/s placed one unit from a paddle's face ends its step exactly on the face (`toi` 1, no remainder to travel); the next step's sweep starts on the grown rectangle's edge moving away, `slab` gives an exit of `-0.0`, which `t_exit < 0.0` does not refuse, and `swept_circle_rect` reports an impact at `toi` 0 on a left or right face. Physics counts a second return: a second speed step, a second `BallHitPaddle`, a second cue. The mechanism is read from `kernel/collide.rs`; the double count is observed (the HUD read 2). It needs a step to end on the face within float rounding, so it is rare in play, and it predates M2. It also answers part of the spec's open fact on sweeps that start inside the rectangle.
+  Fixed 2026-11-12 in M2 plan phase 4, by the user's ruling ([phase 4 report](m2-phase4-report.md), step 0): a sweep that leaves at or before its start is no impact.
 - The sandbox's two delays read as a fault when the overlay showed only the forced values: a scripted run of the user's key sequence showed the core at the designed state at every stage.
 - The join cue is spawned on the real path into a Chaos match, by `entering_a_chaos_match_plays_the_joining_effects_cue`; the user confirmed it by ear.
 - A state change requested in a test applies in the next frame: `run_until(.. == Playing)` right after `NextState::set(Countdown)` returns at once, still in `Playing`.
@@ -93,7 +94,7 @@ Done by the user on 2026-11-12, in two rounds.
 
 ## Open at phase close
 
-- The double-counted return above: the user's ruling on when to fix it. Blocks (plan 9.1) reads the same function.
+- The double-counted return above: the user's ruling on when to fix it. Blocks (plan 9.1) reads the same function. Ruled and fixed 2026-11-12, in M2 plan phase 4.
 - Only Shrink is in Chaos's bag, so the three Chaos rows play alike until Wind lands.
 - Spec 2.7.1's done-condition, a viewer naming the effects without reading, waits for the kids' session (plan 5.4).
 - No glide of the joining icon into the row; decided when seen.

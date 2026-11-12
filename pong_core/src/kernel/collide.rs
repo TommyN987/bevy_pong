@@ -52,6 +52,10 @@ pub struct Impact {
 ///
 /// A circle that starts overlapping gets `toi` zero and the normal of the face
 /// it crossed most recently, so a paddle that moved onto the ball still deflects it.
+///
+/// A circle that starts touching the rectangle and moves away from it misses:
+/// it is leaving. A contact that ends a step exactly on a face starts the
+/// next sweep there, and that sweep is not a second contact.
 #[must_use]
 pub fn swept_circle_rect(
     center: Vec2,
@@ -83,9 +87,12 @@ pub fn swept_circle_rect(
     };
     let t_exit = x.exit.min(y.exit);
 
-    // Entering after leaving means the ray passes beside the box. A non-finite
-    // entry means no axis is moving: a stationary overlap is not an impact.
-    if t_enter > t_exit || t_exit < 0.0 || t_enter > 1.0 || !t_enter.is_finite() {
+    // Entering after leaving means the ray passes beside the box. Leaving at
+    // or before the start means the box is behind the sweep, or touched only
+    // where the sweep begins; `<=` also refuses the `-0.0` a start on the
+    // edge divides out to. A non-finite entry means no axis is moving: a
+    // stationary overlap is not an impact.
+    if t_enter > t_exit || t_exit <= 0.0 || t_enter > 1.0 || !t_enter.is_finite() {
         return None;
     }
     Some(Impact {
@@ -191,6 +198,38 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    /// A ball that touches the paddle and moves away is leaving, not
+    /// arriving. A return whose step ends exactly on the face starts the next
+    /// step's sweep here, and that sweep must not be a second return.
+    #[test]
+    fn ball_touching_the_face_and_moving_away_misses() {
+        // Expanded face at x = 68: the ball's centre starts on it.
+        assert!(
+            swept_circle_rect(
+                Vec2::new(68.0, 0.0),
+                unit_radius(),
+                Vec2::new(-1.0, 0.0),
+                paddle()
+            )
+            .is_none()
+        );
+    }
+
+    /// The other half of the boundary: touching and moving in is a hit now.
+    #[test]
+    fn ball_touching_the_face_and_moving_in_hits_at_once() {
+        let Some(impact) = swept_circle_rect(
+            Vec2::new(68.0, 0.0),
+            unit_radius(),
+            Vec2::new(1.0, 0.0),
+            paddle(),
+        ) else {
+            panic!("a ball on the face moving in reported no impact");
+        };
+        assert_near(impact.toi, 0.0, 1e-6);
+        assert_eq!(impact.face, Face::Left);
     }
 
     #[test]

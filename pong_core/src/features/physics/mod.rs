@@ -195,6 +195,7 @@ mod tests {
         BallHitPaddle, BallHitWall, Controller, MatchConfig, Mode, Seat, SeatPlayers,
     };
     use crate::features::ball::{Ball, Position, Velocity};
+    use crate::features::effects::BallFlight;
     use crate::features::paddle::Paddle;
     use crate::features::sanity::SanityPlugin;
     use crate::features::tuning::Tuning;
@@ -313,6 +314,37 @@ mod tests {
             take_recorded::<BallHitPaddle>(&mut app),
             vec![BallHitPaddle { side: Side::Right }]
         );
+    }
+
+    /// A return is counted once, even when its step ends exactly on the
+    /// paddle's face and the next step's sweep starts there (M2 phase 3
+    /// report, "A return can count twice").
+    #[test]
+    fn a_return_whose_step_ends_on_the_face_is_one_return() {
+        let mut app = match_app();
+        // Contact at x = 73. From 72 at 60 per second one step travels one
+        // unit: the ball meets the face as the step ends, with nothing left
+        // of the step to carry it away.
+        place_ball(&mut app, Vec2::new(72.0, 0.0), Vec2::new(60.0, 0.0));
+        frame(&mut app);
+        let (position, velocity) = ball_state(&mut app);
+        assert_eq!(position.x.to_bits(), 73.0_f32.to_bits(), "{position:?}");
+        assert!(velocity.x < 0.0, "{velocity:?}");
+        for _ in 0..3 {
+            frame(&mut app);
+        }
+        assert_eq!(
+            take_recorded::<BallHitPaddle>(&mut app),
+            vec![BallHitPaddle { side: Side::Right }]
+        );
+        let returns = app
+            .world_mut()
+            .query_filtered::<&BallFlight, With<Ball>>()
+            .single(app.world())
+            .expect("the match ball")
+            .flight()
+            .returns();
+        assert_eq!(returns, 1);
     }
 
     /// Both paddles track the ball's height through the paddle's own clamped
