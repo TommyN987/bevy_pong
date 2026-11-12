@@ -6,7 +6,8 @@
 //!
 //! While it shows during a match it is also the sandbox (M2 spec 2.9.1): the
 //! number keys toggle effects, the brackets hold the return count, and 0 lets
-//! go. The keys write the core's [`Sandbox`] port and nothing else; the core
+//! go. It names each key's effect, and reads each forced value as waiting or
+//! in force. The keys write the core's [`Sandbox`] port and nothing else; the core
 //! decides when a forced value takes hold, and that the match records nothing.
 
 use std::time::Duration;
@@ -319,30 +320,49 @@ pub fn overlay_text(readings: &Readings) -> String {
         });
     }
     if let Some(sandbox) = &readings.sandbox {
-        let forced = [
-            sandbox
-                .forced_effects()
-                .map(|effects| format!("effects {}", names(effects))),
-            sandbox
-                .held_returns()
-                .map(|returns| format!("returns {returns}")),
-        ];
-        let forced: Vec<String> = forced.into_iter().flatten().collect();
-        let what = if forced.is_empty() {
-            "released".to_owned()
-        } else {
-            forced.join(", ")
-        };
-        lines.push(format!("sandbox: {what}; this match records nothing"));
+        lines.push("sandbox: this match records nothing".to_owned());
+        lines.extend(sandbox_lines(sandbox, readings));
     }
     if readings.effects.is_some() {
+        let effect_keys: Vec<String> = (1..)
+            .zip(EffectId::ALL)
+            .map(|(key, effect): (usize, _)| format!("{key} {effect:?}"))
+            .collect();
         lines.push(format!(
-            "sandbox keys: 1-{} effect, [ ] returns, 0 release",
-            EffectId::ALL.len()
+            "sandbox keys: {}, [ ] returns, 0 release",
+            effect_keys.join(", ")
         ));
     }
     lines.push(readings.states.join(" / "));
     lines.join("\n")
+}
+
+/// What the sandbox forces, one line each, and whether the match has taken
+/// it up. The core applies a forced set at the next countdown and a held
+/// count at the next flight start (M2 spec 2.4.3), so until then the sandbox
+/// and the match differ: the line says `from the next ...` while they do,
+/// and `forced` or `held` once they agree.
+fn sandbox_lines(sandbox: &Sandbox, readings: &Readings) -> Vec<String> {
+    let effects = sandbox.forced_effects().map(|forced| {
+        if readings.effects.as_deref() == Some(forced) {
+            format!("  effects forced: {}", names(forced))
+        } else {
+            format!("  effects from the next point: {}", names(forced))
+        }
+    });
+    let returns = sandbox.held_returns().map(|held| {
+        if readings.returns == Some(held) {
+            format!("  returns held: {held}")
+        } else {
+            format!("  returns from the next hit or serve: {held}")
+        }
+    });
+    let lines: Vec<String> = [effects, returns].into_iter().flatten().collect();
+    if lines.is_empty() {
+        vec!["  released: the game's own effects from the next point".to_owned()]
+    } else {
+        lines
+    }
 }
 
 /// Effects by name, as the enum spells them; `none` for none.
@@ -470,7 +490,7 @@ mod tests {
              returns 7\n\
              AI left: centre\n\
              AI right: target 12.3, error +4.1\n\
-             sandbox keys: 1-2 effect, [ ] returns, 0 release\n\
+             sandbox keys: 1 Speed, 2 Shrink, [ ] returns, 0 release\n\
              InMatch / Playing"
         );
         let none = Readings {
@@ -480,32 +500,65 @@ mod tests {
         assert!(overlay_text(&none).contains("\neffects none\n"));
     }
 
-    /// M2 spec 2.9.1: what is forced is on screen, and that it costs the
-    /// match its records.
+    /// M2 spec 2.9.1: what is forced is on screen, with when it lands. A
+    /// forced set waits for the next point and a held count for the next
+    /// flight, so until then the sandbox and the match disagree, and the
+    /// overlay says which is which.
     #[test]
-    fn a_touched_match_reads_what_is_forced_and_that_nothing_is_recorded() {
+    fn what_the_sandbox_forces_reads_as_waiting_until_the_match_has_taken_it_up() {
         let mut sandbox = Sandbox::default();
         sandbox.toggle(EffectId::Shrink, &[]);
         sandbox.hold_returns(Some(9));
-        let forcing = Readings {
+        let waiting = Readings {
             effects: Some(vec![EffectId::Speed]),
             returns: Some(3),
             sandbox: Some(sandbox.clone()),
             ..readings()
         };
         assert!(
-            overlay_text(&forcing)
-                .contains("\nsandbox: effects Shrink, returns 9; this match records nothing\n"),
+            overlay_text(&waiting).contains(
+                "\nsandbox: this match records nothing\n  \
+                 effects from the next point: Shrink\n  \
+                 returns from the next hit or serve: 9\n"
+            ),
             "{}",
-            overlay_text(&forcing)
+            overlay_text(&waiting)
         );
-        sandbox.release();
-        let released = Readings {
-            sandbox: Some(sandbox),
-            ..forcing
+
+        let taken_up = Readings {
+            effects: Some(vec![EffectId::Shrink]),
+            returns: Some(9),
+            ..waiting.clone()
         };
         assert!(
-            overlay_text(&released).contains("\nsandbox: released; this match records nothing\n"),
+            overlay_text(&taken_up).contains(
+                "\nsandbox: this match records nothing\n  \
+                 effects forced: Shrink\n  \
+                 returns held: 9\n"
+            ),
+            "{}",
+            overlay_text(&taken_up)
+        );
+    }
+
+    /// Released, the schedule decides again, also from the next point; the
+    /// match stays without records.
+    #[test]
+    fn a_released_sandbox_still_reads_that_the_match_records_nothing() {
+        let mut sandbox = Sandbox::default();
+        sandbox.toggle(EffectId::Shrink, &[]);
+        sandbox.release();
+        let released = Readings {
+            effects: Some(vec![EffectId::Shrink]),
+            returns: Some(3),
+            sandbox: Some(sandbox),
+            ..readings()
+        };
+        assert!(
+            overlay_text(&released).contains(
+                "\nsandbox: this match records nothing\n  \
+                 released: the game's own effects from the next point\n"
+            ),
             "{}",
             overlay_text(&released)
         );
