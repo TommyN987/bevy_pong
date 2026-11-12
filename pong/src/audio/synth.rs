@@ -14,7 +14,7 @@ use super::{Cue, SoundBank};
 const HZ: NonZero<u16> = NonZero::new(44_100).expect("a rate above zero");
 /// The loudest a sample gets: half of full scale, leaving room for sounds
 /// that overlap.
-const PEAK: f32 = 0.5;
+pub const PEAK: f32 = 0.5;
 /// How long a note takes to rise from silence, in seconds; a sound that
 /// starts at full height clicks.
 const FADE_IN: f32 = 0.005;
@@ -23,20 +23,22 @@ const FADE_IN: f32 = 0.005;
 const POINT_SECONDS: f32 = 0.35;
 
 /// A plain sine.
-const PLAIN: &[f32] = &[1.0];
+pub const PLAIN: &[f32] = &[1.0];
 /// A sine with its next three overtones, fading: brighter, brass-like.
-const BRASS: &[f32] = &[1.0, 0.5, 0.33, 0.25];
+pub const BRASS: &[f32] = &[1.0, 0.5, 0.33, 0.25];
 
 /// Pitches sounding together, fading out over `seconds`; none is a rest.
 #[derive(Debug, Clone, Copy)]
-struct Note {
+pub struct Note {
     hz: &'static [f32],
     /// Where every pitch ends, as a multiple of where it starts: 1 holds it.
     glide: f32,
     seconds: f32,
 }
 
-const fn tone(hz: &'static [f32], seconds: f32) -> Note {
+/// `hz` held for `seconds`, fading out.
+#[must_use]
+pub const fn tone(hz: &'static [f32], seconds: f32) -> Note {
     Note {
         hz,
         glide: 1.0,
@@ -44,7 +46,9 @@ const fn tone(hz: &'static [f32], seconds: f32) -> Note {
     }
 }
 
-const fn rest(seconds: f32) -> Note {
+/// Silence for `seconds`.
+#[must_use]
+pub const fn rest(seconds: f32) -> Note {
     tone(&[], seconds)
 }
 
@@ -86,8 +90,15 @@ impl SoundBank for Synth {
                 BRASS,
             ),
         };
-        Sound::new(SampleRate::from(HZ), render(notes, timbre))
+        phrase(notes, timbre)
     }
+}
+
+/// `notes` one after another in `timbre`, as a sound: how a cue outside the
+/// bank's own, an effect's join cue, is made in the same voice.
+#[must_use]
+pub fn phrase(notes: &[Note], timbre: &[f32]) -> Sound {
+    Sound::new(SampleRate::from(HZ), render(notes, timbre))
 }
 
 /// `notes` one after another, each pitch with the overtones `timbre`

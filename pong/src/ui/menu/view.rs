@@ -15,13 +15,14 @@ use bevy::ui::widget::Text;
 use bevy::ui::{
     AlignItems, BorderColor, Display, FlexDirection, JustifyContent, Node, UiRect, Val,
 };
-use pong_core::domain::{Mode, Player, ProfileId, Seat};
+use pong_core::domain::{Player, ProfileId, Seat};
 use pong_core::features::persistence::model::{Profile, Profiles, Settings, WindowMode};
 use pong_core::features::tuning::{SeatKeys, Tuning};
 
 use super::name_entry::name_field;
 use super::{MatchDraft, MenuItem, MenuList, MenuScreen};
 use crate::ui::menu_input::{MenuDrivers, key_doing};
+use crate::ui::mode_label;
 use crate::ui::style::{DIM, cursor_frame, font, hint, row};
 use crate::window::TITLE;
 
@@ -67,10 +68,7 @@ pub(super) fn label(item: MenuItem, profiles: &Profiles, settings: Settings) -> 
         MenuItem::OpenWindowMode => white(window(settings.window_mode)),
         MenuItem::SetVolume(volume) => white(&volume.percent().to_string()),
         MenuItem::SetWindowMode(mode) => white(window(mode)),
-        MenuItem::Mode(Mode::Classic) => white("Classic"),
-        MenuItem::Mode(Mode::Chaos { cap }) => {
-            white(&format!("Chaos {}", "●".repeat(usize::from(cap.get()))))
-        }
+        MenuItem::Mode(mode) => white(&mode_label(mode)),
         MenuItem::Friend => white("Friend"),
         MenuItem::Computer(difficulty) => white(&"★".repeat(usize::from(difficulty.stars()))),
         MenuItem::PointsToWin(points) => white(&points.to_string()),

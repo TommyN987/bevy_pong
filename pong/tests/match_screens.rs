@@ -17,16 +17,21 @@ use bevy::input::keyboard::KeyCode;
 use bevy::math::Vec2;
 use bevy::state::state::State;
 use bevy::ui::widget::Text;
+use bevy::ui::{Display, Node};
 use common::tap;
+use pong::effects::shell_half;
 use pong::ui::ScreensPlugin;
+use pong::ui::effect_hud::{EffectIcon, JoiningIcon, ReturnCountText};
 use pong::ui::hud::{CountdownText, ScoreText};
-use pong::ui::match_over::{GainLine, WinnerHeading};
+use pong::ui::match_over::{GainLine, ModeLine, WinnerHeading};
 use pong::ui::menu::MenuScreen;
 use pong::ui::pause::PauseRow;
 use pong::ui::style::KeyHint;
 use pong_core::domain::{
-    BallHitPaddle, Controller, Difficulty, MatchConfig, Mode, Player, ProfileId, Seat, SeatPlayers,
+    BallHitPaddle, Controller, Difficulty, EffectId, MatchConfig, Mode, Player, ProfileId, Seat,
+    SeatPlayers,
 };
+use pong_core::features::effects::ActiveEffects;
 use pong_core::features::persistence::model::{
     Profile, ProfileName, Profiles, Records, RecordsByMode,
 };
@@ -361,4 +366,153 @@ fn the_countdown_shows_its_seconds_and_goes_when_play_begins() {
     until(&mut app, MatchState::Playing);
     frame(&mut app);
     assert_eq!(texts::<CountdownText>(&mut app), [""]);
+}
+
+fn chaos(players: SeatPlayers, points: u8) -> MatchConfig {
+    MatchConfig {
+        mode: Mode::Chaos {
+            cap: NonZeroU8::MIN,
+        },
+        ..humans(players, points)
+    }
+}
+
+fn shrink_glyph() -> &'static str {
+    shell_half(EffectId::Shrink)
+        .icon
+        .expect("Shrink has an icon")
+        .glyph
+}
+
+/// The effects whose icons are laid out in the row.
+fn icons_in_the_row(app: &mut App) -> Vec<EffectId> {
+    let mut query = app.world_mut().query::<(&EffectIcon, &Node)>();
+    query
+        .iter(app.world())
+        .filter(|(_, node)| node.display != Display::None)
+        .map(|(icon, _)| icon.0)
+        .collect()
+}
+
+fn joining(app: &mut App) -> (Option<EffectId>, String) {
+    let mut query = app.world_mut().query::<(&JoiningIcon, &Text)>();
+    let (icon, text) = query.single(app.world()).expect("one joining icon");
+    (icon.0, text.0.clone())
+}
+
+/// M2 spec 2.7.1: an icon per active effect; the one joining enters large
+/// during the countdown, then takes its place in the row.
+#[test]
+fn the_joining_effect_shows_large_in_the_countdown_then_takes_its_place_in_the_row() {
+    let mut app = screens_app();
+    enter_match(&mut app, chaos(SeatPlayers::GUESTS, 10));
+    frame(&mut app);
+    assert_eq!(
+        joining(&mut app),
+        (Some(EffectId::Shrink), shrink_glyph().to_owned())
+    );
+    assert_eq!(icons_in_the_row(&mut app), []);
+
+    until(&mut app, MatchState::Playing);
+    frame(&mut app);
+    assert_eq!(joining(&mut app), (None, String::new()));
+    assert_eq!(icons_in_the_row(&mut app), [EffectId::Shrink]);
+    let mut query = app.world_mut().query::<(&EffectIcon, &Text)>();
+    let glyphs: Vec<&str> = query.iter(app.world()).map(|(_, t)| t.0.as_str()).collect();
+    assert_eq!(glyphs, [shrink_glyph()]);
+}
+
+/// A countdown that is paused and resumed still shows who joined: the join
+/// was announced once, before the pause.
+#[test]
+fn the_joining_icon_survives_a_pause_in_its_countdown() {
+    let mut app = screens_app();
+    enter_match(&mut app, chaos(SeatPlayers::GUESTS, 10));
+    frame(&mut app);
+    tap(&mut app, KeyCode::Escape);
+    tap(&mut app, KeyCode::Escape);
+    assert_eq!(match_state(&app), MatchState::Countdown);
+    assert_eq!(joining(&mut app).0, Some(EffectId::Shrink));
+}
+
+/// The row follows the effects in play, not the messages: an effect that
+/// leaves them leaves the row.
+#[test]
+fn an_effect_no_longer_in_play_leaves_the_row() {
+    let mut app = screens_app();
+    let config = chaos(SeatPlayers::GUESTS, 10);
+    start_match(&mut app, config);
+    frame(&mut app);
+    assert_eq!(icons_in_the_row(&mut app), [EffectId::Shrink]);
+    let tuning = app.world().resource::<Tuning>().clone();
+    app.world_mut()
+        .resource_mut::<ActiveEffects>()
+        .set(&[EffectId::Speed], &tuning, config.mode);
+    frame(&mut app);
+    assert_eq!(icons_in_the_row(&mut app), []);
+}
+
+/// M2 spec 2.7.2: the rally's hit count is shown as a number, rising per hit.
+#[test]
+fn in_chaos_the_return_count_shows_and_rises_with_each_return() {
+    let mut app = screens_app();
+    start_match(&mut app, chaos(SeatPlayers::GUESTS, 10));
+    frame(&mut app);
+    assert_eq!(texts::<ReturnCountText>(&mut app), ["0"]);
+    // Into the right paddle's face in the middle of one step. Not at 60
+    // units/s: that step ends exactly on the face, and the next step counts
+    // the touch again (phase 3 report, "Facts learned").
+    place_ball(&mut app, Vec2::new(72.0, 2.0), Vec2::new(200.0, 0.0));
+    frame(&mut app);
+    frame(&mut app);
+    assert_eq!(texts::<ReturnCountText>(&mut app), ["1"]);
+}
+
+/// Classic's HUD is as M1 shipped it (M2 spec 2.1.2): no icons, no count.
+#[test]
+fn classic_shows_no_effect_icons_and_no_return_count() {
+    let mut app = screens_app();
+    start_match(&mut app, humans(SeatPlayers::GUESTS, 10));
+    frame(&mut app);
+    assert_eq!(count::<EffectIcon>(&mut app), 0);
+    assert_eq!(count::<JoiningIcon>(&mut app), 0);
+    assert_eq!(count::<ReturnCountText>(&mut app), 0);
+}
+
+/// The effects HUD goes with the match, as the score does.
+#[test]
+fn the_effects_hud_does_not_outlive_its_match() {
+    let mut app = screens_app();
+    start_match(&mut app, chaos(SeatPlayers::GUESTS, 1));
+    score_for(&mut app, Side::Left);
+    until(&mut app, MatchState::MatchOver);
+    tap(&mut app, KeyCode::Escape);
+    assert_eq!(app_state(&app), AppState::Menu);
+    assert_eq!(count::<EffectIcon>(&mut app), 0);
+    assert_eq!(count::<ReturnCountText>(&mut app), 0);
+}
+
+/// Records are kept per mode (M2 spec 2.8.3), so match over says which
+/// mode its gains belong to.
+#[test]
+fn match_over_names_the_mode_played() {
+    for (config, expected) in [
+        (humans(SeatPlayers::GUESTS, 1), "Classic"),
+        (
+            MatchConfig {
+                mode: Mode::Chaos {
+                    cap: NonZeroU8::new(2).expect("above zero"),
+                },
+                ..humans(SeatPlayers::GUESTS, 1)
+            },
+            "Chaos ●●",
+        ),
+    ] {
+        let mut app = screens_app();
+        start_match(&mut app, config);
+        score_for(&mut app, Side::Left);
+        until(&mut app, MatchState::MatchOver);
+        frame(&mut app);
+        assert_eq!(texts::<ModeLine>(&mut app), [expected]);
+    }
 }

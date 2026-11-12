@@ -87,11 +87,13 @@ pong_core/src/
 
 pong/src/
   ports/         keyboard adapter, focus, save paths; beat clock source   (C4)
-  views/         arena, ball, paddle bodies; camera, motion (interpolation), trail, shake;
-                 effect view spawn table   (C1)
+  views/         arena, ball, paddle bodies; camera, motion (interpolation), trail, shake
+  effects/       each effect's shell half: icon, join cue, own view; the shell's one match
+                 on the effect enum   (C1)
   audio/         cue map over core events; synthesized sound bank; state and music cues   (C4)
-  ui/            one screen per state; HUD, notice line, menu input, seat cue, font, style
-  overlay/       developer overlay, F3
+  ui/            one screen per state; HUD and its effects, notice line, menu input, seat cue,
+                 font, style
+  overlay/       developer overlay and sandbox keys, F3
   window.rs      window mode, Alt+Enter toggle
   crash.rs       panic hook, crash file
   xdg.rs         XDG directories
@@ -124,7 +126,7 @@ Amended 2026-11-11 by [ADR 0011](adr/0011-effect-identity-and-contract.md) and t
 ## Boundaries
 
 - Core emits events (`BallHitPaddle`, `PointScored`, `EffectStarted`, `EffectEnded`, and so on). Shell plugins observe them. Core never calls the shell.
-- Four ports flow shell to core as resources: paddle intents from the keyboard adapter, pause and resume requests through `MatchControl` (ADR 0003), the beat clock at C4 from whichever audio engine owns time, and `SavePaths` from the XDG directories. Tests write fakes into the same resources. Besides the ports, the menu writes the match's `MatchConfig` and the player's `Settings` and `Profiles`, which persistence saves, and the shell moves `AppState` out of `Menu` and `InMatch`; rules alone moves `MatchState` (ADR 0003). Amended 2026-11-09 at milestone close.
+- Four ports flow shell to core as resources: paddle intents from the keyboard adapter, pause and resume requests through `MatchControl` (ADR 0003), the beat clock at C4 from whichever audio engine owns time, and `SavePaths` from the XDG directories. Tests write fakes into the same resources. Besides the ports, the menu writes the match's `MatchConfig` and the player's `Settings` and `Profiles`, which persistence saves, and the shell moves `AppState` out of `Menu` and `InMatch`; rules alone moves `MatchState` (ADR 0003). Amended 2026-11-09 at milestone close. Amended 2026-11-12 ([M2 phase 3 report](plans/m2-phase3-report.md)): a fifth port, the developer `Sandbox`, is written by the overlay's keys; it forces the effects in play from the next countdown and holds the return count from the next flight start, and a match it touched records nothing.
 - Audio is a shell plugin that observes core events and app state ([ADR 0010](adr/0010-audio-boundary.md)). Music cues derive from state transitions. Volume is a setting. No audio type exists in core. This amends the design record's facade wording; the substance of that decision stands: built-in `bevy_audio` now, swap at C4 touches one plugin.
 
 ## Input
@@ -157,7 +159,7 @@ Rules owns every `MatchState` transition; the shell requests pause and resume th
 ## Presentation
 
 - All simulation, tuning, and AI values are in arena units, never pixels. The camera fits the arena with letterboxing. UI scales with viewport-relative units.
-- A debug overlay on a function key shows fixed-step rate, ball speed, AI target and error, active effects, and the rally's hit count (first written as "meter value", amended 2026-11-11). It ships in release builds, hidden by default.
+- A debug overlay on a function key shows fixed-step rate, ball speed, AI target and error, active effects, and the rally's hit count (first written as "meter value", amended 2026-11-11). It ships in release builds, hidden by default. Amended 2026-11-12 ([M2 phase 3 report](plans/m2-phase3-report.md)): while shown in a match it is also the sandbox of M2 spec 2.9.1, through the `Sandbox` port.
 
 ## Error policy
 

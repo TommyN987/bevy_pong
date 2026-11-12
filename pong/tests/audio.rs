@@ -12,8 +12,8 @@ use pong::audio::sound::Sound;
 use pong::audio::synth::Synth;
 use pong::audio::{Cue, CueSounds, SoundsPlugin};
 use pong_core::domain::{
-    BallHitPaddle, BallHitWall, Controller, MatchConfig, MatchEnded, Mode, PointScored, Seat,
-    SeatPlayers,
+    BallHitPaddle, BallHitWall, Controller, EffectId, EffectStarted, MatchConfig, MatchEnded, Mode,
+    PointScored, Seat, SeatPlayers,
 };
 use pong_core::features::persistence::model::{Settings, Volume as SavedVolume};
 use pong_core::kernel::geometry::Side;
@@ -99,6 +99,41 @@ fn each_core_event_plays_its_cue_once() {
     }
 }
 
+/// M2 spec 2.3.3: an effect's cue. It plays when the effect joins, once.
+#[test]
+fn an_effect_joining_plays_its_own_cue_once() {
+    let mut app = audio_app();
+    send(
+        &mut app,
+        EffectStarted {
+            effect: EffectId::Shrink,
+        },
+    );
+    frame(&mut app);
+    frame(&mut app);
+    let shrink = app
+        .world()
+        .resource::<CueSounds>()
+        .join(EffectId::Shrink)
+        .expect("Shrink has a join cue")
+        .clone();
+    assert_eq!(handles(&mut app), [shrink]);
+}
+
+/// An effect with no cue of its own joins in silence.
+#[test]
+fn an_effect_without_a_cue_joins_in_silence() {
+    let mut app = audio_app();
+    send(
+        &mut app,
+        EffectStarted {
+            effect: EffectId::Speed,
+        },
+    );
+    frame(&mut app);
+    assert!(cues(&mut app).is_empty());
+}
+
 #[test]
 fn events_arriving_together_each_play_and_none_plays_again() {
     let mut app = audio_app();
@@ -134,4 +169,33 @@ fn a_cue_plays_at_the_volume_set_then_and_goes_when_done() {
             .all(|(_, s)| matches!(s.mode, PlaybackMode::Despawn)),
         "a cue outlives its sound"
     );
+}
+
+/// The real path, not a message sent by hand: entering a Chaos match starts
+/// its first bag effect, and that plays the effect's cue.
+#[test]
+fn entering_a_chaos_match_plays_the_joining_effects_cue() {
+    let mut app = headless_app(1);
+    app.add_plugins(SoundsPlugin(Synth));
+    boot(&mut app);
+    enter_match(
+        &mut app,
+        MatchConfig {
+            left: Controller::Human(Seat::Left),
+            right: Controller::Human(Seat::Right),
+            players: SeatPlayers::GUESTS,
+            points_to_win: NonZeroU8::new(10).expect("not zero"),
+            mode: Mode::Chaos {
+                cap: NonZeroU8::MIN,
+            },
+        },
+    );
+    frame(&mut app);
+    let shrink = app
+        .world()
+        .resource::<CueSounds>()
+        .join(EffectId::Shrink)
+        .expect("Shrink has a join cue")
+        .clone();
+    assert_eq!(handles(&mut app), [shrink]);
 }

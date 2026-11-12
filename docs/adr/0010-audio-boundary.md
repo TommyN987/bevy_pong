@@ -35,3 +35,4 @@ Built-in `bevy_audio` now, reached only through the core's event vocabulary: aud
 - Tests assert one play command per event with audio disabled; how a sound sounds is judged by ear.
 - With no audio device, Bevy warns and plays nothing, and its cleanup is skipped too: each cue leaves one entity, a few hundred per match.
 - A new cue needs a `Cue` variant, a bank sound, and a message to map; the exhaustive matches point at each.
+  Amended 2026-11-12 ([M2 phase 3 report](../plans/m2-phase3-report.md)): an effect's join cue is not a `Cue`. It is a `Sound` in the effect's shell half (`pong::effects`), synthesized through `synth::phrase`, and the cue map plays it on `EffectStarted`. A `Cue` per effect would have made the bank match on `EffectId`, a second match in the crate (ADR 0011). A bank from files would need the shell halves to name files instead.

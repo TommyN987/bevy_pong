@@ -9,11 +9,11 @@
 use bevy::app::{App, Plugin};
 use bevy::ecs::message::MessageWriter;
 use bevy::ecs::resource::Resource;
-use bevy::ecs::system::{Res, ResMut};
+use bevy::ecs::system::{Res, ResMut, SystemParam};
 use bevy::state::state::OnEnter;
 
 use crate::domain::{EffectEnded, EffectId, EffectStarted, MatchConfig, Mode, Random};
-use crate::features::effects::ActiveEffects;
+use crate::features::effects::{ActiveEffects, Sandbox};
 use crate::features::rules::Score;
 use crate::features::tuning::Tuning;
 use crate::flow::states::{AppState, MatchState};
@@ -30,6 +30,10 @@ use schedule::Rotation;
 ///   score, and writes [`EffectStarted`] and [`EffectEnded`] for the bag
 ///   effects that joined or left. Nothing changes inside a rally
 ///   (M2 spec 2.4.3).
+///
+/// While the developer [`Sandbox`] forces a set of effects, that set is in
+/// play instead, from the next countdown, and nothing is announced
+/// (M2 spec 2.9.1).
 ///
 /// A countdown is entered after every point, and also after a fault and on
 /// resuming a paused countdown. The update counts points, not countdowns, so
@@ -83,6 +87,13 @@ fn draw_the_bag(
     };
 }
 
+/// Where a bag effect's coming and going is announced.
+#[derive(SystemParam)]
+struct Announcements<'w> {
+    started: MessageWriter<'w, EffectStarted>,
+    ended: MessageWriter<'w, EffectEnded>,
+}
+
 /// Sets the effects in play for the rally about to start: the mode's
 /// always-on effects, and as many of its bag as the leader's progress, the
 /// cap, and the bag allow, rotated once per interval of points scored.
@@ -90,10 +101,10 @@ fn bring_effects_up_to_date(
     config: Res<MatchConfig>,
     tuning: Res<Tuning>,
     score: Res<Score>,
+    sandbox: Res<Sandbox>,
     mut schedule: ResMut<Schedule>,
     mut active: ResMut<ActiveEffects>,
-    mut started: MessageWriter<EffectStarted>,
-    mut ended: MessageWriter<EffectEnded>,
+    mut announce: Announcements,
 ) {
     let mode = tuning.mode(config.mode);
     let (left, right) = (score.side(Side::Left), score.side(Side::Right));
@@ -109,12 +120,20 @@ fn bring_effects_up_to_date(
     let rotate = rotations_due > schedule.rotations_done;
     schedule.rotations_done = rotations_due;
 
+    // The schedule turns even while the sandbox forces the effects, so a
+    // release finds it where the score has brought it.
     let changes = schedule.rotation.advance(count, rotate);
+    if let Some(forced) = sandbox.forced_effects() {
+        // The whole set, the always-on effects included, and unannounced:
+        // what the schedule did is not what is in play.
+        active.set(forced, &tuning, config.mode);
+        return;
+    }
     for effect in changes.ended {
-        ended.write(EffectEnded { effect });
+        announce.ended.write(EffectEnded { effect });
     }
     for effect in changes.started {
-        started.write(EffectStarted { effect });
+        announce.started.write(EffectStarted { effect });
     }
 
     let in_play: Vec<EffectId> = mode
@@ -138,7 +157,7 @@ mod tests {
         BallHitPaddle, Controller, Difficulty, EffectEnded, EffectId, EffectStarted, MatchConfig,
         Mode, Seat, SeatPlayers, SimFault,
     };
-    use crate::features::effects::ActiveEffects;
+    use crate::features::effects::{ActiveEffects, Sandbox};
     use crate::features::rules::{MatchControl, Score};
     use crate::features::tuning::{EMBEDDED_RON, Tuning};
     use crate::flow::states::MatchState;
@@ -438,5 +457,58 @@ mod tests {
         );
         let score = *app.world().resource::<Score>();
         assert_eq!(score.side(Side::Left).max(score.side(Side::Right)), 5);
+    }
+
+    /// M2 spec 2.9.1, with 2.4.3 kept: forced effects take hold between
+    /// points, as scheduled ones do, and say nothing as they come and go.
+    #[test]
+    fn forced_effects_take_hold_at_the_next_countdown_and_announce_nothing() {
+        let mut app = playing(chaos(1), 10, None);
+        started(&mut app);
+        app.world_mut()
+            .resource_mut::<Sandbox>()
+            .toggle(EffectId::Shrink, &[EffectId::Speed, EffectId::Shrink]);
+        for _ in 0..5 {
+            frame(&mut app);
+        }
+        assert_eq!(
+            in_play(&app),
+            [EffectId::Speed, EffectId::Shrink],
+            "the effects changed inside a rally"
+        );
+
+        left_scores(&mut app);
+        until(&mut app, MatchState::Countdown);
+        assert_eq!(in_play(&app), [EffectId::Speed]);
+        assert_eq!((started(&mut app), ended(&mut app)), (vec![], vec![]));
+    }
+
+    /// The forced set is the whole set: with none forced, not even the
+    /// mode's always-on effects are in play.
+    #[test]
+    fn a_forced_set_replaces_the_always_on_effects_too() {
+        let mut app = playing(chaos(1), 10, None);
+        let mut sandbox = app.world_mut().resource_mut::<Sandbox>();
+        sandbox.toggle(EffectId::Speed, &[EffectId::Speed, EffectId::Shrink]);
+        sandbox.toggle(EffectId::Shrink, &[]);
+        left_scores(&mut app);
+        until(&mut app, MatchState::Countdown);
+        assert_eq!(in_play(&app), []);
+    }
+
+    #[test]
+    fn a_released_sandbox_gives_the_effects_back_to_the_schedule() {
+        let mut app = playing(chaos(1), 10, None);
+        app.world_mut()
+            .resource_mut::<Sandbox>()
+            .toggle(EffectId::Shrink, &[EffectId::Speed, EffectId::Shrink]);
+        left_scores(&mut app);
+        until(&mut app, MatchState::Countdown);
+        assert_eq!(in_play(&app), [EffectId::Speed]);
+
+        app.world_mut().resource_mut::<Sandbox>().release();
+        left_scores(&mut app);
+        until(&mut app, MatchState::Countdown);
+        assert_eq!(in_play(&app), [EffectId::Speed, EffectId::Shrink]);
     }
 }

@@ -46,6 +46,7 @@ impl Plugin for ViewsPlugin {
             arena::ArenaViewPlugin,
             ball::BallViewPlugin,
             paddle::PaddleViewPlugin,
+            crate::effects::EffectViewsPlugin,
         ));
     }
 }

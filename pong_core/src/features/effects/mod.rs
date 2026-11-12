@@ -22,7 +22,7 @@ use crate::features::ball::Ball;
 use crate::features::paddle::Paddle;
 use crate::features::tuning::Tuning;
 use crate::flow::phases::{BallInPlay, FixedStepPhase};
-use crate::flow::states::MatchState;
+use crate::flow::states::{AppState, MatchState};
 use crate::kernel::flight::{Contribution, Flight, FlightStart};
 
 pub mod shrink;
@@ -63,17 +63,25 @@ fn build(id: EffectId, tuning: &Tuning, mode: Mode) -> Box<dyn Effect> {
 ///   flight at a paddle return, through [`ActiveEffects::start_flight`].
 /// - The flight's paddle height factor reaches the paddles in the effects
 ///   phase (M2 spec 2.2.3).
+/// - The [`Sandbox`] port starts empty; its held count reaches every flight
+///   start, and entering a match clears its touched mark unless it still
+///   forces something.
 pub struct EffectsPlugin;
 
 impl Plugin for EffectsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ActiveEffects>()
+            .init_resource::<Sandbox>()
             .register_required_components::<Ball, BallFlight>()
+            .add_systems(OnEnter(AppState::InMatch), begin_the_match_untouched)
             .add_systems(OnEnter(MatchState::Countdown), clear_flights)
             .add_systems(
                 FixedUpdate,
                 (
                     rebuild_effects_from_changed_tuning.in_set(FixedStepPhase::Effects),
+                    hold_the_sandbox_count
+                        .in_set(FixedStepPhase::Effects)
+                        .before(start_flight_on_serve),
                     fit_paddles_to_the_flight.in_set(FixedStepPhase::Effects),
                     start_flight_on_serve
                         .in_set(FixedStepPhase::Effects)
@@ -92,6 +100,9 @@ pub struct ActiveEffects {
     mode: Mode,
     ids: Vec<EffectId>,
     effects: Vec<Box<dyn Effect>>,
+    /// The [`Sandbox`]'s held count, copied here each step so that every
+    /// flight start, the serve's and physics', passes through one place.
+    held_returns: Option<u16>,
 }
 
 /// No effects in play: what holds outside a match.
@@ -101,6 +112,7 @@ impl Default for ActiveEffects {
             mode: Mode::Classic,
             ids: Vec::new(),
             effects: Vec::new(),
+            held_returns: None,
         }
     }
 }
@@ -129,13 +141,80 @@ impl ActiveEffects {
     }
 
     /// The flight that begins at `start`: every effect in play asked once
-    /// for its contribution (M2 spec 2.2.4).
+    /// for its contribution (M2 spec 2.2.4). While the [`Sandbox`] holds a
+    /// count, the flight starts at that count instead of `start`'s.
     #[must_use]
     pub fn start_flight(&self, start: FlightStart) -> Flight {
+        let start = FlightStart {
+            returns: self.held_returns.unwrap_or(start.returns),
+            ..start
+        };
         Flight::start(
             start,
             self.effects.iter().map(|effect| effect.contribute(&start)),
         )
+    }
+}
+
+/// Port: the developer sandbox (M2 spec 2.9.1). The shell's overlay writes
+/// it; escalation and this feature read it. It forces which effects are in
+/// play and holds the return count every flight starts at, so one effect can
+/// be looked at alone, at one dial.
+///
+/// Forcing keeps the simulation's invariants (M2 spec 2.4.3): a forced set
+/// takes hold at the next countdown, a held count at the next flight start.
+/// A match in which anything was forced is [touched](Self::touched_match)
+/// and records nothing, since the overlay ships in release builds.
+#[derive(Resource, Debug, Default, Clone, PartialEq, Eq)]
+pub struct Sandbox {
+    /// The whole set in play while forced, in [`EffectId::ALL`]'s order.
+    effects: Option<Vec<EffectId>>,
+    returns: Option<u16>,
+    touched_match: bool,
+}
+
+impl Sandbox {
+    /// Puts `effect` in the forced set, or takes it out. The first toggle
+    /// starts from `in_play`, so it changes one effect and keeps the rest.
+    pub fn toggle(&mut self, effect: EffectId, in_play: &[EffectId]) {
+        let base = self.effects.as_deref().unwrap_or(in_play);
+        let forced = EffectId::ALL
+            .into_iter()
+            .filter(|id| base.contains(id) != (*id == effect))
+            .collect();
+        self.effects = Some(forced);
+        self.touched_match = true;
+    }
+
+    /// Holds every flight's return count at `returns`; `None` lets the rally
+    /// count again, on from the held count.
+    pub const fn hold_returns(&mut self, returns: Option<u16>) {
+        self.returns = returns;
+        self.touched_match = true;
+    }
+
+    /// Forces nothing any more. The match stays touched.
+    pub fn release(&mut self) {
+        self.effects = None;
+        self.returns = None;
+    }
+
+    /// The effects forced into play; `None` while the schedule decides.
+    #[must_use]
+    pub fn forced_effects(&self) -> Option<&[EffectId]> {
+        self.effects.as_deref()
+    }
+
+    /// The count every flight starts at; `None` while the rally counts.
+    #[must_use]
+    pub const fn held_returns(&self) -> Option<u16> {
+        self.returns
+    }
+
+    /// Whether anything was forced at any time in the current match.
+    #[must_use]
+    pub const fn touched_match(&self) -> bool {
+        self.touched_match
     }
 }
 
@@ -163,6 +242,23 @@ impl BallFlight {
     /// Advances the flight's clock by one fixed step.
     pub const fn tick(&mut self) {
         self.0.tick();
+    }
+}
+
+/// A new match is untouched by the sandbox, unless it still forces
+/// something: then the match is touched from its first step.
+fn begin_the_match_untouched(mut sandbox: ResMut<Sandbox>) {
+    let forcing = sandbox.effects.is_some() || sandbox.returns.is_some();
+    if sandbox.touched_match != forcing {
+        sandbox.touched_match = forcing;
+    }
+}
+
+/// Copies the sandbox's held count to where flights start. Writes only on a
+/// change, so the effects in play are not marked changed every step.
+fn hold_the_sandbox_count(sandbox: Res<Sandbox>, mut active: ResMut<ActiveEffects>) {
+    if active.held_returns != sandbox.returns {
+        active.held_returns = sandbox.returns;
     }
 }
 
@@ -245,7 +341,7 @@ mod tests {
     use bevy::math::Vec2;
     use bevy::state::state::NextState;
 
-    use super::{ActiveEffects, BallFlight, Effect};
+    use super::{ActiveEffects, BallFlight, Effect, Sandbox};
     use crate::domain::{
         BallHitPaddle, Controller, EffectId, MatchConfig, Mode, Seat, SeatPlayers,
     };
@@ -260,8 +356,8 @@ mod tests {
     use crate::kernel::predict::crossing_y;
     use crate::kernel::test_support::assert_near;
     use crate::testing::{
-        ball_state, boot, enter_match, fixed_timestep, frame, headless_app, match_state,
-        place_ball, record, report_intent, run_until, start_match, take_recorded,
+        ball_state, boot, enter_match, fixed_timestep, frame, headless_app, leave_match,
+        match_state, place_ball, record, report_intent, run_until, start_match, take_recorded,
     };
 
     fn two_humans() -> MatchConfig {
@@ -307,7 +403,110 @@ mod tests {
         )
     }
 
-    /// Records every flight start it is asked about and contributes nothing.
+    /// M2 spec 2.9.1: the sandbox forces the hit count. A held count is the
+    /// count every flight starts at, the serve's too, so an effect's dial
+    /// stays where the developer put it.
+    #[test]
+    fn a_held_return_count_is_the_count_every_flight_starts_at() {
+        let mut app = playing();
+        app.world_mut()
+            .resource_mut::<Sandbox>()
+            .hold_returns(Some(9));
+        assert_eq!(returns(&mut app), 0, "a flight keeps its count");
+        into_the_right_paddle(&mut app, Vec2::new(200.0, 0.0));
+        assert_eq!(returns(&mut app), 9);
+        into_the_right_paddle(&mut app, Vec2::new(200.0, 0.0));
+        assert_eq!(returns(&mut app), 9, "the next return counted on");
+
+        app.world_mut()
+            .resource_mut::<NextState<MatchState>>()
+            .set(MatchState::Countdown);
+        // The request applies in the next frame; only then wait for play.
+        frame(&mut app);
+        assert_eq!(match_state(&app), MatchState::Countdown);
+        assert_eq!(returns(&mut app), 0, "a countdown has no flight to hold");
+        run_until(
+            &mut app,
+            |app| match_state(app) == MatchState::Playing,
+            1_000,
+            "play never began again",
+        );
+        for _ in 0..3 {
+            frame(&mut app);
+        }
+        assert_eq!(returns(&mut app), 9, "the serve started at zero");
+    }
+
+    /// Letting go of the count: the rally counts on from where it was held.
+    #[test]
+    fn a_released_return_count_counts_on_from_the_held_one() {
+        let mut app = playing();
+        app.world_mut()
+            .resource_mut::<Sandbox>()
+            .hold_returns(Some(9));
+        into_the_right_paddle(&mut app, Vec2::new(200.0, 0.0));
+        app.world_mut().resource_mut::<Sandbox>().hold_returns(None);
+        into_the_right_paddle(&mut app, Vec2::new(200.0, 0.0));
+        assert_eq!(returns(&mut app), 10);
+    }
+
+    /// The first toggle starts from what is in play, so one key press
+    /// changes one effect; the forced list keeps the enum's order.
+    #[test]
+    fn toggling_starts_from_the_effects_in_play_and_changes_one() {
+        let mut sandbox = Sandbox::default();
+        assert_eq!(sandbox.forced_effects(), None);
+        sandbox.toggle(EffectId::Shrink, &[EffectId::Speed]);
+        assert_eq!(
+            sandbox.forced_effects(),
+            Some([EffectId::Speed, EffectId::Shrink].as_slice())
+        );
+        // What is in play no longer matters: the forced list is the base.
+        sandbox.toggle(EffectId::Speed, &[]);
+        assert_eq!(
+            sandbox.forced_effects(),
+            Some([EffectId::Shrink].as_slice())
+        );
+        sandbox.toggle(EffectId::Shrink, &[]);
+        assert_eq!(
+            sandbox.forced_effects(),
+            Some([].as_slice()),
+            "no effect at all is a forced set too"
+        );
+    }
+
+    #[test]
+    fn releasing_the_sandbox_forces_nothing_but_the_match_stays_touched() {
+        let mut sandbox = Sandbox::default();
+        assert!(!sandbox.touched_match());
+        sandbox.toggle(EffectId::Shrink, &[]);
+        sandbox.hold_returns(Some(4));
+        sandbox.release();
+        assert_eq!(
+            (sandbox.forced_effects(), sandbox.held_returns()),
+            (None, None)
+        );
+        assert!(sandbox.touched_match());
+    }
+
+    /// A new match is untouched unless the sandbox still forces something.
+    #[test]
+    fn a_new_match_is_touched_only_if_the_sandbox_still_forces_something() {
+        let mut app = headless_app(1);
+        boot(&mut app);
+        let touched = |app: &App| app.world().resource::<Sandbox>().touched_match();
+        app.world_mut()
+            .resource_mut::<Sandbox>()
+            .hold_returns(Some(3));
+        start_match(&mut app, two_humans());
+        assert!(touched(&app), "a count is still held");
+
+        app.world_mut().resource_mut::<Sandbox>().release();
+        leave_match(&mut app);
+        start_match(&mut app, two_humans());
+        assert!(!touched(&app), "nothing is forced any more");
+    }
+
     /// It borrows Speed's name: the identity enum is closed, and a probe is
     /// no effect of the game.
     struct Probe(Arc<Mutex<Vec<FlightStart>>>);
