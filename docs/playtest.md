@@ -24,7 +24,7 @@ Proposed change (at most one):
 - Menu with a single cursor and sequential seat selection: do the kids fight over the menu? If yes, revisit per-seat cursors (docs/architecture.md, Input). Outcome 2026-11-09: no fights reported (session below); single cursor kept.
 - Keyboard ghosting: both seats holding up, down, and action at once (six keys) all register on the kids' keyboard. Result required before C3 (spec 1.8.2). Outcome 2026-11-07: no; at most five of the six register. Every in-play hold of one direction plus action per seat registers (session below).
 - Catch-up bias (M2 spec 2.4.6): does one child win Chaos matches against the other so often that the loser stops wanting to play? M2 ships no bias; if yes, revisit one. No outcome yet.
-- Wind and Spin (M2 spec 2.6): they share one field with different causes. Do the children tell them apart in play? No outcome yet.
+- Wind and Spin (M2 spec 2.6): they share one field with different causes. Do the children tell them apart in play? Outcome 2026-11-14: not observed directly. The parent reports that the children like the two best together, "the combination of Wind and Spin in the same rally", which names them as two; no child was reported telling which of the two bent a ball (session below).
 
 ## Sessions
 
@@ -90,3 +90,35 @@ Interpretation (may be empty):
 - One shared session stood in for one session per effect: it covered Shrink and Wind, as plan 5.4 set.
 Proposed change (at most one):
 - None. The parent ruled neither a retune nor a drop for Shrink or for Wind (spec 2.10.2), and declared the phase complete.
+
+### 2026-11-13 · M2 phase 6 (the hand check, plan E.3) · the developer alone · build feat/spin with steps 1 to 5 at Spin's starting numbers (committed as 6a87bdd)
+Duration: not recorded.
+Reported by the developer after playing; no notes were taken during it.
+Observations (what happened, in order):
+- The developer did the hand check of Spin in `just run`: "Everything seems to be working."
+- The developer played "a little with the bots".
+- The developer then played the two-star computer in the sandbox with Spin alone, the return count held at 20, where the dial is full.
+Quotes (verbatim, by role):
+- the developer, of the matches against the computers: "the spin was barely noticeable in the smaller and mid-length rallies."
+- the developer, of the sandbox match: "it feels like there should be more spin throughout."
+Interpretation (may be empty):
+- None recorded.
+Proposed change (at most one):
+- More spin, for a tryout. Built that day: the dial full at return 6 where it was 12, and a full drift of 30 units where it was 16 ([M2 phase 6 report](plans/m2-phase6-report.md)).
+
+### 2026-11-14 · M2 phase 6 (plan 6.2, spec 2.10.1; E.6 for Spin) · the parent and the children · build feat/spin at c14233c, the tryout's numbers; not stated in the report
+Duration: not recorded.
+Reported by the parent after the session; no notes were taken during it. Who played whom, and when, was not reported.
+Observations (what happened, in order):
+- The parent played the retuned Spin.
+- The children played it too.
+- The parent reports that the children like it, and like best a rally with Wind and Spin both in play.
+Quotes (verbatim, by role):
+- the parent: "this is way more fun"
+- the parent, of the children: "Especially the combination of Wind and Spin in the same rally."
+- "Pretty awesome", in the parent's report; the speaker was not stated.
+Interpretation (may be empty):
+- The parent's reading: the retuned Spin is more fun than Spin at its starting numbers, and the children like it.
+- Claude's reading: liking the two effects together treats them as two. That is not the same as a child telling which one bent a ball, which nobody reported watching for. The hypothesis is marked so.
+Proposed change (at most one):
+- None. The parent ruled to keep Spin as it is: "Let's leave it like this." Neither a retune nor a drop (spec 2.10.2); Spin ships at the tryout's numbers.

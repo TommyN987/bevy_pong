@@ -209,7 +209,7 @@ Coupling: Wind and Spin use the same field with different causes; whether they f
 
 ## 2.10 Playtest
 
-- **2.10.1 MUST** One logged session per shipped effect, in the observe-then-interpret template. Done: entries exist in `docs/playtest.md`. Amended 2026-11-11 ([M2 plan](../plans/m2-plan.md) 5.4): the kids first play Chaos after Wind lands, and that session covers Shrink and Wind. Amended 2026-11-13 ([phase 5 report](../plans/m2-phase5-report.md)): that session is logged. The user ruled neither a retune nor a drop for Shrink or for Wind.
+- **2.10.1 MUST** One logged session per shipped effect, in the observe-then-interpret template. Done: entries exist in `docs/playtest.md`. Amended 2026-11-11 ([M2 plan](../plans/m2-plan.md) 5.4): the kids first play Chaos after Wind lands, and that session covers Shrink and Wind. Amended 2026-11-13 ([phase 5 report](../plans/m2-phase5-report.md)): that session is logged. The user ruled neither a retune nor a drop for Shrink or for Wind. Amended 2026-11-14 ([phase 6 report](../plans/m2-phase6-report.md)): Spin's session is logged. The user ruled to keep Spin as it is, at the numbers of the tryout that came before the session.
 - **2.10.2 MUST** Drop rule: an effect is dropped by the user's ruling after its session, citing a logged observation, after one retune. A dropped effect is removed by its touch list. Done: the ruling is in the playtest log and the removal's diff in the phase report.
 - **2.10.3 MUST** The rotation interval (2.4.4) is chosen from play. Done: the value and the observation behind it are in the playtest log.
 

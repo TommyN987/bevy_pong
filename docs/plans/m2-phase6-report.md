@@ -4,9 +4,10 @@ Started 2026-11-13. Branch `feat/spin`. Roles: Claude drives; the user reviews a
 Deviations from [m2-chaos-pong.md](../specs/m2-chaos-pong.md) and [m2-plan.md](m2-plan.md) per plan rule P.6, each with where it was recorded.
 
 Built 2026-11-13: steps 1 to 4 of the proposal the user approved that day (plan 6.1; E.1 to E.4, E.7).
-Recorded 2026-11-13: step 5 (P.6, E.5). CI has not run on this build: the push is the user's.
+Recorded 2026-11-13: step 5 (P.6, E.5).
 Hand check 2026-11-13, the user's: done, and followed by a tryout retune of Spin (below).
-Open: the rest of step 6, the session (E.6, plan 6.2).
+Played: the session with the children, reported 2026-11-14 (E.6, plan 6.2).
+Closed 2026-11-14 by the user's word, with CI green by the user's report. `docs/specs/CURRENT` names phase 7, Fog, on branch `feat/fog`.
 
 ## The proposal's steps
 
@@ -17,7 +18,7 @@ Open: the rest of step 6, the session (E.6, plan 6.2).
 | 3 | Spin's shell half (E.1, E.3) | Built, tested headless, and seen by the user in `just run`. |
 | 4 | Into the bag, and the harness (E.4, E.7) | Built. Measured at the starting numbers, and again at the tryout's. |
 | 5 | Record (P.6, E.5) | Done. |
-| 6 | Hand check, session, ruling (E.6, plan 6.2) | Hand check done. The session, its ruling, and the hypothesis are open; the user's. |
+| 6 | Hand check, session, ruling (E.6, plan 6.2) | Done. The ruling: keep. The hypothesis has an outcome in the log, not a direct observation. |
 
 ## Deviations
 
@@ -30,6 +31,8 @@ All three were proposed before implementation and approved by the user on 2026-1
 | spec 2.6.4, "a tuned maximum" | Validation refuses a `max_drift` at or above half the playable height, as Wind's. The spec named no bound for Spin. | Spec 2.6.4 amended 2026-11-13. |
 
 ## Rulings by the user
+
+2026-11-14, after the session: "Okay, this is way more fun, and the kids like it too. Especially the combination of Wind and Spin in the same rally. 'Pretty awesome'. Let's leave it like this." Spin is kept at the tryout's numbers; neither a retune nor a drop (E.6, spec 2.10.2). The phase is closed; the next branch is `feat/fog`.
 
 2026-11-13, after the hand check:
 
@@ -273,7 +276,7 @@ The user asked for more spin, with no numbers. These are Claude's, to be judged 
 - **Both halves of the report are answered:** the dial is full twice as early, for the short and middle rallies, and the full drift is nearly twice as far, past Wind's 24.
 - **The shares were raised with the drift, which the user did not ask for.** Ruling 6 sized the flaw by its misreading in units, and that is kept. At the old shares the tryout's drift would leave two stars 12 units off, past the paddle's reach of 8 with no error at all, so a spun ball would beat them nearly every time. Putting the old shares back is one line of `tuning.ron`.
 - **This is not the retune of spec 2.10.2,** as Claude reads it: that one follows the session. This one precedes it, from the developer's play.
-- **No playtest log entry was written** for the developer's play.
+- **The developer's play is in the [playtest log](../playtest.md),** dated 2026-11-13, written at the close.
 
 ### Tests that pinned the embedded numbers
 
@@ -312,6 +315,17 @@ At the starting numbers that fourth three-star mean was 18.4. The misreading in 
 
 These pairings are between computers, which seldom spin. They say little about how the tryout plays for a person who spins at every hit: that is for the hand and the session.
 
+## The session and the close (step 6)
+
+Reported by the user on 2026-11-14 and logged in the [playtest log](../playtest.md) that day.
+
+- **Who played:** the parent and the children, on the tryout's numbers. Who played whom was not reported.
+- **Reported:** the retuned Spin is "way more fun", the children like it, and they like best a rally with Wind and Spin both in play. "Pretty awesome"; the speaker was not stated.
+- **Ruling (E.6, spec 2.10.2):** keep, as it is. Spin ships at the tryout's numbers: dial from return 0, full at 6, `max_drift` 30, believed shares 0.63 / 0.79 / 0.92.
+- **The hypothesis (plan 6.2):** its outcome is in the log. Not observed directly: the children like the two effects together, which names them as two; no child was reported telling which one bent a ball.
+- **The rescaled shares stand:** the user kept the build that has them, and said nothing of them apart.
+- **Recorded:** spec 2.10.1 amended 2026-11-14.
+
 ## Test changes
 
 466 core tests and 192 shell tests pass, 658 in all; 622 existed before this phase. 36 were added: 26 in the core, 10 in the shell.
@@ -343,17 +357,17 @@ Step 3 wrote one area new to the repository: a world-space parent and child. `be
 ## Gate
 
 `just dev-check` green on 2026-11-13 with all of steps 1 to 5: 658 tests. Green again after the tryout retune, at the same 658.
+CI: green, by the user's report on 2026-11-14. The run and its commit were not named; the branch's head then was `c14233c`, the retune.
 After step 2 alone it was green at 646. On that run, the first after a rebuild, two tests ran past 30 s and passed; no name was captured. The crash tests are the known case (`.config/nextest.toml`).
 
 ## Open at phase close
 
-- **Step 6, the user's:** the session.
-  - The tryout's numbers judged by play: kept, changed, or put back.
-  - The session, with the ruling: keep, retune once, or drop (E.6).
-  - The Wind-versus-Spin hypothesis observed and logged (plan 6.2).
 - **The computer as a deliberate spinner:** a MAY (spec 2.6.4, plan 11.3), decided before milestone close with every effect built and playtested. Against the computer, Spin is mostly the player's to use.
+- **Wind against Spin:** whether a child tells which of the two bent a ball was not watched for. A later session with both in play can watch.
 - **R11 for the mark:** the review item at milestone close (spec 2.7.4).
 - **Not shown by test:** that Spin alone shortens three-star rallies; how much of the stack's fourth rung is Spin's.
 - **Not measured:** that added delay is inert at low speed.
+- **Not looked into:** why the stack's fourth three-star mean rose from 18.4 to 32.5 with the tryout, the misreading in units being the same.
 - **The heavy tests' times:** thirteen now, up to 11 s warm and 17 s cold under load, against 30 s. Each bag effect to come adds a dial test.
-- **CI:** not run on this build.
+- **Not recorded:** the session's length, who played whom, who said "Pretty awesome", and whether the hand check's log showed a `B0004` warning.
+- **Open hypothesis in the playtest log:** catch-up bias, with no outcome reported.
