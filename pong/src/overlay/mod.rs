@@ -111,11 +111,11 @@ fn toggle_overlay(
     }
 }
 
-/// Whether the sandbox takes keys: in a match, which is exactly while a
-/// ball exists, that is not over. A match that is over has been recorded or
-/// skipped already, and forcing could change neither.
-fn sandbox_is_open(a_ball_exists: bool, match_state: Option<&State<MatchState>>) -> bool {
-    a_ball_exists && match_state.is_some_and(|state| *state.get() != MatchState::MatchOver)
+/// Whether the sandbox takes keys: in a match that is not over. The match
+/// state exists exactly while a match does. A match that is over has been
+/// recorded or skipped already, and forcing could change neither.
+fn sandbox_is_open(match_state: Option<&State<MatchState>>) -> bool {
+    match_state.is_some_and(|state| *state.get() != MatchState::MatchOver)
 }
 
 /// The keys that toggle an effect, in [`EffectId::ALL`]'s order: key 1 the
@@ -151,9 +151,11 @@ fn drive_sandbox(
     let shown = overlays
         .iter()
         .any(|visibility| *visibility != Visibility::Hidden);
-    let flight = flights.iter().next();
-    let Some(flight) = flight.filter(|_| shown && sandbox_is_open(true, match_state.as_deref()))
-    else {
+    if !shown || !sandbox_is_open(match_state.as_deref()) {
+        return;
+    }
+    // A ball exists exactly while a match does.
+    let Some(flight) = flights.iter().next() else {
         return;
     };
     for (&key, effect) in EFFECT_KEYS.iter().zip(EffectId::ALL) {
@@ -219,7 +221,7 @@ fn show_readings(
             sandbox: ball
                 .filter(|_| sandbox.is_forcing() || sandbox.touched_match())
                 .map(|_| sandbox.clone()),
-            sandbox_open: sandbox_is_open(ball.is_some(), match_state.as_deref()),
+            sandbox_open: sandbox_is_open(match_state.as_deref()),
             aims,
             states: states.into_iter().flatten().collect(),
         };

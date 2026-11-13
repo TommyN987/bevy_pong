@@ -1,5 +1,9 @@
 //! The synthesized sound bank (spec 1.6.4): each cue is a few notes, made in
 //! code when the app is built.
+//!
+//! [`Synth`] is what the app and its tests are given. The note vocabulary
+//! ([`tone`], [`rest`], [`PLAIN`], [`BRASS`], [`phrase`]) is the crate's own:
+//! an effect's shell half writes its join cue in it.
 
 use std::f32::consts::TAU;
 use std::num::NonZero;
@@ -25,11 +29,11 @@ const POINT_SECONDS: f32 = 0.35;
 /// A plain sine.
 pub(crate) const PLAIN: &[f32] = &[1.0];
 /// A sine with its next three overtones, fading: brighter, brass-like.
-pub const BRASS: &[f32] = &[1.0, 0.5, 0.33, 0.25];
+pub(crate) const BRASS: &[f32] = &[1.0, 0.5, 0.33, 0.25];
 
 /// Pitches sounding together, fading out over `seconds`; none is a rest.
 #[derive(Debug, Clone, Copy)]
-pub struct Note {
+pub(crate) struct Note {
     hz: &'static [f32],
     /// Where every pitch ends, as a multiple of where it starts: 1 holds it.
     glide: f32,
@@ -38,7 +42,7 @@ pub struct Note {
 
 /// `hz` held for `seconds`, fading out.
 #[must_use]
-pub const fn tone(hz: &'static [f32], seconds: f32) -> Note {
+pub(crate) const fn tone(hz: &'static [f32], seconds: f32) -> Note {
     Note {
         hz,
         glide: 1.0,
@@ -97,7 +101,7 @@ impl SoundBank for Synth {
 /// `notes` one after another in `timbre`, as a sound: how a cue outside the
 /// bank's own, an effect's join cue, is made in the same voice.
 #[must_use]
-pub fn phrase(notes: &[Note], timbre: &[f32]) -> Sound {
+pub(crate) fn phrase(notes: &[Note], timbre: &[f32]) -> Sound {
     Sound::new(SampleRate::from(HZ), render(notes, timbre))
 }
 

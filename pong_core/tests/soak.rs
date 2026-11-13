@@ -463,11 +463,13 @@ fn chaos_as_scheduled_soaks_a_hundred_thousand_live_steps_without_a_fault() {
             run.sets_in_play
         );
     }
-    // The dials rode the rally: some flight began past the return at which
-    // the embedded Shrink is full.
+    // The dials rode the rally: some flight began with Shrink's dial full.
+    // The factor only falls, so it is at its fullest where it is no greater
+    // than at the highest count there is.
+    let shrink = tuning.effects().shrink().height_factor();
     assert!(
-        run.top_returns >= 15,
-        "no rally reached fifteen returns: {}",
+        shrink.at(run.top_returns) <= shrink.at(EVERY_DIAL_FULL),
+        "no flight began with Shrink's dial full: most returns {}",
         run.top_returns
     );
 }

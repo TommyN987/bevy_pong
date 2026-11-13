@@ -26,10 +26,11 @@ const THREE: Difficulty = Difficulty::ThreeStars;
 /// longest that ended had 195.
 const RALLY_HIT_LIMIT: NonZeroU32 = hits(500);
 
-/// Hits at which a rally is given up where the question is whether rallies
-/// end at all, with the ball held at or near the serve speed: 200 hits there
-/// are over six minutes of one rally, and each unended rally costs the test
-/// that long in game time.
+/// Hits at which a rally is given up in a match forced at a held return
+/// count, where the question is whether rallies end at all. The ball's speed
+/// stands still with the count: at the serve speed 200 hits are over six
+/// minutes of one rally, and each unended rally costs the test its whole
+/// limit in game time.
 const SLOW_RALLY_HIT_LIMIT: NonZeroU32 = hits(200);
 
 const fn hits(limit: u32) -> NonZeroU32 {
@@ -350,11 +351,13 @@ macro_rules! one_dial_test_per_bag_place {
         )*
 
         /// Every effect of the bag has a place a test measures, and the bag
-        /// is not empty: no effect goes unmeasured for want of a test.
+        /// is not empty: no effect goes unmeasured for want of a test. The
+        /// tests' places are each place once, so none is measured twice
+        /// while another is skipped.
         #[test]
         fn every_effect_of_chaos_bag_has_a_dial_test() {
             let places: &[usize] = &[$($place),*];
-            assert_eq!(places.len(), BAG_PLACES);
+            assert_eq!(places, (0..BAG_PLACES).collect::<Vec<_>>());
             let tuning = Tuning::from_ron(EMBEDDED_RON).expect("the embedded tuning is valid");
             let bag = tuning.mode(chaos()).bag().len();
             assert!(
