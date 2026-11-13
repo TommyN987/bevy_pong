@@ -91,4 +91,4 @@ The soak asserts that `SanityPlugin` is present, so it cannot go quiet.
 The subsets come from the mode's data, so an effect added to the bag is soaked with no edit.
 A size the bag cannot fill yet has no subset: its test says so and passes.
 Dividing one budget among the subsets keeps each test's running time the same however many effects ship:
-about 7 s for the forced Chaos test and 4 s each for Classic and Chaos as scheduled on the development machine (M2 phase 4 report).
+with Shrink and Wind in the bag, 6 to 9 s for each soak inside the full parallel run on the development machine (M2 phase 5 report).

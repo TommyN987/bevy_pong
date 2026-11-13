@@ -191,12 +191,21 @@ mod tests {
     /// exist. Speed serves as a plain second name here.
     fn two_in_the_bag() -> Tuning {
         let ron = EMBEDDED_RON.replacen(
-            "always: [speed],\n            bag: [shrink],",
+            "always: [speed],\n            bag: [shrink, wind],",
             "always: [],\n            bag: [shrink, speed],",
             1,
         );
         assert_ne!(ron, EMBEDDED_RON, "Chaos's lists were not found in the RON");
         Tuning::from_ron(&ron).expect("a bag of two is valid")
+    }
+
+    /// The embedded tuning with Shrink alone in Chaos's bag, as it shipped
+    /// before Wind: one known effect, for the tests that follow one effect
+    /// in and out of play and name it.
+    fn shrink_alone_in_the_bag() -> Tuning {
+        let ron = EMBEDDED_RON.replacen("bag: [shrink, wind],", "bag: [shrink],", 1);
+        assert_ne!(ron, EMBEDDED_RON, "Chaos's bag was not found in the RON");
+        Tuning::from_ron(&ron).expect("a bag of one is valid")
     }
 
     /// A match in play in `mode`, to `points`, with `tuning` if given,
@@ -268,7 +277,7 @@ mod tests {
     /// Chaos is in play from the first serve: Speed always, one from the bag.
     #[test]
     fn chaos_starts_its_first_bag_effect_before_the_first_serve() {
-        let mut app = playing(chaos(3), 5, None);
+        let mut app = playing(chaos(3), 5, Some(shrink_alone_in_the_bag()));
         assert_eq!(in_play(&app), [EffectId::Speed, EffectId::Shrink]);
         assert_eq!(started(&mut app), [EffectId::Shrink]);
         assert_eq!(ended(&mut app), []);
@@ -410,8 +419,12 @@ mod tests {
     }
 
     /// The speed a ball leaves the right paddle at after `returns` returns in `mode`.
+    ///
+    /// With Shrink alone in Chaos's bag: a wind in play would bend the ball
+    /// within the step of the return, and the speed read here would no
+    /// longer be the launch speed alone.
     fn speed_after(mode: Mode, returns: u8) -> f32 {
-        let mut app = playing(mode, 5, None);
+        let mut app = playing(mode, 5, Some(shrink_alone_in_the_bag()));
         record::<BallHitPaddle>(&mut app);
         for _ in 0..returns {
             place_ball(&mut app, Vec2::new(72.0, 2.0), Vec2::new(200.0, 0.0));
@@ -465,7 +478,7 @@ mod tests {
     /// points, as scheduled ones do, and say nothing as they come and go.
     #[test]
     fn forced_effects_take_hold_at_the_next_countdown_and_announce_nothing() {
-        let mut app = playing(chaos(1), 10, None);
+        let mut app = playing(chaos(1), 10, Some(shrink_alone_in_the_bag()));
         started(&mut app);
         app.world_mut()
             .resource_mut::<Sandbox>()
@@ -489,7 +502,7 @@ mod tests {
     /// mode's always-on effects are in play.
     #[test]
     fn a_forced_set_replaces_the_always_on_effects_too() {
-        let mut app = playing(chaos(1), 10, None);
+        let mut app = playing(chaos(1), 10, Some(shrink_alone_in_the_bag()));
         let mut sandbox = app.world_mut().resource_mut::<Sandbox>();
         sandbox.toggle(EffectId::Speed, &[EffectId::Speed, EffectId::Shrink]);
         sandbox.toggle(EffectId::Shrink, &[]);
@@ -531,7 +544,7 @@ mod tests {
 
     #[test]
     fn a_released_sandbox_gives_the_effects_back_to_the_schedule() {
-        let mut app = playing(chaos(1), 10, None);
+        let mut app = playing(chaos(1), 10, Some(shrink_alone_in_the_bag()));
         app.world_mut()
             .resource_mut::<Sandbox>()
             .toggle(EffectId::Shrink, &[EffectId::Speed, EffectId::Shrink]);

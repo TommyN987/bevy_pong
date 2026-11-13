@@ -60,7 +60,8 @@ const MAX_FRAMES_PER_LIVE_STEP: u32 = 4;
 const MIN_PADDLE_HITS: usize = 1_000;
 
 /// The same floor for Chaos played as scheduled. The first green run made
-/// 819; the floor is two thirds of that.
+/// 819, with Shrink alone in the bag, and the floor is two thirds of that;
+/// with Wind beside it the run makes 865.
 const MIN_CHAOS_PADDLE_HITS: usize = 550;
 
 /// The return count held to put every dial at its full setting, whatever

@@ -405,8 +405,14 @@ fn the_joining_effect_shows_large_in_the_countdown_then_takes_its_place_in_the_r
     frame(&mut app);
     assert_eq!(joining(&mut app), (None, String::new()));
     assert_eq!(icons_in_the_row(&mut app), [EffectId::Shrink]);
-    let mut query = app.world_mut().query::<(&EffectIcon, &Text)>();
-    let glyphs: Vec<&str> = query.iter(app.world()).map(|(_, t)| t.0.as_str()).collect();
+    // Every effect with an icon has a place in the row; only the ones in
+    // play are laid out.
+    let mut query = app.world_mut().query::<(&EffectIcon, &Node, &Text)>();
+    let glyphs: Vec<&str> = query
+        .iter(app.world())
+        .filter(|(_, node, _)| node.display != Display::None)
+        .map(|(_, _, text)| text.0.as_str())
+        .collect();
     assert_eq!(glyphs, [shrink_glyph()]);
 }
 

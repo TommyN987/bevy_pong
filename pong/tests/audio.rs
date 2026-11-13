@@ -15,7 +15,9 @@ use pong_core::domain::{
     BallHitPaddle, BallHitWall, Controller, EffectId, EffectStarted, MatchConfig, MatchEnded, Mode,
     PointScored, Seat, SeatPlayers,
 };
+use pong_core::features::effects::ActiveEffects;
 use pong_core::features::persistence::model::{Settings, Volume as SavedVolume};
+use pong_core::features::tuning::Tuning;
 use pong_core::kernel::geometry::Side;
 use pong_core::testing::{boot, enter_match, frame, headless_app};
 
@@ -155,10 +157,11 @@ fn events_arriving_together_each_play_and_none_plays_again() {
 #[test]
 fn a_cue_plays_at_the_volume_set_then_and_goes_when_done() {
     let mut app = audio_app();
-    send(&mut app, BallHitWall);
+    // Paddle hits: two wall hits a frame apart would be one cue.
+    send(&mut app, BallHitPaddle { side: Side::Left });
     frame(&mut app);
     app.world_mut().resource_mut::<Settings>().volume = SavedVolume::new(30).expect("valid");
-    send(&mut app, BallHitWall);
+    send(&mut app, BallHitPaddle { side: Side::Left });
     frame(&mut app);
     let mut volumes: Vec<Volume> = cues(&mut app).iter().map(|(_, s)| s.volume).collect();
     volumes.sort_by(|a, b| a.partial_cmp(b).expect("finite"));
@@ -191,11 +194,78 @@ fn entering_a_chaos_match_plays_the_joining_effects_cue() {
         },
     );
     frame(&mut app);
-    let shrink = app
+    // Which bag effect the match starts with is the seeded draw's to say.
+    let tuning = app.world().resource::<Tuning>();
+    let bag = tuning
+        .mode(Mode::Chaos {
+            cap: NonZeroU8::MIN,
+        })
+        .bag();
+    let joined = *app
+        .world()
+        .resource::<ActiveEffects>()
+        .ids()
+        .iter()
+        .find(|id| bag.contains(id))
+        .expect("Chaos starts one bag effect");
+    let its_cue = app
         .world()
         .resource::<CueSounds>()
-        .join(EffectId::Shrink)
-        .expect("Shrink has a join cue")
+        .join(joined)
+        .expect("every bag effect has a join cue")
         .clone();
-    assert_eq!(handles(&mut app), [shrink]);
+    assert_eq!(handles(&mut app), [its_cue]);
+}
+
+/// How many wall cues have been spawned so far.
+fn wall_cues(app: &mut App) -> usize {
+    let wall = sound_of(app, Cue::WallHit);
+    handles(app)
+        .into_iter()
+        .filter(|handle| *handle == wall)
+        .count()
+}
+
+/// M2 spec 2.6.2's sub-item: wind can pin a slow ball against a wall, where
+/// it bounces every other step, thirty times a second. The cue is limited,
+/// so a second of that is a handful of cues and not a buzz.
+#[test]
+fn a_ball_pinned_to_a_wall_plays_a_bounded_number_of_wall_cues_a_second() {
+    let mut app = audio_app();
+    for step in 0..60 {
+        if step % 2 == 0 {
+            send(&mut app, BallHitWall);
+        }
+        frame(&mut app);
+    }
+    let played = wall_cues(&mut app);
+    assert!(
+        (2..=8).contains(&played),
+        "thirty wall hits in a second played {played} cues"
+    );
+}
+
+/// Several wall hits in one frame are one sound.
+#[test]
+fn wall_hits_in_the_same_frame_play_one_cue() {
+    let mut app = audio_app();
+    for _ in 0..3 {
+        send(&mut app, BallHitWall);
+    }
+    frame(&mut app);
+    assert_eq!(wall_cues(&mut app), 1);
+}
+
+/// The limit is under any bounce play makes: wall to wall takes the ball
+/// over a quarter of a second at its fastest, and each such bounce sounds.
+#[test]
+fn wall_hits_a_quarter_of_a_second_apart_each_play() {
+    let mut app = audio_app();
+    for _ in 0..4 {
+        send(&mut app, BallHitWall);
+        for _ in 0..15 {
+            frame(&mut app);
+        }
+    }
+    assert_eq!(wall_cues(&mut app), 4);
 }

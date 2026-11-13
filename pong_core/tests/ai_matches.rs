@@ -21,7 +21,7 @@ const TWO: Difficulty = Difficulty::TwoStars;
 const THREE: Difficulty = Difficulty::ThreeStars;
 
 /// Hits at which a rally of an unforced match is given up as unended. At the
-/// shipped handicaps the longest rally `just ai-report` shows has 143 hits;
+/// shipped handicaps the longest rally `just ai-report` shows has 156 hits;
 /// across every handicap swept in M2 plan phase 4, shipped or not, the
 /// longest that ended had 195.
 const RALLY_HIT_LIMIT: NonZeroU32 = hits(500);
@@ -243,16 +243,17 @@ const RETURNS_PER_LEVEL: u16 = 15;
 /// always-on effects and the first `k` of its bag, at a held return count of
 /// `k` times fifteen; the levels run to the cap or the end of the bag.
 ///
-/// Mirror matches of one and of two stars. Three stars miss only near the
-/// speed cap, beyond the counts these levels hold, so their rallies are
-/// unended at every level here and cannot shorten.
+/// Mirror matches of one, two, and three stars. With Speed and Shrink alone
+/// three stars miss only near the speed cap, beyond the counts these levels
+/// hold: their rallies end at no level until an effect's flaw reaches them.
+/// Wind's does, at the third level (M2 phase 5 report).
 #[test]
 fn chaos_rallies_shorten_as_breadth_and_return_count_rise_together() {
     let tuning = Tuning::from_ron(EMBEDDED_RON).expect("the embedded tuning is valid");
     let mode = tuning.mode(chaos());
     let levels = mode.bag().len().min(3);
     assert!(levels >= 1, "Chaos schedules no effect");
-    for stars_each in [ONE, TWO] {
+    for stars_each in [ONE, TWO, THREE] {
         let rungs: Vec<RallyLengths> = (0..=levels)
             .map(|level| {
                 let effects: Vec<EffectId> = mode

@@ -91,6 +91,14 @@ mod tests {
         assert!(half.icon.is_none() && half.join_cue.is_none() && half.view.is_none());
     }
 
+    /// M2 spec 2.6.2 and R1: Wind states all three. Its direction is the
+    /// one thing the base views cannot show, so it has a view of its own.
+    #[test]
+    fn wind_states_an_icon_a_join_cue_and_a_view() {
+        let half = shell_half(EffectId::Wind);
+        assert!(half.icon.is_some() && half.join_cue.is_some() && half.view.is_some());
+    }
+
     /// M2 spec 2.7.1 and R1: an effect the schedule can bring into play is
     /// announced, by an icon and a cue.
     #[test]

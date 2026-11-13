@@ -149,7 +149,7 @@ The seed is drawn on entering a match and on the transition from play to a point
 | `probe.rs` | Test only: `Misjudged`, an effect no tuning builds, with a push, a believed push, and an added error and delay, for the tests of the base and of the AI. |
 | `speed.rs` | Speed: a launch-speed gain per return of the rally, at the per-hit increase of the mode played. One module per effect. |
 | `shrink.rs` | Shrink: a factor on both paddles' height, riding a `Ramp` over the rally's returns from one to `height_min / height_default`. |
-| `wind.rs` | Wind: a `Drift` field (kernel) whose drift over one crossing rides a `Ramp` from nothing to `max_drift`, up or down as `WindDirection::of` reads the rally's seed. Its flaw is the second form: each star believes its tuned share of the true drift. In no mode's bag until its shell half is built (M2 plan 5.2). |
+| `wind.rs` | Wind: a `Drift` field (kernel) whose drift over one crossing rides a `Ramp` from nothing to `max_drift`, up or down as `WindDirection::of` reads the rally's seed. Its flaw is the second form: each star believes its tuned share of the true drift. In Chaos's bag since M2 plan phase 5. |
 
 Channels, each composing so that effects cannot see each other:
 
