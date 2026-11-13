@@ -63,6 +63,18 @@
             max_drift: 24.0,
             believed_share: (one_star: 0.4, two_stars: 0.7, three_stars: 0.9),
         ),
+        // A return from a moving paddle curves the way the paddle moved; a
+        // still paddle's return flies straight. The dial is the drift over
+        // one full crossing, in arena units, from nothing to max_drift,
+        // which must stay under half the playable height, as Wind's.
+        // believed_share is the AI's flaw, as Wind's: it commits its aim at
+        // the turn, having read that share of the spin.
+        spin: (
+            starts_at_return: 0,
+            full_at_return: 12,
+            max_drift: 16.0,
+            believed_share: (one_star: 0.3, two_stars: 0.6, three_stars: 0.85),
+        ),
     ),
 
     match_flow: (

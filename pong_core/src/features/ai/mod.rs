@@ -344,8 +344,7 @@ mod tests {
     use crate::features::tuning::{EMBEDDED_RON, Tuning};
     use crate::flow::FIXED_HZ;
     use crate::flow::states::MatchState;
-    use crate::kernel::flight::Flight;
-    use crate::kernel::flight::FlightStart;
+    use crate::kernel::flight::{Flight, FlightStart, Hit, StepMotion};
     use crate::kernel::geometry::Side;
     use crate::kernel::integrate::Motion;
     use crate::kernel::predict::crossing_y;
@@ -1167,6 +1166,18 @@ mod tests {
     /// from it: that leg lasts at least 0.58 s at the cap, enough to cross
     /// from either wall.
     fn launch_at_ai(app: &mut App, launch: Motion) -> Outcome {
+        launch_at_ai_in_the_flight(app, launch, |_| {})
+    }
+
+    /// [`launch_at_ai`], with `begin_flight` run once the ball is launched
+    /// and before it first moves: the launch flies in whatever flight
+    /// `begin_flight` puts the ball in, and the AI plans its approach under
+    /// that flight.
+    fn launch_at_ai_in_the_flight(
+        app: &mut App,
+        launch: Motion,
+        begin_flight: impl FnOnce(&mut App),
+    ) -> Outcome {
         place_ball(app, Vec2::ZERO, Vec2::ZERO);
         for _ in 0..30 {
             frame(app);
@@ -1175,6 +1186,7 @@ mod tests {
         take_recorded::<BallHitPaddle>(app);
         take_recorded::<PointScored>(app);
         place_ball(app, launch.position, launch.velocity);
+        begin_flight(app);
         // The slowest launch, at the serve speed and the steepest angle,
         // takes 3.65 s to reach the AI.
         for _ in 0..300 {
@@ -1390,6 +1402,134 @@ mod tests {
             );
         }
     }
+    // M2 spec 2.3.12 for Spin, whose flaw is the second form (M2 spec
+    // 2.6.4, M2 phase 6 report): each star has read a share of the true
+    // spin when it commits its aim. R5: the AI predicts the spin through
+    // the shared math, and the share is the dial of its flaw. R2: the same
+    // balls are returned or missed by how the hitter's paddle moved.
+
+    /// Three stars with no handicap of their own, having read `share` of a
+    /// spun ball's true drift.
+    fn no_handicap_reading(share: f32) -> Tuning {
+        let old = "three_stars: 0.85";
+        let ron = EMBEDDED_RON
+            .replace(
+                "three_stars: (reaction_delay_seconds: 0.24, prediction_error: 3.0)",
+                "three_stars: (reaction_delay_seconds: 0.0, prediction_error: 0.0)",
+            )
+            .replace(old, &format!("three_stars: {share:?}"));
+        assert!(EMBEDDED_RON.contains(old), "three stars' share not found");
+        Tuning::from_ron(&ron).expect("the crafted flaw is valid")
+    }
+
+    /// [`ai_on_the_right_playing`] with Spin beside Speed, every flight
+    /// starting at `returns`: 12 is the embedded spin's full dial, 16 units
+    /// of drift a crossing from a moving paddle.
+    fn ai_on_the_right_playing_with_spin(tuning: Tuning, returns: u16) -> App {
+        ai_on_the_right_playing_after(tuning, |app| {
+            let mut sandbox = app.world_mut().resource_mut::<Sandbox>();
+            sandbox.toggle(EffectId::Spin, &[EffectId::Speed]);
+            sandbox.hold_returns(Some(returns));
+        })
+    }
+
+    /// [`launch_at_ai`], the launch flying as the left paddle's return, the
+    /// paddle having moved as `paddle_motion` in the step of the hit: the
+    /// flight the effects in play begin at such a return.
+    fn launch_at_ai_off_a_paddle_moving(
+        app: &mut App,
+        launch: Motion,
+        paddle_motion: StepMotion,
+    ) -> Outcome {
+        launch_at_ai_in_the_flight(app, launch, |app| {
+            let returned = FlightStart {
+                returns: 1,
+                hit: Some(Hit {
+                    side: Side::Left,
+                    paddle_motion,
+                }),
+            };
+            let flight = app
+                .world()
+                .resource::<ActiveEffects>()
+                .start_flight(returned);
+            app.world_mut()
+                .query_filtered::<&mut BallFlight, With<Ball>>()
+                .single_mut(app.world_mut())
+                .expect("exactly one ball")
+                .begin(flight);
+        })
+    }
+
+    /// Up for every other launch, down for the rest.
+    fn alternately_up_and_down(index: usize) -> StepMotion {
+        if index.is_multiple_of(2) {
+            StepMotion::Up
+        } else {
+            StepMotion::Down
+        }
+    }
+
+    #[test]
+    fn an_ai_that_reads_all_of_the_spin_and_has_no_handicap_returns_every_spun_ball() {
+        let tuning = no_handicap_reading(1.0);
+        let balls = launches(200, &tuning);
+        let mut app = ai_on_the_right_playing_with_spin(tuning, 12);
+        for (i, launch) in balls.into_iter().enumerate() {
+            let paddle_motion = alternately_up_and_down(i);
+            assert_eq!(
+                launch_at_ai_off_a_paddle_moving(&mut app, launch, paddle_motion),
+                Outcome::Returned,
+                "launch {i}, spun {paddle_motion:?}: {launch:?}"
+            );
+        }
+    }
+
+    /// Having read three tenths of 16 units leaves the aim up to 11 off:
+    /// past the paddle's reach of eight on a long enough crossing.
+    #[test]
+    fn an_ai_that_reads_too_little_of_the_spin_misses_some_spun_balls() {
+        let tuning = no_handicap_reading(0.3);
+        let balls = launches(40, &tuning);
+        let mut app = ai_on_the_right_playing_with_spin(tuning, 12);
+        let missed = balls.into_iter().enumerate().any(|(i, launch)| {
+            let paddle_motion = alternately_up_and_down(i);
+            launch_at_ai_off_a_paddle_moving(&mut app, launch, paddle_motion) == Outcome::Missed
+        });
+        assert!(
+            missed,
+            "reading three tenths of the spin never missed in forty launches"
+        );
+    }
+
+    /// R2, and the flaw's own dial: the same misreading AI returns every
+    /// one of the same balls off a still paddle, and every one off a moving
+    /// paddle while the dial is at zero. There is no spin to misread.
+    #[test]
+    fn the_same_misreading_ai_returns_every_ball_that_is_not_spun() {
+        let tuning = no_handicap_reading(0.3);
+        let balls = launches(40, &tuning);
+
+        let mut full_dial = ai_on_the_right_playing_with_spin(tuning.clone(), 12);
+        for (i, launch) in balls.iter().enumerate() {
+            assert_eq!(
+                launch_at_ai_off_a_paddle_moving(&mut full_dial, *launch, StepMotion::Still),
+                Outcome::Returned,
+                "off a still paddle, launch {i}: {launch:?}"
+            );
+        }
+
+        let mut dial_at_zero = ai_on_the_right_playing_with_spin(tuning, 0);
+        for (i, launch) in balls.into_iter().enumerate() {
+            let paddle_motion = alternately_up_and_down(i);
+            assert_eq!(
+                launch_at_ai_off_a_paddle_moving(&mut dial_at_zero, launch, paddle_motion),
+                Outcome::Returned,
+                "with the dial at zero, launch {i}, spun {paddle_motion:?}: {launch:?}"
+            );
+        }
+    }
+
     /// R10 (M2 plan E.7): the wind gives the hitter a use, not only the
     /// defender a tax. Three stars as tuned return a level ball at the cap
     /// from 20 off the centre. Sent on the side the wind blows toward, at

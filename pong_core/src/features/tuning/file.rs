@@ -82,6 +82,7 @@ pub(super) struct ModeFile {
 pub(super) struct EffectsFile {
     pub(super) shrink: ShrinkFile,
     pub(super) wind: WindFile,
+    pub(super) spin: SpinFile,
 }
 
 #[derive(Debug, Deserialize)]
@@ -97,6 +98,17 @@ pub(super) struct WindFile {
     pub(super) starts_at_return: u16,
     pub(super) full_at_return: u16,
     /// Drift over one full crossing at full dial, in arena units.
+    pub(super) max_drift: f32,
+    pub(super) believed_share: BelievedShareFile,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct SpinFile {
+    pub(super) starts_at_return: u16,
+    pub(super) full_at_return: u16,
+    /// Drift over one full crossing from a moving-paddle hit at full dial,
+    /// in arena units.
     pub(super) max_drift: f32,
     pub(super) believed_share: BelievedShareFile,
 }
