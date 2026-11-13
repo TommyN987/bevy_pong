@@ -2,6 +2,28 @@
 //! only source of randomness in the core. Hand-rolled PCG32 rather than a crate,
 //! so determinism does not ride the dependency treadmill.
 
+/// One rally's seed: a number drawn once per rally from the seeded source
+/// (M2 plan 5.2). An effect that chooses something once per rally, as Wind
+/// chooses its direction, derives the choice from it and draws nothing
+/// itself. The choice is then the same at every flight start of the rally,
+/// for every question an AI asks, and for the shell that shows it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct RallySeed(u32);
+
+impl RallySeed {
+    /// The seed with this value.
+    #[must_use]
+    pub const fn new(value: u32) -> Self {
+        Self(value)
+    }
+
+    /// The seed's 32 random bits.
+    #[must_use]
+    pub const fn value(self) -> u32 {
+        self.0
+    }
+}
+
 /// PCG32 (XSH RR, 64-bit state, fixed stream). Small, fast, and reproducible
 /// from one `u64` seed, which is all a serve angle and an AI error need.
 #[derive(Debug, Clone, PartialEq, Eq)]

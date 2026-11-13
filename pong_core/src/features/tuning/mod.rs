@@ -235,6 +235,7 @@ pub struct ModeTuning {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct EffectsTuning {
     shrink: ShrinkTuning,
+    wind: WindTuning,
 }
 
 /// Shrink's dial (M2 spec 2.6.1), as the factor on paddle height: one until
@@ -242,6 +243,21 @@ pub struct EffectsTuning {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ShrinkTuning {
     height_factor: Ramp,
+}
+
+/// Wind's dial (M2 spec 2.6.2), as the drift over one full crossing in arena
+/// units, and its AI flaw (M2 spec 2.3.12): the share of the true drift an
+/// AI of each star expects.
+///
+/// Invariant: the drift is never negative and stays under half the playable
+/// height; no share is negative. One entry per [`Difficulty`], so adding a
+/// level makes the compiler ask for its share.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WindTuning {
+    drift: Ramp,
+    believed_by_one_star: f32,
+    believed_by_two_stars: f32,
+    believed_by_three_stars: f32,
 }
 
 /// Keys per seat. Invariant: no key is bound twice across both seats.
@@ -367,6 +383,20 @@ pub enum TuningError {
     /// Shrink's dial would be full before it starts to move.
     #[error("tuning effects.shrink: {0}")]
     ShrinkRamp(#[from] FullBeforeStart),
+    /// Wind's dial would be full before it starts to move.
+    #[error("tuning effects.wind: {0}")]
+    WindRamp(#[source] FullBeforeStart),
+    /// At full dial the wind would carry a ball from the middle of the arena
+    /// to a wall, or farther, in one crossing (M2 spec 2.6.2).
+    #[error(
+        "tuning effects.wind.max_drift {max_drift} is not under half the playable height {half_playable_height}"
+    )]
+    WindDriftNotUnderHalfThePlayableHeight {
+        /// The drift given.
+        max_drift: f32,
+        /// Half of `arena.height` less the ball's diameter.
+        half_playable_height: f32,
+    },
     /// No points-to-win choices offered.
     #[error("tuning match_flow.points_to_win_options is empty")]
     PointsToWinOptionsEmpty,
@@ -436,7 +466,8 @@ pub enum TuningError {
         half_width: f32,
     },
     /// At the cap the ball could cross the whole playable height in one fixed
-    /// step, more than the single wall fold of a physics step undoes.
+    /// step, more than the single wall fold of a physics step undoes: the
+    /// wall step would cut such a launch to its bound (M2 spec 2.2.2).
     #[error(
         "tuning ball.speed_cap {cap} carries the ball across the playable height {playable_height} in one fixed step"
     )]
@@ -511,7 +542,25 @@ impl Tuning {
                 playable_height,
             });
         }
+        let max_drift = self.effects.wind.max_drift();
+        if max_drift >= playable_height / 2.0 {
+            return Err(TuningError::WindDriftNotUnderHalfThePlayableHeight {
+                max_drift,
+                half_playable_height: playable_height / 2.0,
+            });
+        }
         Ok(())
+    }
+
+    /// How far the ball's centre travels in one full crossing: the distance
+    /// between the two paddles' contact lines, each one ball radius in front
+    /// of a paddle's face. Positive, since validation keeps the paddles
+    /// short of the centre line.
+    #[must_use]
+    pub fn crossing_width(&self) -> f32 {
+        let behind_a_contact_line =
+            self.paddle.inset + self.paddle.thickness + self.ball.radius.value();
+        2.0 * (self.arena.half_extents().x - behind_a_contact_line)
     }
 
     /// The data of `mode`: its speed ramp, its effects, and its schedule.
@@ -797,6 +846,7 @@ impl EffectsTuning {
                     smallest,
                 )?,
             },
+            wind: WindTuning::validate(&file.wind)?,
         })
     }
 
@@ -805,6 +855,12 @@ impl EffectsTuning {
     pub const fn shrink(self) -> ShrinkTuning {
         self.shrink
     }
+
+    /// Wind's numbers.
+    #[must_use]
+    pub const fn wind(self) -> WindTuning {
+        self.wind
+    }
 }
 
 impl ShrinkTuning {
@@ -812,6 +868,57 @@ impl ShrinkTuning {
     #[must_use]
     pub const fn height_factor(self) -> Ramp {
         self.height_factor
+    }
+}
+
+impl WindTuning {
+    fn validate(file: &file::WindFile) -> Result<Self, TuningError> {
+        let max_drift = checked(
+            "effects.wind.max_drift",
+            Range::NonNegativeFinite,
+            file.max_drift,
+        )?;
+        let share = |path, share| checked(path, Range::NonNegativeFinite, share);
+        Ok(Self {
+            drift: Ramp::new(file.starts_at_return, file.full_at_return, 0.0, max_drift)
+                .map_err(TuningError::WindRamp)?,
+            believed_by_one_star: share(
+                "effects.wind.believed_share.one_star",
+                file.believed_share.one_star,
+            )?,
+            believed_by_two_stars: share(
+                "effects.wind.believed_share.two_stars",
+                file.believed_share.two_stars,
+            )?,
+            believed_by_three_stars: share(
+                "effects.wind.believed_share.three_stars",
+                file.believed_share.three_stars,
+            )?,
+        })
+    }
+
+    /// The drift over one full crossing, in arena units, over the rally's
+    /// returns.
+    #[must_use]
+    pub const fn drift(self) -> Ramp {
+        self.drift
+    }
+
+    /// The drift at full dial.
+    #[must_use]
+    pub fn max_drift(self) -> f32 {
+        self.drift.at(u16::MAX)
+    }
+
+    /// The share of the true drift an AI of `difficulty` expects: 1 is the
+    /// truth, less under-leads the ball, more over-leads it.
+    #[must_use]
+    pub const fn believed_share(self, difficulty: Difficulty) -> f32 {
+        match difficulty {
+            Difficulty::OneStar => self.believed_by_one_star,
+            Difficulty::TwoStars => self.believed_by_two_stars,
+            Difficulty::ThreeStars => self.believed_by_three_stars,
+        }
     }
 }
 
@@ -1069,7 +1176,10 @@ mod tests {
             classic: (per_hit_increase: 7.0, always: [speed], bag: [], thresholds_percent: [], rotate_every_points: 1),
             chaos: (per_hit_increase: 3.0, always: [speed], bag: [shrink], thresholds_percent: [30, 70], rotate_every_points: 1),
         ),
-        effects: (shrink: (starts_at_return: 3, full_at_return: 15)),
+        effects: (
+            shrink: (starts_at_return: 3, full_at_return: 15),
+            wind: (starts_at_return: 0, full_at_return: 12, max_drift: 24.0, believed_share: (one_star: 0.4, two_stars: 0.7, three_stars: 0.9)),
+        ),
         match_flow: (countdown_seconds: 3.0, point_pause_seconds: 0.8, points_to_win_options: [5, 10, 15, 21], points_to_win_default: 10),
         ai: (
             one_star: (reaction_delay_seconds: 0.35, prediction_error: 12.0),
@@ -1599,6 +1709,114 @@ mod tests {
                 starts_at: 3,
                 full_at: 1,
             }))
+        );
+    }
+
+    /// `VALID` with one piece of Wind's section replaced.
+    fn with_wind(old: &str, new: &str) -> String {
+        let ron = VALID.replacen(old, new, 1);
+        assert_ne!(ron, VALID, "{old} is not in VALID");
+        ron
+    }
+
+    /// The distance the ball's centre travels in one full crossing: the
+    /// arena's 160 less, on each side, the inset of 4, the paddle's
+    /// thickness of 2, and the ball's radius of 1.
+    #[test]
+    fn the_crossing_width_is_the_distance_between_the_two_contact_lines() {
+        assert_near(valid().crossing_width(), 146.0, 1e-6);
+    }
+
+    /// M2 spec 2.6.2: Wind's dial is the drift over one crossing, from
+    /// nothing to the tuned maximum, and its flaw is tuned per star.
+    #[test]
+    fn winds_section_becomes_a_drift_dial_and_a_believed_share_per_star() {
+        let wind = valid().effects().wind();
+        assert_near(wind.drift().at(0), 0.0, 1e-6);
+        assert_near(wind.drift().at(6), 12.0, 1e-6);
+        assert_near(wind.drift().at(12), 24.0, 1e-6);
+        assert_near(wind.drift().at(400), 24.0, 1e-6);
+        assert_near(wind.believed_share(Difficulty::OneStar), 0.4, 1e-6);
+        assert_near(wind.believed_share(Difficulty::TwoStars), 0.7, 1e-6);
+        assert_near(wind.believed_share(Difficulty::ThreeStars), 0.9, 1e-6);
+    }
+
+    #[test]
+    fn a_wind_dial_full_before_it_starts_is_rejected() {
+        assert_eq!(
+            Tuning::from_ron(&with_wind("starts_at_return: 0", "starts_at_return: 13")),
+            Err(TuningError::WindRamp(FullBeforeStart {
+                starts_at: 13,
+                full_at: 12,
+            }))
+        );
+    }
+
+    /// M2 spec 2.6.2: the maximum is under half the playable height, 44 of
+    /// the 88 here, so no wind carries a ball from the middle to a wall in
+    /// one crossing.
+    #[test]
+    fn a_wind_that_drifts_half_the_playable_height_or_more_is_rejected() {
+        assert_eq!(
+            Tuning::from_ron(&with_wind("max_drift: 24.0", "max_drift: 44.0")),
+            Err(TuningError::WindDriftNotUnderHalfThePlayableHeight {
+                max_drift: 44.0,
+                half_playable_height: 44.0,
+            })
+        );
+        assert!(Tuning::from_ron(&with_wind("max_drift: 24.0", "max_drift: 43.5")).is_ok());
+        assert!(Tuning::from_ron(&with_wind("max_drift: 24.0", "max_drift: 0.0")).is_ok());
+    }
+
+    #[test]
+    fn a_negative_wind_number_is_rejected_by_its_path() {
+        for (old, new, path) in [
+            (
+                "max_drift: 24.0",
+                "max_drift: -1.0",
+                "effects.wind.max_drift",
+            ),
+            (
+                "one_star: 0.4",
+                "one_star: -0.1",
+                "effects.wind.believed_share.one_star",
+            ),
+            (
+                "two_stars: 0.7",
+                "two_stars: -0.1",
+                "effects.wind.believed_share.two_stars",
+            ),
+            (
+                "three_stars: 0.9",
+                "three_stars: -0.1",
+                "effects.wind.believed_share.three_stars",
+            ),
+        ] {
+            assert!(
+                matches!(
+                    Tuning::from_ron(&with_wind(old, new)),
+                    Err(TuningError::Field { path: refused, .. }) if refused == path
+                ),
+                "{new}"
+            );
+        }
+        // More than the whole drift is a belief too: the AI over-leads.
+        assert!(Tuning::from_ron(&with_wind("three_stars: 0.9", "three_stars: 1.3")).is_ok());
+    }
+
+    #[test]
+    fn winds_refusals_read_as_one_sentence_naming_the_value() {
+        let ramp = Tuning::from_ron(&with_wind("starts_at_return: 0", "starts_at_return: 13"))
+            .expect_err("full first");
+        assert_eq!(
+            ramp.to_string(),
+            "tuning effects.wind: a dial full at return 12 cannot start to move at return 13"
+        );
+        let drift = Tuning::from_ron(&with_wind("max_drift: 24.0", "max_drift: 50.0"))
+            .expect_err("too far");
+        assert_eq!(
+            drift.to_string(),
+            "tuning effects.wind.max_drift 50 is not under half the playable height 44"
         );
     }
 

@@ -81,6 +81,7 @@ pub(super) struct ModeFile {
 #[serde(deny_unknown_fields)]
 pub(super) struct EffectsFile {
     pub(super) shrink: ShrinkFile,
+    pub(super) wind: WindFile,
 }
 
 #[derive(Debug, Deserialize)]
@@ -88,6 +89,25 @@ pub(super) struct EffectsFile {
 pub(super) struct ShrinkFile {
     pub(super) starts_at_return: u16,
     pub(super) full_at_return: u16,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct WindFile {
+    pub(super) starts_at_return: u16,
+    pub(super) full_at_return: u16,
+    /// Drift over one full crossing at full dial, in arena units.
+    pub(super) max_drift: f32,
+    pub(super) believed_share: BelievedShareFile,
+}
+
+/// The share of an effect's true strength an AI of each star expects.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct BelievedShareFile {
+    pub(super) one_star: f32,
+    pub(super) two_stars: f32,
+    pub(super) three_stars: f32,
 }
 
 #[derive(Debug, Deserialize)]

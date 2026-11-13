@@ -1312,4 +1312,81 @@ mod tests {
             "six units of error never missed in forty launches at the minimum height"
         );
     }
+    // M2 spec 2.3.12 for Wind, whose flaw is the second form (M2 spec
+    // 2.6.2): each star believes a share of the true drift. R5: the AI
+    // predicts the wind through the shared math, and the share is the dial
+    // of its flaw. R2: the same balls in the same wind are returned or
+    // missed by how the paddle is played.
+
+    /// Three stars with no handicap of their own, believing `share` of the
+    /// wind's true drift.
+    fn no_handicap_believing(share: f32) -> Tuning {
+        let old = "three_stars: 0.9";
+        let ron = EMBEDDED_RON
+            .replace(
+                "three_stars: (reaction_delay_seconds: 0.24, prediction_error: 3.0)",
+                "three_stars: (reaction_delay_seconds: 0.0, prediction_error: 0.0)",
+            )
+            .replace(old, &format!("three_stars: {share:?}"));
+        assert!(EMBEDDED_RON.contains(old), "three stars' share not found");
+        Tuning::from_ron(&ron).expect("the crafted flaw is valid")
+    }
+
+    /// [`ai_on_the_right_playing`] in Wind, beside Speed, with every flight
+    /// starting at `returns`: 12 is the embedded wind's full dial, 24 units
+    /// of drift a crossing.
+    fn ai_on_the_right_playing_in_wind(tuning: Tuning, returns: u16) -> App {
+        ai_on_the_right_playing_after(tuning, |app| {
+            let mut sandbox = app.world_mut().resource_mut::<Sandbox>();
+            sandbox.toggle(EffectId::Wind, &[EffectId::Speed]);
+            sandbox.hold_returns(Some(returns));
+        })
+    }
+
+    #[test]
+    fn in_full_wind_an_ai_that_believes_all_of_it_and_has_no_handicap_returns_every_ball() {
+        let tuning = no_handicap_believing(1.0);
+        let balls = launches(200, &tuning);
+        let mut app = ai_on_the_right_playing_in_wind(tuning, 12);
+        for (i, launch) in balls.into_iter().enumerate() {
+            assert_eq!(
+                launch_at_ai(&mut app, launch),
+                Outcome::Returned,
+                "launch {i}: {launch:?}"
+            );
+        }
+    }
+
+    /// Believing two fifths of 24 units leaves the aim up to 14 off: past
+    /// the paddle's reach of eight on a long enough crossing.
+    #[test]
+    fn in_full_wind_an_ai_that_believes_too_little_of_it_misses_some_balls() {
+        let tuning = no_handicap_believing(0.4);
+        let balls = launches(40, &tuning);
+        let mut app = ai_on_the_right_playing_in_wind(tuning, 12);
+        let missed = balls
+            .into_iter()
+            .any(|launch| launch_at_ai(&mut app, launch) == Outcome::Missed);
+        assert!(
+            missed,
+            "believing two fifths of the wind never missed in forty launches"
+        );
+    }
+
+    /// M2 spec 2.6.2: the error scales with strength. The same misjudging
+    /// AI misses nothing while the dial is at zero: there is no wind to
+    /// misjudge.
+    #[test]
+    fn with_the_dial_at_zero_the_same_misjudging_ai_returns_every_ball() {
+        let tuning = no_handicap_believing(0.4);
+        let balls = launches(40, &tuning);
+        let mut app = ai_on_the_right_playing_in_wind(tuning, 0);
+        for (i, launch) in balls.into_iter().enumerate() {
+            assert_eq!(
+                launch_at_ai(&mut app, launch),
+                Outcome::Returned,
+                "launch {i}: {launch:?}"
+            );
+        }
+    }
 }

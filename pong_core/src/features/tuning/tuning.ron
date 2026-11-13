@@ -52,6 +52,17 @@
     effects: (
         // Both paddles shorten from height_default to height_min.
         shrink: (starts_at_return: 3, full_at_return: 15),
+        // A steady pull up or down, the direction drawn per rally. The dial
+        // is the drift over one full crossing, in arena units, from nothing
+        // to max_drift, which must stay under half the playable height.
+        // believed_share is the AI's flaw: the share of the true drift each
+        // star expects. 1 is the truth; less under-leads the ball.
+        wind: (
+            starts_at_return: 0,
+            full_at_return: 12,
+            max_drift: 24.0,
+            believed_share: (one_star: 0.4, two_stars: 0.7, three_stars: 0.9),
+        ),
     ),
 
     match_flow: (

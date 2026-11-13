@@ -42,14 +42,21 @@ pub fn crossing_y(
     let mut motion = start;
     for step in 0..MAX_STEPS {
         let force = flight.force_ahead(motion, step, dt);
-        let next = advance_between_walls(arena, radius, motion, force, dt).motion;
+        let stepped = advance_between_walls(arena, radius, motion, force, dt);
+        let next = stepped.motion;
         let remaining = target_x - motion.position.x;
         let travelled = next.position.x - motion.position.x;
         if travelled.abs() >= remaining.abs() {
             let fraction = remaining / travelled;
-            // The integrator moves the ball with the velocity the force has
-            // already changed (semi-implicit Euler), so the crossing does too.
-            let stepped_velocity_y = motion.velocity.y + force.y * dt;
+            // The wall step moved the ball with the velocity the force had
+            // already changed and the bound had cut (semi-implicit Euler, M2
+            // spec 2.2.2), so the crossing does too: that velocity is the
+            // step's own, turned back if the step bounced.
+            let stepped_velocity_y = if stepped.bounced {
+                -next.velocity.y
+            } else {
+                next.velocity.y
+            };
             let unbounced_y = motion.position.y + stepped_velocity_y * dt * fraction;
             return Some(fold_once(unbounced_y, limit));
         }
@@ -246,6 +253,36 @@ mod tests {
             motion = next.motion;
         }
         panic!("ball never reached x = {target_x}");
+    }
+
+    /// M2 spec 2.2.2: the bound on vertical speed is the wall step's, so the
+    /// prediction sees it in its last, partial step as in every whole one.
+    ///
+    /// Pushed far past the bound, the ball flies 88 units a step at one unit
+    /// along x: from 40 up past the wall at 44 and folded to -40, then up to
+    /// 48 and folded to 40, then as the first step again. Half way through
+    /// the third step it has gone 44 up from 40 and is folded to 4; at the
+    /// step's end it is at -40.
+    #[test]
+    fn at_the_vertical_bound_the_prediction_is_still_the_simulation() {
+        let start = Motion {
+            position: Vec2::new(0.0, 40.0),
+            velocity: Vec2::new(60.0, 0.0),
+        };
+        let flight = flight_of([Box::new(Steady(1.0e6)), Box::new(Steady(0.0))]);
+        let crossing = |target_x| {
+            crossing_y(
+                standard_arena(),
+                unit_radius(),
+                start,
+                &flight,
+                target_x,
+                DT,
+            )
+            .expect("the ball flies toward the target")
+        };
+        assert_near(crossing(2.5), 4.0, 1e-2);
+        assert_near(crossing(3.0), -40.0, 1e-2);
     }
 
     /// M2 plan 1.1: under a composed flight the prediction is the simulation,
