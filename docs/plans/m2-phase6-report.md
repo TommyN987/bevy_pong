@@ -3,18 +3,19 @@
 Started 2026-11-13. Branch `feat/spin`. Roles: Claude drives; the user reviews and commits.
 Deviations from [m2-chaos-pong.md](../specs/m2-chaos-pong.md) and [m2-plan.md](m2-plan.md) per plan rule P.6, each with where it was recorded.
 
-Built 2026-11-13: steps 1 and 2 of the proposal the user approved that day (plan 6.1; E.2).
-Open: steps 3 to 6 (the shell half, the bag and the harness, the record step, the session).
+Built 2026-11-13: steps 1 to 4 of the proposal the user approved that day (plan 6.1; E.1 to E.4, E.7).
+Recorded 2026-11-13: step 5 (P.6, E.5). CI has not run on this build: the push is the user's.
+Open: step 6, the user's hand check and the session (E.6, plan 6.2).
 
 ## The proposal's steps
 
 | Step | What | State |
 |---|---|---|
-| 1 | The sandbox holds a hit motion | Built. The harness's `Forcing` takes it in step 4, with the dial ladder, its first user. |
+| 1 | The sandbox holds a hit motion | Built. |
 | 2 | Spin's core half (E.2) | Built. |
-| 3 | Spin's shell half (E.1, E.3) | Open. The shell half is declared empty until then. |
-| 4 | Into the bag, and the harness (E.4, E.7) | Open. Spin is in no bag. |
-| 5 | Record (P.6, E.5) | Open. The three deviations below are owed to the spec there. |
+| 3 | Spin's shell half (E.1, E.3) | Built and tested headless. Not yet seen in `just run`: step 6. |
+| 4 | Into the bag, and the harness (E.4, E.7) | Built. No tuning number moved from its starting value. |
+| 5 | Record (P.6, E.5) | Done. |
 | 6 | Hand check, session, ruling (E.6, plan 6.2) | Open; the user's. |
 
 ## Deviations
@@ -23,9 +24,9 @@ All three were proposed before implementation and approved by the user on 2026-1
 
 | Item | Deviation | Recorded |
 |---|---|---|
-| spec 2.6.4, "AI flaw: reads the spin late" | The flaw is the second form of 2.3.12 alone: each star has read a tuned share of the true spin when it commits its aim. It is not an added delay. | Here. Spec amendment owed at step 5. |
-| spec 2.9.1 | The sandbox also holds a hit motion: the paddle motion every return is told. For a harness; no overlay key writes it. | Here. Spec amendment owed at step 5. |
-| spec 2.6.4, "a tuned maximum" | Validation refuses a `max_drift` at or above half the playable height, as Wind's. The spec names no bound for Spin. | Here. Spec amendment owed at step 5. |
+| spec 2.6.4, "AI flaw: reads the spin late" | The flaw is the second form of 2.3.12 alone: each star has read a tuned share of the true spin when it commits its aim. It is not an added delay. | Spec 2.6.4 and 2.3.12, and plan 6.1, amended 2026-11-13. |
+| spec 2.9.1 | The sandbox also holds a hit motion: the paddle motion every return is told. For a harness; no overlay key writes it. | Spec 2.9.1 and 2.5.2, and plan 6.1, amended 2026-11-13. |
+| spec 2.6.4, "a tuned maximum" | Validation refuses a `max_drift` at or above half the playable height, as Wind's. The spec named no bound for Spin. | Spec 2.6.4 amended 2026-11-13. |
 
 ## Rulings by the user
 
@@ -40,10 +41,10 @@ All three were proposed before implementation and approved by the user on 2026-1
 
 ## Why the proposal took this shape
 
-Two facts, each by arithmetic from the tuning numbers. Neither is measured.
+Two facts, each first by arithmetic from the tuning numbers. The first is now measured (step 4).
 
-- **The computer almost never spins.** It reaches its aim and stands still, so its paddle moves at the hit only when it is late. At the serve speed a crossing takes 1.8 s and the slowest star needs 1.2 s at most, so it is never late. The standing dial test plays Spin alone with no speed ramp, and would see no spun ball.
-- **Added reaction delay does nothing at low speed,** for the same reason. A flaw of delay alone would act only near the speed cap.
+- **The computer almost never spins.** It reaches its aim and stands still, so its paddle moves at the hit only when it is late. At the serve speed a crossing takes 1.8 s and the slowest star needs 1.2 s at most, so it is never late. The standing dial test plays an effect alone with no speed ramp, and would see no spun ball.
+- **Added reaction delay does nothing at low speed,** for the same reason. A flaw of delay alone would act only near the speed cap. Not measured.
 
 ## Step 1: the sandbox holds a hit motion
 
@@ -52,6 +53,7 @@ Two facts, each by arithmetic from the tuning numbers. Neither is measured.
 - **`Sandbox::hold_hit_motion`** and `held_hit_motion`: the paddle motion every return starts its flight with, or `None` for each paddle's own.
 - **`ActiveEffects::start_flight`** applies it, where it applies the held count: every flight start still passes through one place.
 - **`hold_what_the_sandbox_holds`**, the system that was `hold_the_sandbox_count`: it copies both, each only on a change.
+- **`Forcing::hit_motion`** in the AI-match harness, built in step 4 with the dial ladder, its first user.
 
 ### Contract
 
@@ -64,6 +66,7 @@ Two facts, each by arithmetic from the tuning numbers. Neither is measured.
 - Red first, by assertion, with the port's methods present and not yet applied: `a_held_hit_motion_is_the_motion_every_return_starts_its_flight_with` (a still paddle was told as still).
 - Passing before and after, since it pins what the implementation must keep: `a_held_hit_motion_leaves_a_serve_without_a_hit`.
 - Three earlier tests of the sandbox now cover the held motion too. Red only by compile failure: once the port could hold and release a value, they passed.
+- The harness's field: red by assertion with the field present and not yet applied, `a_forced_hit_motion_is_held_from_the_first_rally`.
 
 ## Step 2: Spin's core half (plan 6.1, E.2)
 
@@ -72,15 +75,14 @@ Two facts, each by arithmetic from the tuning numbers. Neither is measured.
 - **Tuning section** `effects.spin`: `starts_at_return`, `full_at_return`, `max_drift`, and `believed_share` per star. Refused: a dial full before it starts; a negative drift or share; `max_drift` at or above half the playable height.
 - **`EffectId::Spin`**, saved as `spin`, and one registration line per crate.
 - **`effects/spin.rs`**: a return from a paddle that moved in the step of the hit contributes the kernel's `Drift` toward the paddle's motion, by the dial's amount. A still paddle's return and a serve contribute no field.
-- **`Spin::drift(start)`**: the signed drift of a flight, a pure function of its start. The field reads it, and the shell will in step 3, so what is shown is what curves.
+- **`Spin::drift(start)`**: the signed drift of a flight, a pure function of its start. The field and the shell's view both read it, so what is shown is what curves.
 - **The flaw** is the second form alone: an AI believes its star's share of the true drift, in the true direction.
-- **The shell half is declared empty.** Spin is in no mode's bag, so no player meets it before step 3.
 - **It needs no rally seed:** the hitter chooses at every hit.
 
 ### Decisions taken in implementation
 
 - **One private type for a believed share.** Wind's tuning and Spin's each held three shares and the same lookup; both now hold a `BelievedShare`. A refactor on green: the public API and Wind's tests are as they were.
-- **The sandbox's key 4 toggles Spin from now on,** before Spin has an icon: the overlay's keys follow `EffectId::ALL`. Wind stood the same way between its steps 3 and 4.
+- **The sandbox's key 4 toggles Spin:** the overlay's keys follow `EffectId::ALL`.
 - **The AI's tests begin the spun flight on the ball directly,** through `ActiveEffects::start_flight` with a return's start. Their launches are placed, not struck, so no paddle hit exists to hold a motion for.
 
 ### Done-conditions
@@ -97,8 +99,6 @@ Two facts, each by arithmetic from the tuning numbers. Neither is measured.
 | R2: skill decides | `the_same_misreading_ai_returns_every_ball_that_is_not_spun`: the same 40 balls come back off a still paddle and, at dial zero, off a moving one. |
 | The flaw per star | `each_star_believes_its_share_of_the_true_spin_and_is_charged_nothing_else`; `of_a_flight_that_is_not_spun_every_star_believes_in_no_spin`. |
 
-R3 and R10 are step 4's (E.4, E.7); R1 and R11 are step 3's.
-
 ### Red first, and where it was not
 
 - **Tuning:** red by compile failure, then green: five tests.
@@ -106,9 +106,149 @@ R3 and R10 are step 4's (E.4, E.7); R1 and R11 are step 3's.
 - **Not red first:** the AI's three Spin tests. They pin what the kernel, the base, and Spin already gave.
 - **Checked against two deliberate breaks, since removed.** With every AI believing the truth, `..reads_too_little..misses_some_spun_balls` failed, and the per-star test with it. With every AI believing in no spin, `..reads_all_of_the_spin..returns_every_spun_ball` failed.
 
+## Step 3: Spin's shell half (E.1, E.3)
+
+### What was built
+
+- **Icon:** `↻`, magenta. The font's charset holds the glyph (U+21BB, inside U+2190 to U+2311).
+- **Cue:** three quick plain notes, up, back, and up again, then a higher one held. Wind's is two rising notes; Shrink's three falling brass ones.
+- **View:** one bright magenta arrowhead riding on the ball for the whole of a spun flight, beside it on the side the ball will curve to and pointing that way. About half a ball across while the dial has barely moved, about a ball across at full dial.
+- **The mark is the ball's child entity.** It follows the ball's drawn position, hides when the ball is hidden, and is despawned with it.
+- **Where and look are apart,** as for Wind: `SpinMarkPlugin` gives each ball its mark and touches only the mark's parent, `Transform`, and `Visibility`, and is tested headless. The mesh and the material are added by the shell half's view, with the render assets.
+
+### Decisions taken
+
+- **The mark reads `Spin::drift` of the start the ball's flight began at,** the function the core's field is built from. `off_a_moving_paddle_the_mark_shows_and_points_the_way_the_ball_then_curves` ties the two through the ball itself.
+- **It shows only while Spin is in play.** A flight's start alone would mark a moving-paddle return in Classic.
+- **`Visibility::Inherited`, not `Visible`,** when shown: a hidden ball hides its mark. Fog (plan phase 7) hides the ball; this is what will hide the mark with it.
+- **Sizes are in ball radii.** The ball's transform is scaled by its radius, and a child inherits the scale. The mark's draw order is the ball's plus a tenth, so `views::layer` gained no entry.
+- **The mark is spawned on `Added<Ball>`,** hidden, and has no scope of its own.
+- **Nothing at the paddle, and no sound per hit.** As proposed: the mark on the ball is the whole view.
+
+### Done-conditions
+
+| Condition | Evidence |
+|---|---|
+| E.1: API check before code | See "Bevy API". |
+| R1: the cause on screen before the consequence | `off_a_moving_paddle_the_mark_shows_and_points_the_way_the_ball_then_curves`: the mark is there in the frame of the hit, both ways, and forty frames on the ball has been carried that way. `off_a_still_paddle_no_mark_shows`; `the_ball_carries_one_mark_hidden_until_a_return_is_spun` (a serve); `without_spin_in_play_no_mark_shows_off_a_moving_paddle`. |
+| R9 on screen | `the_mark_is_larger_at_full_dial_than_early_in_the_rally`; `at_dial_zero_no_mark_shows_off_a_moving_paddle`. |
+| R11: nothing flashes | `the_mark_holds_for_the_whole_flight_and_goes_with_the_rally`: it shows, pointing one way, in every frame of the flight. It changes only where a flight starts or a rally ends: at most once per crossing, and the fastest crossing takes 0.58 s. The review item at milestone close stays. |
+| Spec 2.3.3, 2.7.1: icon and cue | `spin_states_an_icon_a_join_cue_and_a_view`; the generic cue and glyph tests now cover Spin. |
+| The mark lives with its ball | `leaving_the_match_takes_the_mark_with_the_ball`. |
+| E.3: visible in `just run` | **Not seen.** The user's hand check, step 6. |
+
+### Red first, and where it was not
+
+- Red by compile failure, then green on the first run: the eight tests of `pong/tests/spin.rs`, `spin_states_an_icon_a_join_cue_and_a_view`, and the mark's size test.
+- **Checked against two deliberate breaks, since removed.** With the mark always pointing up, the direction test and the whole-flight test failed. With Spin's being in play ignored, `without_spin_in_play_no_mark_shows_off_a_moving_paddle` failed.
+
+## Step 4: into the bag, and the harness (E.4, E.7)
+
+`tuning.ron`: Chaos's bag is `[shrink, wind, spin]`. No tuning number moved: every condition below held at the starting numbers.
+
+### What the bag of three moved
+
+- **Every seeded Chaos number,** since a bigger bag is shuffled differently. The stack's bottom rung moved too, from 57 rallies of mean 2.4 to 63 of mean 2.7: the schedule draws its bag even under a forced set.
+- **Classic's did not:** its six harness lines and its win counts are phase 5's, figure for figure.
+- **Chaos ●●● reaches three bag effects for the first time.** With two in the bag, the third threshold was capped at two.
+
+Tests that named the roster or the first bag effect, each kept on its assertion and made to ask instead:
+
+- Escalation: `two_in_the_bag` and `shrink_alone_in_the_bag` are built by `with_chaos_listing`, which replaces Chaos's two lists whatever the embedded ones hold.
+- Shell, HUD: three tests of `match_screens.rs` ask the core which bag effect is in play, where they named Shrink.
+- Shell, overlay: the key-toggle test finds the scheduled effect's key from the tuning's bag, where it pressed Shrink's.
+
+### Measured (`just ai-report`, matches to five points, hits per rally; no rally unended)
+
+| Pairing | Classic | Chaos, cap 3 |
+|---|---|---|
+| 1 v 1 | 28 rallies, mean 2.4, longest 11 | 27 rallies, mean 2.3, longest 14 |
+| 1 v 2 | 20 rallies, mean 5.7, longest 44 | 20 rallies, mean 3.8, longest 12 |
+| 1 v 3 | 20 rallies, mean 6.4, longest 26 | 20 rallies, mean 4.2, longest 15 |
+| 2 v 2 | 32 rallies, mean 33.5, longest 65 | 30 rallies, mean 17.0, longest 67 |
+| 2 v 3 | 22 rallies, mean 30.1, longest 46 | 21 rallies, mean 16.8, longest 58 |
+| 3 v 3 | 30 rallies, mean 41.7, longest 143 | 33 rallies, mean 58.4, longest 128 |
+
+More stars won 8 matches to 0 in each of the three pairings, in each mode (spec 2.5.5).
+Spec 2.5.1 holds: every rally ended in every pairing.
+
+### Spin's R3 measure (E.4)
+
+**Unheld, Spin alone does nothing between computers.** Put in the bag before the ladder held a motion, it played the same 63 one-star rallies of mean 2.7 at every rung, and `the_third_bag_effect_alone_shortens_rallies_as_its_dial_rises` failed. That is the first fact above, measured.
+
+Spin alone, every return told as off a paddle moving up, no speed ramp beside it, matches to five points, hit limit 200:
+
+| Held count | Drift | 1 v 1, 8 seeds | 2 v 2, 2 seeds |
+|---|---|---|---|
+| 0 | 0 | 63 rallies, mean 2.7 | none ended (2 of 2) |
+| 5 | 6.7 | 62 rallies, mean 2.6 | 13 rallies, mean 25.4 |
+| 10 | 13.3 | 63 rallies, mean 1.9 | 14 rallies, mean 6.1 |
+| 15 | 16 | 61 rallies, mean 1.8 | 14 rallies, mean 6.0 |
+| 20, 30 | 16 | mean 1.8 | mean 6.0 |
+
+- **R3 holds for Spin against one and two stars, held.**
+- **What the measure is:** the dial acting through the flaw when every return is spun one way. It is not how often a computer spins: unheld, never, at these speeds.
+- **Every dial test holds the motion now.** Shrink and Wind do not read it: Wind's ladder printed the same lines held and unheld.
+- **Against three stars it is not measured.** By arithmetic, as for Wind: their share of 0.85 leaves the aim 2.4 off at most, and with their error of 3 that is inside the whole paddle's reach of 8.
+
+### R3 for the stack (spec 2.5.2)
+
+Played unheld, as the game plays. The ladder has a fourth rung now:
+
+| Level | 1 v 1 | 2 v 2 | 3 v 3 |
+|---|---|---|---|
+| Speed at 0 returns | 63 rallies, mean 2.7 | none ended | none ended |
+| Speed, Shrink at 15 | 58 rallies, mean 0.6 | 18 rallies, mean 2.1 | none ended |
+| Speed, Shrink, Wind at 30 | 55 rallies, mean 0.7 | 13 rallies, mean 1.7 | 14 rallies, mean 50.4, longest 146 |
+| Speed, Shrink, Wind, Spin at 45 | 53 rallies, mean 0.7 | 15 rallies, mean 1.1 | 18 rallies, mean 18.4, longest 63 |
+
+The fourth rung adds Spin and fifteen returns of speed together, 215 units/s against 170. How much of its shortening is Spin's was not separated.
+
+### R10 (E.7)
+
+`a_ball_three_stars_return_off_a_still_paddle_scores_off_one_moving_toward_the_wall`: three stars as tuned return a level ball at the cap from 27 off the centre when the paddle that sent it stood still. At full dial, off a paddle moving toward the near wall, the same ball curves out along the wall and scores; off a paddle moving the other way it comes back. With the dial at zero it comes back whatever the paddle did.
+
+Not red first: it pins what Spin gave. Its dial-at-zero half is its control.
+
+### The soaks
+
+All five pass, and the test of every three effects has a subset for the first time: Shrink, Wind, and Spin at full dial beside Speed.
+Their printed lines were not read: no recipe prints them.
+
+### Running times
+
+Development machine, inside the full parallel run of `just test`, warm: thirteen heavy tests now, 3.2 to 11.0 s each, against the 30 s limit. Phase 5 had eleven, at 3.2 to 8.8 s.
+The two new ones: the third bag effect's dial test 9.7 s, the soak of every three effects 9.6 s.
+On one cold run under load, straight after a rebuild, the same tests took 8.3 to 17.0 s.
+
+## Step 5: the record step (P.6, E.5)
+
+### Recorded
+
+- **Spec:** 2.3.8 (the comparison below), 2.3.12 (Spin's per-star numbers), 2.5.2 (the held hit motion in the dial tests; the stack's fourth rung), 2.6.4 (Spin as built; the flaw; the bound; the computer does not spin on purpose), 2.9.1 (the held hit motion). Each amended 2026-11-13.
+- **Plan:** 6.1 amended.
+- **ADR 0011:** not amended. Nothing in the contract changed: Spin is built on the hook, the field, and the flaw the ADR already describes.
+- **`.claude/rules/tests.md`:** the dial tests hold a hit motion; the stack's test holds none.
+- **READMEs:** `features/README.md` (Spin's module, the sandbox, the tuning checks), `testing/README.md` (`Forcing`, the soak's times).
+
+### The diff against the touch list (E.5, spec 2.3.8)
+
+The phase's diff against `main`: 20 files outside `docs/`, one of them new and untracked when counted (`pong/tests/spin.rs`).
+
+| Where | Files | Why |
+|---|---|---|
+| Inside the list | `effects/spin.rs` in each crate; `domain.rs` (the variant, `ALL`, its guard tests); one line in each crate's registration match; the tuning section (`tuning.ron`, `file.rs`, `tuning/mod.rs`) | Spin itself. |
+| Outside, paid once | The effects base; `testing/ai_match.rs`; `tuning/mod.rs` | The sandbox's held hit motion and the harness's field for it; the shared `BelievedShare`. |
+| Outside, tests and fixtures | The AI's, the escalation's, and the paddle's test modules; `ai_matches.rs`; the overlay's key line in two tests; `match_screens.rs`; `pong/tests/spin.rs` | Spin's done-conditions in the AI; fixtures that named the roster; the harness; the view's own tests. |
+| Docs and rules | Two READMEs, `.claude/rules/tests.md`, the spec, the plan, this report | |
+
+- **The list's negative half held:** no production code of physics, AI, rules, escalation, sanity, or the HUD changed. The AI's and the escalation's files changed in their test modules only; physics, rules, sanity, `pong/src/ui`, and `pong/src/views` not at all.
+- **What the next effect will also touch outside the list:** the two tests that spell out the overlay's key line. Nothing else that this phase's fixtures touched: they ask the tuning or the core now.
+- **What it will not pay again:** the held hit motion, the harness's field, the shared share type.
+
 ## Test changes
 
-464 core tests and 182 shell tests pass, 646 in all; 622 existed before this phase. 24 were added, all in the core: 2 for the held hit motion, 5 for the tuning section, 14 for Spin, 3 for the AI.
+466 core tests and 192 shell tests pass, 658 in all; 622 existed before this phase. 36 were added: 26 in the core, 10 in the shell.
 
 No assertion of an earlier test changed for behaviour. Changed for the roster's growth or a new rule:
 
@@ -118,21 +258,36 @@ No assertion of an earlier test changed for behaviour. Changed for the roster's 
 - `VALID` in the tuning tests gained Spin's section.
 - Three tests of the sandbox (effects) also hold, release, and force by a hit motion.
 - `launch_at_ai` (AI) now calls `launch_at_ai_in_the_flight`, which the Spin tests share; its steps and every assertion that uses it are the same.
-
-Nothing seeded moved by construction: no draw was added, and Chaos's bag is as it was. Every seeded assertion passes; the soak's printed lines were not compared by eye.
+- The harness's forcing literals, four of them, name the new field; the dial ladder's holds a motion.
+- The escalation, HUD, and overlay fixtures of step 4.
 
 ## Bevy API
 
-Steps 1 and 2 wrote no API new to the repository, so `bevy-api-check` was not run.
+Steps 1, 2, and 4 wrote no API new to the repository, so `bevy-api-check` was not run for them.
+
+Step 3 wrote one area new to the repository: a world-space parent and child. `bevy-api-check` ran before the code, against the pinned 0.20.1 source:
+
+- `bevy::ecs::hierarchy::ChildOf(pub Entity)`, with `.parent()`. Spawning with `ChildOf(parent)` in the bundle is the documented direct way; no feature gates it.
+- A child's global transform is its parent's times its own, the parent's scale included. The ball's is scaled by its radius in x and y and by one in z, so the mark's place and size are in ball radii and its draw order is the ball's plus its own.
+- A child with `Visibility::Inherited` is hidden by a hidden parent; one with `Visibility::Visible` is not. A parent with no visibility at all leaves the child visible.
+- `Children` is declared `linked_spawn`: despawning the parent despawns its children, so the mark needs no `DespawnOnExit`. The agent did not find the derive code that wires it; `leaving_the_match_takes_the_mark_with_the_ball` shows the behaviour at the pinned version.
+- `MinimalPlugins` has neither `TransformPlugin` nor the visibility plugin: headless, nothing propagates. The tests read the mark's parent, its local `Transform`, and its own `Visibility`.
+- The validity check at this version is `ValidateParentHasComponentPlugin<C>`: it warns `B0004` in `Last` when a child has a global transform or an inherited visibility and its parent still has none. The mark is spawned in `Update`, after the ball was dressed in the fixed loop's attach set. **Not checked:** that `just run` logs no such warning.
 
 ## Gate
 
-`just dev-check` green on 2026-11-13 after step 2: 646 tests.
-On that first run after the rebuild two tests ran past 30 s and passed. No name was captured; the run after it had none slow. The crash tests are the known case (`.config/nextest.toml`).
+`just dev-check` green on 2026-11-13 with all of steps 1 to 5: 658 tests.
+After step 2 alone it was green at 646. On that run, the first after a rebuild, two tests ran past 30 s and passed; no name was captured. The crash tests are the known case (`.config/nextest.toml`).
 
-## Open after step 2
+## Open at phase close
 
-- **Steps 3 to 6,** as in the table above.
-- **The spec does not yet say what was built:** the three deviations wait for step 5.
-- **The computer as a deliberate spinner:** ruling 4; decided after the session.
-- **Not shown yet:** that Spin shortens rallies (R3), and a hit that scores because of it (R10). Step 4.
+- **Step 6, the user's:** the hand check and the session.
+  - The mark, the icon, and the cue in `just run` (E.3), and the log free of `B0004`.
+  - The session, with the ruling: keep, retune once, or drop (E.6).
+  - The Wind-versus-Spin hypothesis observed and logged (plan 6.2).
+- **The computer as a deliberate spinner:** ruling 4; decided after the session. Against the computer, Spin is mostly the player's to use.
+- **R11 for the mark:** the review item at milestone close (spec 2.7.4).
+- **Not shown by test:** that Spin alone shortens three-star rallies; how much of the stack's fourth rung is Spin's.
+- **Not measured:** that added delay is inert at low speed.
+- **The heavy tests' times:** thirteen now, up to 11 s warm and 17 s cold under load, against 30 s. Each bag effect to come adds a dial test.
+- **CI:** not run on this build.

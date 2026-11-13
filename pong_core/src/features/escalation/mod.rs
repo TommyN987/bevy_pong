@@ -186,26 +186,39 @@ mod tests {
         }
     }
 
+    /// The embedded tuning with Chaos's two lists of effects replaced,
+    /// `always` and `bag`, each given as the RON between its brackets.
+    /// Whatever the embedded lists hold: a roster that grows moves no
+    /// fixture here.
+    fn with_chaos_listing(always: &str, bag: &str) -> Tuning {
+        fn with_list(text: &str, key: &str, list: &str) -> String {
+            let opening = format!("{key}: [");
+            let Some(at) = text.find(&opening) else {
+                panic!("no list {key} in Chaos's mode");
+            };
+            let start = at + opening.len();
+            let end = start + text[start..].find(']').expect("a list closes");
+            format!("{}{list}{}", &text[..start], &text[end..])
+        }
+        let (before, chaos) = EMBEDDED_RON
+            .split_once("chaos: (")
+            .expect("the embedded RON has a Chaos mode");
+        let chaos = with_list(&with_list(chaos, "always", always), "bag", bag);
+        Tuning::from_ron(&format!("{before}chaos: ({chaos}")).expect("the listing is valid")
+    }
+
     /// The embedded tuning with Chaos given a bag of two and nothing always
-    /// on, so the schedule has something to turn over while only two effects
-    /// exist. Speed serves as a plain second name here.
+    /// on, so the schedule has something to turn over between two known
+    /// names. Speed serves as a plain second name here.
     fn two_in_the_bag() -> Tuning {
-        let ron = EMBEDDED_RON.replacen(
-            "always: [speed],\n            bag: [shrink, wind],",
-            "always: [],\n            bag: [shrink, speed],",
-            1,
-        );
-        assert_ne!(ron, EMBEDDED_RON, "Chaos's lists were not found in the RON");
-        Tuning::from_ron(&ron).expect("a bag of two is valid")
+        with_chaos_listing("", "shrink, speed")
     }
 
     /// The embedded tuning with Shrink alone in Chaos's bag, as it shipped
     /// before Wind: one known effect, for the tests that follow one effect
     /// in and out of play and name it.
     fn shrink_alone_in_the_bag() -> Tuning {
-        let ron = EMBEDDED_RON.replacen("bag: [shrink, wind],", "bag: [shrink],", 1);
-        assert_ne!(ron, EMBEDDED_RON, "Chaos's bag was not found in the RON");
-        Tuning::from_ron(&ron).expect("a bag of one is valid")
+        with_chaos_listing("speed", "shrink")
     }
 
     /// A match in play in `mode`, to `points`, with `tuning` if given,

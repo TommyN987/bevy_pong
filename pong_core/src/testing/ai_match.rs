@@ -17,6 +17,7 @@ use crate::domain::{
     SeatPlayers,
 };
 use crate::features::effects::Sandbox;
+use crate::kernel::flight::StepMotion;
 use crate::kernel::geometry::Side;
 
 /// Fixed steps per frame while a match is played. The simulation steps the
@@ -57,6 +58,10 @@ pub struct Forcing {
     /// The return count every flight starts at, which holds every dial
     /// still; `None` lets the rally count.
     pub returns: Option<u16>,
+    /// The paddle motion every return is told, whatever its paddle did;
+    /// `None` tells each paddle's own. A computer stands still at most
+    /// hits, so an effect that reads the motion is measured with one held.
+    pub hit_motion: Option<StepMotion>,
 }
 
 /// One rally of a played match.
@@ -154,6 +159,9 @@ impl AiMatch {
         if self.forced.returns.is_some() {
             sandbox.hold_returns(self.forced.returns);
         }
+        if self.forced.hit_motion.is_some() {
+            sandbox.hold_hit_motion(self.forced.hit_motion);
+        }
         set_frame_length(&mut app, FrameLength::Steps(STEPS_PER_FRAME));
         enter_match(
             &mut app,
@@ -238,9 +246,10 @@ mod tests {
 
     use super::{AiMatch, Forcing, MatchPlayed, RallyLengths, RallyPlayed};
     use crate::domain::{Difficulty, EffectId, Mode};
-    use crate::features::effects::ActiveEffects;
+    use crate::features::effects::{ActiveEffects, Sandbox};
     use crate::features::paddle::Paddle;
     use crate::flow::states::MatchState;
+    use crate::kernel::flight::StepMotion;
     use crate::kernel::geometry::Side;
     use crate::kernel::test_support::assert_near;
     use crate::testing::{frame, match_state, run_until};
@@ -319,6 +328,7 @@ mod tests {
                 effects: Some(vec![EffectId::Shrink]),
                 // The embedded Shrink is at full dial from return 15.
                 returns: Some(15),
+                hit_motion: None,
             },
             ..mirror(Difficulty::OneStar, 3)
         };
@@ -343,6 +353,28 @@ mod tests {
             .map(|paddle| paddle.height())
             .collect();
         assert_eq!(heights, [8.0, 8.0]);
+    }
+
+    /// A forced hit motion is held before the match is entered, so the
+    /// first return is told it already, and the match is a touched one.
+    #[test]
+    fn a_forced_hit_motion_is_held_from_the_first_rally() {
+        let setup = AiMatch {
+            forced: Forcing {
+                hit_motion: Some(StepMotion::Up),
+                ..Forcing::default()
+            },
+            ..mirror(Difficulty::OneStar, 3)
+        };
+        let app = setup.begin(3);
+        let sandbox = app.world().resource::<Sandbox>();
+        assert_eq!(sandbox.held_hit_motion(), Some(StepMotion::Up));
+        assert!(sandbox.touched_match());
+
+        let unforced = mirror(Difficulty::OneStar, 3).begin(3);
+        let sandbox = unforced.world().resource::<Sandbox>();
+        assert_eq!(sandbox.held_hit_motion(), None);
+        assert!(!sandbox.touched_match());
     }
 
     #[test]

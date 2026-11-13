@@ -151,7 +151,7 @@ The seed is drawn on entering a match and on the transition from play to a point
 | `speed.rs` | Speed: a launch-speed gain per return of the rally, at the per-hit increase of the mode played. One module per effect. |
 | `shrink.rs` | Shrink: a factor on both paddles' height, riding a `Ramp` over the rally's returns from one to `height_min / height_default`. |
 | `wind.rs` | Wind: a `Drift` field (kernel) whose drift over one crossing rides a `Ramp` from nothing to `max_drift`, up or down as `WindDirection::of` reads the rally's seed. Its flaw is the second form: each star believes its tuned share of the true drift. In Chaos's bag since M2 plan phase 5. |
-| `spin.rs` | Spin: the same `Drift` field, begun at a return whose paddle moved in the step of the hit, toward the paddle's motion; a still paddle's return and a serve get none. `Spin::drift(start)` is the signed drift of a flight, for the field and for the shell alike. Its flaw is the second form: each star has read its tuned share of the true spin. In no bag yet (M2 plan phase 6, step 4). |
+| `spin.rs` | Spin: the same `Drift` field, begun at a return whose paddle moved in the step of the hit, toward the paddle's motion; a still paddle's return and a serve get none. `Spin::drift(start)` is the signed drift of a flight, for the field and for the shell alike. Its flaw is the second form: each star has read its tuned share of the true spin. In Chaos's bag since M2 plan phase 6. |
 
 Channels, each composing so that effects cannot see each other:
 
