@@ -79,8 +79,8 @@ Realizes spec 2.3.12, 2.5.1 through 2.5.5. Depends on 2.
 ### 5. Wind
 Realizes spec 2.2.1, 2.2.2, 2.6.2. Depends on 3 and 4. Effect protocol.
 
-- **5.1 MUST** The vertical speed clamp and its tuning validation. Done: spec 2.2.2.
-- **5.2 MUST** Wind per E.1 through E.5 and E.7; direction drawn per rally. Done: spec 2.6.2. Amended 2026-11-13 ([phase 4 report](m2-phase4-report.md)): Wind's tuning section carries the first per-star flaw numbers (moved from 4.1).
+- **5.1 MUST** The vertical speed clamp and its tuning validation. Done: spec 2.2.2. Amended 2026-11-13 ([phase 5 report](m2-phase5-report.md)): the bound is derived in the wall step and validation gained no rule for it (spec 2.2.2, amended).
+- **5.2 MUST** Wind per E.1 through E.5 and E.7; direction drawn per rally. Done: spec 2.6.2. Amended 2026-11-13 ([phase 4 report](m2-phase4-report.md)): Wind's tuning section carries the first per-star flaw numbers (moved from 4.1). Amended 2026-11-13 ([phase 5 report](m2-phase5-report.md)): built with one base capability the proposal added, the rally's seed (spec 2.2.4, amended). R3 against three stars, owed since phase 4, is shown here through the stack.
 - **5.3 SHOULD** Wall cue rate limit. Done: spec 2.6.2's sub-item.
 - **5.4 MUST** The kids' first Chaos session, covering Shrink and Wind (E.6 for both). Done: logged, with a ruling per effect.
 

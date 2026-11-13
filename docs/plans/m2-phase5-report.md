@@ -4,8 +4,9 @@ Started 2026-11-13. Branch `feat/wind`. Roles: Claude drives; the user reviews a
 Deviations from [m2-chaos-pong.md](../specs/m2-chaos-pong.md) and [m2-plan.md](m2-plan.md) per plan rule P.6, each with where it was recorded.
 
 Built 2026-11-13: steps 1 to 6 of the proposal the user approved that day (plan 5.1, 5.2, and 5.3).
-Not done: step 7, the record step, and step 8, the user's look in `just run`, the hand checks, and the kids' session (plan 5.4).
-Not closed. `docs/specs/CURRENT` names phase 5.
+Recorded 2026-11-13: step 7, with CI green on the build (`74d9bea`).
+Played 2026-11-13: step 8, the user's hand checks and the kids' first Chaos session (plan 5.4).
+Closed 2026-11-13 by the user's word. `docs/specs/CURRENT` names phase 6, Spin, on branch `feat/spin`.
 
 ## Deviations
 
@@ -13,11 +14,13 @@ Both were proposed before implementation and approved by the user on 2026-11-13.
 
 | Item | Deviation | Recorded |
 |---|---|---|
-| spec 2.2.2 | The vertical bound is derived, not tuned: the playable height per fixed step, 5,280 units/s at the shipped numbers. Validation gains no rule for it; the speed-cap rule stays, so a launch is never cut. | Owed at step 7. |
-| spec 2.2.4, ADR 0011 | A rally has a seed, and every effect is built for one rally with it. `Random` holds a second stream, of the same seed, for rally seeds. | Owed at step 7. |
+| spec 2.2.2 | The vertical bound is derived, not tuned: the playable height per fixed step, 5,280 units/s at the shipped numbers. Validation gains no rule for it; the speed-cap rule stays, so a launch is never cut. | Spec 2.2.2 and plan 5.1 amended 2026-11-13. |
+| spec 2.2.4, ADR 0011 | A rally has a seed, and every effect is built for one rally with it. `Random` holds a second stream, of the same seed, for rally seeds. | Spec 2.2.4, plan 5.2, and ADR 0011 amended 2026-11-13. |
 
 ## Rulings by the user
 
+- 2026-11-13, after the kids' session: the two as-built points without a ruling are accepted as they are for now, documented, and addressed if either becomes an issue: a believed share above one, and a ball in wind faster than the speed cap. The phase is complete; the next branch is `feat/spin`.
+- 2026-11-13, after CI passed on the build: "I started a game, and it looked alright. Didn't have time for more right now." Step 7 now; the kids' sessions after.
 - 2026-11-13: the proposal and its recommendations approved. Claude drives. The flaw is the believed share alone. Starting numbers: dial from return 0, full at 12, `max_drift` 24, shares 0.4, 0.7, 0.9. The hand check of phase 4's retuned stars rides with step 8.
 
 ## Step 1: the vertical bound (plan 5.1, spec 2.2.2)
@@ -116,7 +119,7 @@ Shown in "the countdown" (spec 2.6.2) is step 4's: the core gives the shell `Act
 | R9 on screen | `the_arrows_drift_faster_at_full_dial_than_in_the_countdown`. |
 | R11: nothing flashes | `with_wind_in_play_every_arrow_shows_from_the_countdown_on_and_never_blinks`. An arrow wraps at most once a second and a half, at full dial. The review item at milestone close stays. |
 | Spec 2.3.3, 2.7.1: icon and cue | `wind_states_an_icon_a_join_cue_and_a_view`; the generic cue and glyph tests now cover Wind. |
-| E.3: visible in `just run` | **Not done: the user's look.** No one has seen the arrows, the icon, or heard the cue. |
+| E.3: visible in `just run` | Seen by the user on 2026-11-13, first in one short game ("it looked alright"), then in the hand check and the session of step 8. |
 
 ### Red first, and where it was not
 
@@ -211,6 +214,50 @@ The two new ones: the pair soak 8.6 s, the second bag effect's dial test 8.6 s. 
 - **One earlier test changed its vehicle.** `a_cue_plays_at_the_volume_set_then_and_goes_when_done` sent two wall hits a frame apart to compare volumes; it sends paddle hits now. Its assertions are the same.
 - **Not shown by test:** that the core does pin a ball. The limit is tested against the message rate, not against a pinned rally.
 
+## Step 7: the record step (P.6, E.5)
+
+### Recorded
+
+- **Spec:** 2.2.2 (the derived bound; the cap is the launch's), 2.2.4 (the rally's seed), 2.3.8 (the comparison below), 2.3.12 (Wind's per-star numbers; a share above one), 2.5.2 (R3 for three stars), 2.6.2 and its sub-item (Wind as built; the cue limit). Each amended 2026-11-13.
+- **Plan:** 5.1 and 5.2 amended.
+- **ADR 0011:** amended. An effect value holds no state; a choice per rally comes from the rally's seed; a shared field lives in the kernel; the bound is derived.
+- **`.claude/rules/pong_core.md`:** the effects rule says the same in one line, for the effect phases to come.
+
+Two decisions taken in implementation were not in the proposal and are in the spec as built: a believed share above one is accepted (2.3.12), and a ball in a field may fly faster than the speed cap (2.2.2). The user accepted both on 2026-11-13, for now; each amendment says so.
+
+### The diff against the touch list (E.5, spec 2.3.8)
+
+The phase's diff against `main` before this step: 29 files.
+
+| Where | Files | Why |
+|---|---|---|
+| Inside the list | `effects/wind.rs` in each crate; `domain.rs` (the variant, `ALL`, its guard test); one line in each crate's registration match; the tuning section (`tuning.ron`, `file.rs`, `tuning/mod.rs`) | Wind itself. |
+| Outside, paid once (ADR 0011) | Kernel `integrate.rs`, `predict.rs`; `random.rs`, `domain.rs`, the effects base; kernel `flight.rs`; `tuning/mod.rs`, `paddle/mod.rs`; `views/mod.rs` | The vertical bound; the rally's seed; `Drift`; the crossing width; a draw layer. |
+| Outside, its own plan item | `audio/cues.rs`, `tests/audio.rs` | Plan 5.3. |
+| Outside, tests and fixtures | The AI's and the escalation's test modules; `ai_matches.rs`, `soak.rs`; the overlay's key line in two tests; `match_screens.rs`; a paddle fixture | Wind's done-conditions in the AI; fixtures that named the roster; the harness. |
+| Docs | Three READMEs, `domain.md`, this report | |
+
+- **The list's negative half held:** no production code of physics, AI, rules, escalation, sanity, or the HUD changed. The AI's and the escalation's files changed in their test modules only; physics, rules, sanity, and `pong/src/ui` not at all.
+- **What the next effect will also touch outside the list:** the two tests that spell out the overlay's key line. The escalation and shell tests no longer name the first bag effect.
+- **What it will not pay again:** the bound, the seed, the kernel field (Spin's too), the crossing width, the layer.
+
+### CI
+
+Run 43432652619 on `74d9bea`, 2026-11-13: green. The eleven heavy tests took 2.3 to 4.7 s each inside the full run, nextest 16.0 s for all 622, the `just ci-check` job 2 min 39 s.
+Every seeded assertion of this phase passed on CI's machine; the run prints no numbers.
+
+## Step 8: the hand checks and the kids' session (plan 5.4, E.6)
+
+The user's, on 2026-11-13, reported after the session and logged in the [playtest log](../playtest.md) that day.
+
+- **Hand checks:** done by the user: Wind in `just run`, and the stars as retuned in phase 4. No detail was reported.
+- **The session:** the 9-year-old, the 11-year-old, and the parent. The children played each other, each played the parent, and they played the computer.
+- **Reported:** both children like both Chaos effects, and like Chaos more than Classic. The 9-year-old beat the two-star computer in Chaos.
+- **Ruling per effect (E.6, spec 2.10.2):** neither a retune nor a drop, for Shrink or for Wind.
+- **Phase 4's owed entry** is in the log too: the developer's play behind the retune of the stars, dated 2026-11-12.
+
+No tuning number changed after the session: Wind ships at the starting numbers.
+
 ## Test changes
 
 440 core tests and 182 shell tests pass, 622 in all; 574 existed before this phase. 48 were added: 34 in the core, 14 in the shell.
@@ -240,10 +287,10 @@ Step 4 wrote one: `bevy::shape::Triangle2d`. `bevy-api-check` ran before the cod
 
 Steps 5 and 6 wrote none: `Local` and `Time` are as the effects base and the overlay use them.
 
-## Open
+## Open at phase close
 
-- **No one has seen or heard Wind.** The arrows' look, the icon, and the cue are untested by eye and ear: the user's look in `just run` (E.3), with step 8.
-- **Docs owed at step 7:** the two spec amendments above, spec 2.5.2's note that R3 is now shown for three stars, ADR 0011's note on the rally seed, and the touch-list comparison (E.5). Files outside the touch list so far: the kernel (`integrate`, `predict`, `flight`, `random`), `domain.rs`, the effects base, `paddle`, the overlay's key line, `views/mod.rs`, the cue map, and the tests and fixtures named in steps 3 to 6.
-- **The numbers are the starting numbers.** The harness asked for no change; the kids' session may.
-- **CI has not run the new tests.** Eleven heavy tests share its cores now, where nine did.
-- **Carried from phase 4:** the hand check of the retuned stars and its playtest entry, at step 8. R3 against three stars is shown (step 5).
+- **Accepted as built, for now:** a believed share above one; a ball in wind faster than the speed cap, 287 units/s against 250 in the soak. To be addressed if either becomes an issue.
+- **R11 for Wind's arrows:** the review item at milestone close (spec 2.7.4). The arrows were seen in play; no flashing was reported, and none was asked about.
+- **Not shown by test:** that the core pins a ball to a wall; that Wind alone shortens three-star rallies.
+- **Not recorded:** quotes, the session's length, and what the hand checks looked at.
+- **Open hypotheses in the playtest log:** catch-up bias, with no outcome reported; Wind against Spin, which waits for Spin.
