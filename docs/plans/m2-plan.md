@@ -118,6 +118,7 @@ Realizes spec 2.10.3, 2.11. Depends on every shipped phase.
 
 - **11.1 MUST** Rotation interval chosen from play. Done: spec 2.10.3.
 - **11.2 MUST** The `milestone-close` skill against spec 2.11. Done: checklist marked.
+- **11.3 MAY** The computer spins on purpose (spec 2.6.4's sub-item), decided by the user's ruling before 11.2, with every effect built and playtested. Done: taken with its own items, or recorded as not taken. Added 2026-11-13 ([phase 6 report](m2-phase6-report.md)).
 
 ## User actions outside the plan
 

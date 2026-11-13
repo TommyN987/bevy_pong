@@ -71,9 +71,9 @@
         // the turn, having read that share of the spin.
         spin: (
             starts_at_return: 0,
-            full_at_return: 12,
-            max_drift: 16.0,
-            believed_share: (one_star: 0.3, two_stars: 0.6, three_stars: 0.85),
+            full_at_return: 6,
+            max_drift: 30.0,
+            believed_share: (one_star: 0.63, two_stars: 0.79, three_stars: 0.92),
         ),
     ),
 

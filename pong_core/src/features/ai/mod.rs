@@ -1411,7 +1411,7 @@ mod tests {
     /// Three stars with no handicap of their own, having read `share` of a
     /// spun ball's true drift.
     fn no_handicap_reading(share: f32) -> Tuning {
-        let old = "three_stars: 0.85";
+        let old = "three_stars: 0.92";
         let ron = EMBEDDED_RON
             .replace(
                 "three_stars: (reaction_delay_seconds: 0.24, prediction_error: 3.0)",
@@ -1423,7 +1423,7 @@ mod tests {
     }
 
     /// [`ai_on_the_right_playing`] with Spin beside Speed, every flight
-    /// starting at `returns`: 12 is the embedded spin's full dial, 16 units
+    /// starting at `returns`: at 12 the embedded spin's dial is full, 30 units
     /// of drift a crossing from a moving paddle.
     fn ai_on_the_right_playing_with_spin(tuning: Tuning, returns: u16) -> App {
         ai_on_the_right_playing_after(tuning, |app| {
@@ -1485,7 +1485,7 @@ mod tests {
         }
     }
 
-    /// Having read three tenths of 16 units leaves the aim up to 11 off:
+    /// Having read three tenths of 30 units leaves the aim up to 21 off:
     /// past the paddle's reach of eight on a long enough crossing.
     #[test]
     fn an_ai_that_reads_too_little_of_the_spin_misses_some_spun_balls() {
@@ -1531,12 +1531,12 @@ mod tests {
     }
 
     /// R10 (M2 plan E.7): spin gives the hitter a use, not only the defender
-    /// a tax. Three stars as tuned return a level ball at the cap from 27
+    /// a tax. Three stars as tuned return a level ball at the cap from 13
     /// off the centre when the paddle that sent it stood still. Sent off a
     /// paddle moving toward the near wall, at full dial, the same ball
-    /// curves out along the wall, past where the paddle gets in time, and
-    /// scores; off a paddle moving the other way it curves to the middle
-    /// and comes back. With the dial at zero it comes back whatever the
+    /// curves 30 units out to the wall, past where the paddle gets in time,
+    /// and scores; off a paddle moving the other way it curves across the
+    /// middle and comes back. With the dial at zero it comes back whatever the
     /// paddle did.
     #[test]
     fn a_ball_three_stars_return_off_a_still_paddle_scores_off_one_moving_toward_the_wall() {
@@ -1546,7 +1546,7 @@ mod tests {
         let motions = [StepMotion::Up, StepMotion::Still, StepMotion::Down];
 
         let mut dial_at_zero = ai_on_the_right_playing_with_spin(tuning.clone(), 0);
-        for y in [27.0, -27.0] {
+        for y in [13.0, -13.0] {
             for paddle_motion in motions {
                 assert_eq!(
                     launch_at_ai_off_a_paddle_moving(
@@ -1561,8 +1561,8 @@ mod tests {
         }
 
         for (y, toward_the_wall, toward_the_middle) in [
-            (27.0, StepMotion::Up, StepMotion::Down),
-            (-27.0, StepMotion::Down, StepMotion::Up),
+            (13.0, StepMotion::Up, StepMotion::Down),
+            (-13.0, StepMotion::Down, StepMotion::Up),
         ] {
             // A match of its own per side: the miss, last, ends the rally.
             let mut full_dial = ai_on_the_right_playing_with_spin(tuning.clone(), 12);
