@@ -71,16 +71,16 @@ Realizes spec 2.7, 2.8, 2.9, 2.6.1's shell half. Depends on 2.
 ### 4. AI under effects, and the harness
 Realizes spec 2.3.12, 2.5.1 through 2.5.5. Depends on 2.
 
-- **4.1 MUST** The flaw's two forms in the AI, read from each effect's tuning. Done: spec 2.3.12 for Shrink.
-- **4.2 MUST** AI-versus-AI harness reporting rally-length distribution and win rates. Done: spec 2.5.1 and 2.5.5.
-- **4.3 MUST** Soak over subsets; its running time measured. Done: CI green; the time is in the report, with a spec amendment if the subsets of six effects cannot fit.
+- **4.1 MUST** The flaw's two forms in the AI, read from each effect's tuning. Done: spec 2.3.12 for Shrink. Amended 2026-11-13 ([phase 4 report](m2-phase4-report.md)): the two forms are built in the AI and proved with probe effects. "Read from each effect's tuning" moved to 5.2: Shrink's flaw is inherent and has no numbers, and Wind is the first effect that has.
+- **4.2 MUST** AI-versus-AI harness reporting rally-length distribution and win rates. Done: spec 2.5.1 and 2.5.5. Amended 2026-11-13 ([phase 4 report](m2-phase4-report.md)): the harness showed no rally between two or three stars ending at M1's handicaps; the user ruled a retune in this phase, and Classic is held to spec 2.5.1 and 2.5.5 beside Chaos.
+- **4.3 MUST** Soak over subsets; its running time measured. Done: CI green; the time is in the report, with a spec amendment if the subsets of six effects cannot fit. Amended 2026-11-13 ([phase 4 report](m2-phase4-report.md)): one test per subset size, each dividing a hundred thousand live steps among its subsets, and one soak of Chaos as scheduled. The time is in the report; the subsets of six effects fit by construction, so the spec needed no amendment for fit, only for the form (spec 2.5.3).
 - **4.4 MUST** E.4 for Shrink. Done: its R3 measure is in the report.
 
 ### 5. Wind
 Realizes spec 2.2.1, 2.2.2, 2.6.2. Depends on 3 and 4. Effect protocol.
 
 - **5.1 MUST** The vertical speed clamp and its tuning validation. Done: spec 2.2.2.
-- **5.2 MUST** Wind per E.1 through E.5 and E.7; direction drawn per rally. Done: spec 2.6.2.
+- **5.2 MUST** Wind per E.1 through E.5 and E.7; direction drawn per rally. Done: spec 2.6.2. Amended 2026-11-13 ([phase 4 report](m2-phase4-report.md)): Wind's tuning section carries the first per-star flaw numbers (moved from 4.1).
 - **5.3 SHOULD** Wall cue rate limit. Done: spec 2.6.2's sub-item.
 - **5.4 MUST** The kids' first Chaos session, covering Shrink and Wind (E.6 for both). Done: logged, with a ruling per effect.
 

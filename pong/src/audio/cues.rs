@@ -1,6 +1,7 @@
 //! The cue map (spec 1.6.4): each core event plays its cue once, at the
-//! settings' volume; an effect joining plays the effect's own. It knows cue names and their sounds, not how a sound is
-//! made, so a different bank changes nothing here.
+//! settings' volume; an effect joining plays the effect's own. It knows cue
+//! names and their sounds, not how a sound is made, so a different bank
+//! changes nothing here.
 
 use bevy::audio::{AudioPlayer, PlaybackSettings, Volume};
 use bevy::ecs::message::MessageReader;

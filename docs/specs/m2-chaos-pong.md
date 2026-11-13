@@ -10,15 +10,15 @@ Obligation levels: MUST, SHOULD, MAY, WONT. Every item carries a done-condition.
 - `advance_between_walls` requires a step's vertical travel to stay under the playable height, so one fold lands inside. [confirmed, `pong_core/src/kernel/integrate.rs`]
 - M1's `Force` is a per-step accumulator component on the ball, zeroed by integration. [confirmed, `pong_core/src/features/physics/mod.rs`]
 - Classic's speed rule: serve 80, plus 7 per hit, cap 250. It adds to the ball's current speed, read as `velocity.length()` at the hit. [confirmed, `tuning.ron`, `features/physics/mod.rs`]
-- Speed as serve plus gain times hit count equals M1's repeated addition up to the last float bits. [uncertain; checked by 2.0.1 against M1's suite]
-- Without escalation a competent defender returns every ball: at serve speed the ball's vertical speed tops out near 69 units/s, under the paddle's 90. [probable, inferred from `tuning.ron`; verified by 2.5.1]
+- Speed as serve plus gain times hit count equals M1's repeated addition up to the last float bits. [uncertain; checked by 2.0.1 against M1's suite] Confirmed 2026-11-11 ([phase 1 report](../plans/m2-phase1-report.md)): M1's suite passes on the new rule and no test differs in the last float bits.
+- Without escalation a competent defender returns every ball: at serve speed the ball's vertical speed tops out near 69 units/s, under the paddle's 90. [probable, inferred from `tuning.ron`; verified by 2.5.1] Confirmed 2026-11-12 ([phase 4 report](../plans/m2-phase4-report.md)): with no effect in play, two-star and three-star mirror matches score no point in 200 hits. The companion assumption, that the speed ramp is what ends rallies, did not hold for the stars as M1 tuned them: see 2.1.2 and 2.5.1.
 - Rules counts paddle hits in `Rally` and resets it on entering `Countdown`. [confirmed, `pong_core/src/features/rules/mod.rs`]
 - The paddle has no velocity state; it moves by intent times speed, all or nothing. The collide phase does not know the paddle's motion. [confirmed, `features/paddle/mod.rs`, `features/physics/mod.rs`]
 - The collide phase resolves one contact per step and travels the remainder against the walls only. [confirmed, `features/physics/mod.rs`]
 - The AI plans once per approach and ignores later course changes. [confirmed, `features/ai/mod.rs`]
 - Tests call `crossing_y` in four files, and the speed rule in `sanity`, `ai`, and the soak. [confirmed, grep 2026-11-11]
 - Rules comes after physics in the feature order and counts hits in its own phase, after collide. [confirmed, `features/mod.rs`, `features/rules/mod.rs`]
-- The soak's running time, and so whether a soak per subset of six effects fits CI. [unknown; measured in M2 plan 4.3]
+- The soak's running time, and so whether a soak per subset of six effects fits CI. [unknown; measured in M2 plan 4.3] Answered 2026-11-12 ([phase 4 report](../plans/m2-phase4-report.md)): no soak runs per subset. Each soak test divides one hundred thousand live steps among its subsets, so its time does not grow with the roster: about 7 s on the development machine. CI's time is unmeasured.
 - Sanity faults unless exactly one ball exists. [confirmed, `features/sanity/mod.rs`]
 - `Paddle` has a size setter clamped to tuning bounds: minimum 8, default 14; paddle thickness is 2. [confirmed, spec 1.4.3, `tuning.ron`]
 - The kernel has swept circle-versus-rectangle collision for axis-aligned rectangles. [confirmed, spec 1.2.3]
@@ -28,7 +28,7 @@ Obligation levels: MUST, SHOULD, MAY, WONT. Every item carries a done-condition.
 - Blocks may lengthen rallies by shielding goals. [uncertain; 2.5.2 decides]
 - Only the match-over screen shows records. [confirmed, grep of `pong/src`]
 - M1's menu runs opponent, points to win, profiles. [confirmed, spec 1.6.3]
-- Profiles file is at v1, settings file at v2. [confirmed, spec 1.4.9]
+- Profiles file is at v1, settings file at v2. [confirmed, spec 1.4.9] True when specified; since M2 plan phase 3 profiles are at v2 and settings at v3 (2.8.2, 2.8.3).
 - The kids' rally-length distribution. [unknown; one local profile records a longest rally of 21, owner unknown; observed in the 2.10 sessions]
 - `Material2d` and custom 2D shaders exist in Bevy 0.20. [probable, research 2026-10-30; `bevy-api-check` against 0.20.1 before 2.6.3 is planned]
 - `bevy_hanabi` supported Bevy 0.19 only on 2026-10-30. [confirmed then, uncertain now; no package below depends on it]
@@ -110,7 +110,7 @@ Phase one of the plan. No new behaviour.
 ## 2.1 Modes
 
 - **2.1.1 MUST** A mode is data: its effects with their curves, and its schedule. `MatchConfig` carries the mode and, for Chaos, the cap. Done: a headless Chaos match reaches `MatchOver`. Amended 2026-11-11 ([phase 2 report](../plans/m2-phase2-report.md)): both modes are tuning data naming their effects, `always` and `bag`, with thresholds in whole percent and a rotation interval; Classic is the mode with an empty bag, and nothing branches on the mode but the tuning lookup. The cap is `Mode::Chaos { cap: NonZeroU8 }`.
-- **2.1.2 MUST** Classic behaves as M1 shipped it: Speed alone, at M1's gain and cap. Done: 2.0.1.
+- **2.1.2 MUST** Classic behaves as M1 shipped it: Speed alone, at M1's gain and cap. Done: 2.0.1. Amended 2026-11-13 ([phase 4 report](../plans/m2-phase4-report.md)): Classic's rules are M1's. Two things about its computer opponent changed in M2 plan phase 4, by the user's ruling. The stars' handicaps were retuned, to delays of 0.35, 0.29, and 0.24 s and errors of 12, 7, and 3, because no rally against two or three stars ended at M1's numbers. And the AI plans a served ball one step after the serve, whichever of the serve and the AI ran first.
 
 ## 2.2 Flights and channels
 
@@ -137,7 +137,7 @@ Couplings: 2.2.1 and M1's 1.2.6 share one integrate function, so the AI fairness
 Per [ADR 0011](../adr/0011-effect-identity-and-contract.md).
 
 - **2.3.1 MUST** Identity is a closed, serializable enum with stable names. Done: a round-trip test over every variant.
-- **2.3.2 MUST** The core half is a trait with no default methods: a stance on every channel, an AI flaw, a tuning section. Done: an effect missing any part does not compile.
+- **2.3.2 MUST** The core half is a trait with no default methods: a stance on every channel, an AI flaw, a tuning section. Done: an effect missing any part does not compile. Amended 2026-11-13 ([phase 4 report](../plans/m2-phase4-report.md)): the trait is `id`, `contribute`, and `flaw`; the flaw joined it in M2 plan phase 4. The tuning section is not a part the compiler demands: the registration match builds each effect from tuning, and an effect that needs no numbers of its own has no section.
 - **2.3.3 MUST** The shell half is view, cue, and icon. It may be declared empty; it may not be missing. Done: an effect without a declared shell half does not compile.
 - **2.3.4 MUST** An effect receives the rally's hit count and knows nothing of the schedule that put it in play. Done: every effect's tests drive it with a bare number, no escalation plugin.
 - **2.3.5 MUST** Effects do not import each other. Done: `arch-check` enforces it.
@@ -147,7 +147,7 @@ Per [ADR 0011](../adr/0011-effect-identity-and-contract.md).
 - **2.3.9 MUST** One shared curve type maps the hit count to a dial: the hit where the dial starts to move, the hit where it is full, and the values at each. It yields a number or a whole count. Done: validation rejects a full hit before the start hit, and an item effect that starts at hit zero. Amended 2026-11-11 ([phase 1 report](../plans/m2-phase1-report.md), [phase 2 report](../plans/m2-phase2-report.md)): the curve is `kernel/ramp.rs`, built in plan phase 2 with Shrink, its first user, and it yields a number only. The whole-count form and the item rule wait for Lens (plan phase 8): no item effect exists to validate against.
 - **2.3.10 MUST** Registration is one exhaustive match over the identity enum per crate. Done: removing an arm fails the build.
 - **2.3.11 MUST** One base-owned plugin wires every effect into the schedule; an effect writes systems only for state the base lacks. Done: Speed ships with no system of its own.
-- **2.3.12 MUST** An AI flaw takes two forms, tuned per star in the effect's own section: added error or delay, and a degraded belief about the effect's contribution. Done: per effect, the zero-flaw AI returns every ball and a raised flaw misses some, over a seeded run.
+- **2.3.12 MUST** An AI flaw takes two forms, tuned per star in the effect's own section: added error or delay, and a degraded belief about the effect's contribution. Done: per effect, the zero-flaw AI returns every ball and a raised flaw misses some, over a seeded run. Amended 2026-11-13 ([phase 4 report](../plans/m2-phase4-report.md)): the AI asks each effect in play for its flaw when it plans an approach, adds the error and delay to the star's own, and predicts under the flight it believes in. For an effect whose flaw is inherent, as Speed's and Shrink's are, "a raised flaw" is a raised dial: Shrink's done-condition is a zero-handicap AI returning every ball at full dial, and a handicap that whole paddles forgive missing some there. The per-star numbers in an effect's own section arrive with Wind (M2 plan 5.2), the first effect that has any.
 
 ## 2.4 Escalation
 
@@ -162,11 +162,11 @@ Coupling: 2.4.2 hands 2.3.4 its number.
 
 ## 2.5 Termination and safety
 
-- **2.5.1 MUST** Rallies end under Chaos. Done: seeded AI-versus-AI Chaos matches show bounded rally length; the same harness with every dial at zero and no speed ramp does not, confirming the fact relied on.
-- **2.5.2 MUST** R3 holds for the stack. Done: AI-versus-AI rally length shortens as breadth and hit count rise together; the same measure per effect is reported in its phase report.
-- **2.5.3 MUST** Soak per mode: M1's soak under Classic; under Chaos, every subset of the shipped effects up to the cap, each at full dial, panic handler on. Done: all pass in CI inside the per-test timeout.
+- **2.5.1 MUST** Rallies end under Chaos. Done: seeded AI-versus-AI Chaos matches show bounded rally length; the same harness with every dial at zero and no speed ramp does not, confirming the fact relied on. Amended 2026-11-13 ([phase 4 report](../plans/m2-phase4-report.md)): it did not hold between two three-star computers until the stars were retuned (2.1.2); it holds for all six pairings since. By the user's ruling Classic is held to it too: every rally ends in every pairing, in both modes. The control forces no effect at all through the sandbox, between two-star and between three-star computers.
+- **2.5.2 MUST** R3 holds for the stack. Done: AI-versus-AI rally length shortens as breadth and hit count rise together; the same measure per effect is reported in its phase report. Amended 2026-11-13 ([phase 4 report](../plans/m2-phase4-report.md)): shown for one-star and two-star mirror matches, for the stack and per effect. Not yet shown for three stars: with Speed and Shrink alone they miss only near the speed cap, so their rallies do not end at the counts measured. Owed by milestone close, once an effect's flaw reaches them. Where a run has unended rallies, "shortens" is judged by how many rallies never ended, not by a mean pinned at the hit limit.
+- **2.5.3 MUST** Soak per mode: M1's soak under Classic; under Chaos, every subset of the shipped effects up to the cap, each at full dial, panic handler on. Done: all pass in CI inside the per-test timeout. Amended 2026-11-13 ([phase 4 report](../plans/m2-phase4-report.md)): not one soak per subset. One test per subset size, one to three, each dividing M1's hundred thousand live steps evenly among its subsets, so its time does not grow with the roster; and one soak of Chaos as the game schedules it, nothing forced. Subsets are generated from the mode's bag.
 - **2.5.4 MUST** Sanity's invariants hold under Chaos. Done: 2.5.3 raises no `SimFault`.
-- **2.5.5 MUST** The AI's stars order correctly in Chaos. Done: seeded win rates rise from one star to two to three.
+- **2.5.5 MUST** The AI's stars order correctly in Chaos. Done: seeded win rates rise from one star to two to three. Amended 2026-11-13 ([phase 4 report](../plans/m2-phase4-report.md)): held for Classic too, by the user's ruling.
 - **2.5.6 MUST** Sanity: a flight ends within a tuned time. It rides the existing fault path: dev panics, release restarts the rally and logs. Done: an injected endless flight raises the fault; under the release policy the heal restarts the rally.
 
 ## 2.6 Roster
@@ -203,7 +203,7 @@ Coupling: Wind and Spin use the same field with different causes; whether they f
 
 ## 2.9 Developer tooling
 
-- **2.9.1 SHOULD** A sandbox forces the active effects and the hit count from the overlay. Done: reachable in a release build. Amended 2026-11-12 ([phase 3 report](../plans/m2-phase3-report.md)): forcing keeps 2.4.3, so it is not immediate: a forced set takes hold at the next countdown, a held count at the next flight start, and the overlay says which is waiting and which is in force. A match in which anything was forced records nothing, since the overlay ships in release builds.
+- **2.9.1 SHOULD** A sandbox forces the active effects and the hit count from the overlay. Done: reachable in a release build. Amended 2026-11-12 ([phase 3 report](../plans/m2-phase3-report.md)): forcing keeps 2.4.3, so it is not immediate: a forced set takes hold at the next countdown, a held count at the next flight start, and the overlay says which is waiting and which is in force. A match in which anything was forced records nothing, since the overlay ships in release builds. Amended 2026-11-13 ([phase 4 report](../plans/m2-phase4-report.md), the user's ruling after review): forcing does not outlive what shows it. Hiding the overlay releases the sandbox, and so does leaving the match; once a match is over the keys do nothing.
 - **2.9.2 SHOULD** The overlay lists active effects and the hit count. Done: visible.
 
 ## 2.10 Playtest

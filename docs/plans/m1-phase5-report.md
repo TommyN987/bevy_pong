@@ -2,7 +2,7 @@
 
 Started 2026-11-08. Branch `feat/ai`. Roles: plan 5.1 in three parts. Claude drove A (groundwork) and C (wiring, done-conditions).
 For B (`steer`), Claude wrote the failing tests and the user was to drive; the user then asked Claude to implement B as well.
-Deviations from [m1-basic-pong.md](m1-basic-pong.md) and [m1-plan.md](m1-plan.md) per plan rule P.6, each with where it was recorded.
+Deviations from [m1-basic-pong.md](../specs/m1-basic-pong.md) and [m1-plan.md](m1-plan.md) per plan rule P.6, each with where it was recorded.
 
 ## Deviations
 

@@ -4,12 +4,13 @@
 //! stars (2.5.5); every effect phase reports through it (plan E.4).
 
 use std::fmt;
-use std::num::NonZeroU8;
+use std::num::{NonZeroU8, NonZeroU32};
 
 use bevy::app::App;
 
 use super::{
-    FrameLength, boot, enter_match, frame, headless_app, record, set_frame_length, take_recorded,
+    FrameLength, boot, enter_match, frame, headless_app, match_state, record, set_frame_length,
+    take_recorded,
 };
 use crate::domain::{
     BallHitPaddle, Controller, Difficulty, EffectId, MatchConfig, MatchEnded, Mode, PointScored,
@@ -21,6 +22,12 @@ use crate::kernel::geometry::Side;
 /// Fixed steps per frame while a match is played. The simulation steps the
 /// same at any frame length; longer frames spend fewer on the countdowns.
 const STEPS_PER_FRAME: u32 = 4;
+
+/// Frames with neither a paddle hit nor a point after which a match is
+/// taken as stalled: thirty seconds of game time at sixty steps a second. A
+/// point pause, a countdown, and the longest flight the sanity phase allows
+/// (M2 spec 2.5.6) come to under twenty-four together.
+const STALL_FRAMES: u32 = 30 * 60 / STEPS_PER_FRAME;
 
 /// One match between two computers, to be played from any number of seeds.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,8 +43,8 @@ pub struct AiMatch {
     /// What the developer sandbox forces, from the first rally on.
     pub forced: Forcing,
     /// Paddle hits at which a rally is given up as unended, and the match
-    /// with it. Precondition: not zero.
-    pub rally_hit_limit: u32,
+    /// with it.
+    pub rally_hit_limit: NonZeroU32,
 }
 
 /// What the developer [`Sandbox`] forces for a whole match (M2 spec 2.9.1).
@@ -82,19 +89,25 @@ impl AiMatch {
     /// order of unordered systems. The same seed plays the same match.
     ///
     /// Postcondition: returns once a side has won, or once a rally has
-    /// reached the hit limit. A ball that neither scores nor is hit faults
-    /// in the sanity phase (M2 spec 2.5.6), which panics under the harness.
+    /// reached the hit limit.
     ///
     /// # Panics
-    /// If the app cannot boot or enter the match, or on any simulation fault.
+    /// If the app cannot boot or enter the match; on any simulation fault;
+    /// or if the match stalls, with neither a hit nor a point in thirty
+    /// seconds of game time, which no match in play does.
     #[must_use]
     pub fn play(&self, seed: u64) -> MatchPlayed {
         let mut app = self.begin(seed);
         let mut rallies = Vec::new();
         let mut hits = 0_u32;
+        let mut quiet_frames = 0_u32;
         loop {
             frame(&mut app);
+            quiet_frames += 1;
             let hit = take_recorded::<BallHitPaddle>(&mut app).len();
+            if hit > 0 {
+                quiet_frames = 0;
+            }
             hits += u32::try_from(hit).expect("a frame's paddle hits fit u32");
             // A countdown separates two points, so a frame holds at most one.
             if let Some(point) = take_recorded::<PointScored>(&mut app).first() {
@@ -103,14 +116,20 @@ impl AiMatch {
                     won_by: Some(point.scorer),
                 });
                 hits = 0;
+                quiet_frames = 0;
             }
+            assert!(
+                quiet_frames <= STALL_FRAMES,
+                "no hit and no point in {STALL_FRAMES} frames, in {:?}: {self:?} from seed {seed} stalled",
+                match_state(&app)
+            );
             if let Some(ended) = take_recorded::<MatchEnded>(&mut app).first() {
                 return MatchPlayed {
                     winner: Some(ended.winner),
                     rallies,
                 };
             }
-            if hits >= self.rally_hit_limit {
+            if hits >= self.rally_hit_limit.get() {
                 rallies.push(RallyPlayed { hits, won_by: None });
                 return MatchPlayed {
                     winner: None,
@@ -215,7 +234,7 @@ impl fmt::Display for RallyLengths {
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZeroU8;
+    use std::num::{NonZeroU8, NonZeroU32};
 
     use super::{AiMatch, Forcing, MatchPlayed, RallyLengths, RallyPlayed};
     use crate::domain::{Difficulty, EffectId, Mode};
@@ -233,7 +252,7 @@ mod tests {
             mode: Mode::Classic,
             points_to_win: NonZeroU8::new(points).expect("a positive target"),
             forced: Forcing::default(),
-            rally_hit_limit: 1_000,
+            rally_hit_limit: NonZeroU32::new(1_000).expect("a positive limit"),
         }
     }
 
@@ -274,7 +293,7 @@ mod tests {
     #[test]
     fn a_rally_that_reaches_the_hit_limit_ends_the_match_unfinished() {
         let setup = AiMatch {
-            rally_hit_limit: 2,
+            rally_hit_limit: NonZeroU32::new(2).expect("a positive limit"),
             ..mirror(Difficulty::ThreeStars, 3)
         };
         let played = setup.play(3);

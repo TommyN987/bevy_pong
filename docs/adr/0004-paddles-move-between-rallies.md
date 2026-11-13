@@ -7,7 +7,7 @@ Status: accepted
 
 ADR 0003 opened the fixed step only while play is live, so nothing moved during a countdown or a point pause.
 The first two-human runs (plan 4.6, 2026-11-07) showed players waiting for the serve unable to line up their paddles.
-Amended 2026-11-09 at milestone close: the runs are recorded in the [phase 4 report](../specs/m1-phase4-report.md); plan 4.6 is the ghosting check.
+Amended 2026-11-09 at milestone close: the runs are recorded in the [phase 4 report](../plans/m1-phase4-report.md); plan 4.6 is the ghosting check.
 The user decided paddles should move in every wait between rallies.
 
 - The fixed step is one set of phases; every system names its phase (architecture rule 4).

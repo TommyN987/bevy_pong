@@ -1,7 +1,7 @@
 # M1 phase 4 report: shell vertical slice
 
 Started 2026-11-04. Branch `feat/shell-vertical`. Roles: Claude drives in Explain, Code, Commit cycles; the user reviews and commits.
-Deviations from [m1-basic-pong.md](m1-basic-pong.md) and [m1-plan.md](m1-plan.md) per plan rule P.6, each with where it was recorded.
+Deviations from [m1-basic-pong.md](../specs/m1-basic-pong.md) and [m1-plan.md](m1-plan.md) per plan rule P.6, each with where it was recorded.
 
 ## Deviations
 

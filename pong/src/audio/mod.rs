@@ -100,7 +100,7 @@ impl<B: SoundBank + Send + Sync + 'static> Plugin for SoundsPlugin<B> {
         // bank knows the base cues by name, and no effect by name.
         let joins = EffectId::ALL
             .into_iter()
-            .filter_map(|id| Some((id, assets.add(shell_half(id).join_cue?))))
+            .filter_map(|id| Some((id, assets.add((shell_half(id).join_cue?)()))))
             .collect();
         let mut add = |cue| assets.add(self.0.sound(cue));
         let sounds = CueSounds {

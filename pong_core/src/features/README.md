@@ -136,7 +136,7 @@ An effect whose flaw is inherent, Speed's faster ball or Shrink's shorter paddle
 | `FlightFlaw` | The flaws of the effects in play, composed: errors and delays by sum, beliefs into a `Flight` with the true flight's start and clock (`Flight::believed_as`). |
 | `Contribution` (kernel) | A struct without `Default`. Adding a channel adds a field, and every effect stops compiling until it states its stance. |
 | `build` | The crate's one match on `EffectId`: the registration. A new variant does not compile until it is built there. |
-| `Sandbox` | Port resource (M2 spec 2.9.1): the shell's overlay writes it. `force_effects(effects)` forces the whole set in play, read by escalation at the next countdown, and `toggle(effect, in_play)` changes one effect of it; `hold_returns` holds the count every flight starts at, copied into `ActiveEffects` each step; `release` forces nothing. Any forcing marks the match touched, which persistence reads; entering a match clears the mark unless something is still forced. |
+| `Sandbox` | Port resource (M2 spec 2.9.1): the shell's overlay writes it. `force_effects(effects)` forces the whole set in play, read by escalation at the next countdown, and `toggle(effect, in_play)` changes one effect of it; `hold_returns` holds the count every flight starts at, copied into `ActiveEffects` each step; `release` forces nothing. Any forcing marks the match touched, which persistence reads. Leaving a match releases the sandbox, so forcing does not carry into the next one; entering a match clears the mark unless something was forced for it beforehand, as a test harness does. |
 | `ActiveEffects` | Resource: the effects in play, set by escalation through `set(ids, tuning, mode)`. `start_flight(start)` asks each once, at the sandbox's held count if one is held. Every channel composes commutatively, so order does not matter. `flaw_over(flight, difficulty)` asks each for its flaw over the start the flight began at; the AI calls it when it plans an approach, so the per-star numbers cost nothing in a match without an AI. |
 | `BallFlight` | Component, required by `Ball`: the ball's flight. Replaced only at a flight start (`begin`), cleared only between rallies (`clear`). `flight()` is the empty flight while cleared; `in_flight()` is `None` then, since a begun flight with no effect in play is just as empty. |
 | `probe.rs` | Test only: `Misjudged`, an effect no tuning builds, with a push, a believed push, and an added error and delay, for the tests of the base and of the AI. |
@@ -166,6 +166,9 @@ The base adds the serve speed and applies the cap (`SpeedRule::launch`): bounds 
 | `fit_paddles_to_the_flight` | Effects | Sets both paddles to the default height times the flight's factor, only when the factor changed since it last wrote. One step after the return that started the flight. |
 | `clear_flights` | `OnEnter(Countdown)` | The ball is in no flight: no returns, no forces, factor one. So paddles are whole for every serve, and stay short through the point pause before it. |
 | `start_flight_on_serve` | Effects, `BallInPlay` | On `Serve`, starts the rally's first flight, after the ball feature launched the ball in Intent. |
+| `hold_the_sandbox_count` | Effects, before `start_flight_on_serve` | Copies the sandbox's held count to `ActiveEffects`, only when it changed, so every flight start passes through one place. |
+| `begin_the_match_untouched` | `OnEnter(InMatch)` | Sets the sandbox's touched mark to whether anything was forced for the match before it was entered. |
+| `release_the_sandbox_with_the_match` | `OnExit(InMatch)` | Releases whatever the sandbox forces: forcing does not outlive its match. |
 
 Later flights start in physics, at a paddle return:
 the collide system needs the new flight's speed in the middle of its own run, so it calls `start_flight` directly.
@@ -227,7 +230,7 @@ While a transition is pending, the request waits a frame.
 
 `Rally` (plan 7.4) counts paddle hits from a serve to the point that ends it, and keeps the most in any rally of the match.
 Entering `Countdown` starts a new rally: every serve follows a countdown, the heal's restart included; a pause and resume does not.
-Entering a match clears both. It is public for C1's meter and a HUD; records read the snapshot in `MatchEnded`.
+Entering a match clears both. Records read the snapshot in `MatchEnded`. The Chaos HUD's count is not this one: it shows the flight's returns (M2 spec 2.7.2).
 
 ## escalation
 

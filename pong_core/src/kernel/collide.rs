@@ -89,9 +89,10 @@ pub fn swept_circle_rect(
 
     // Entering after leaving means the ray passes beside the box. Leaving at
     // or before the start means the box is behind the sweep, or touched only
-    // where the sweep begins; `<=` also refuses the `-0.0` a start on the
-    // edge divides out to. A non-finite entry means no axis is moving: a
-    // stationary overlap is not an impact.
+    // where the sweep begins: a start on an edge, moving away, divides out
+    // to an exit of zero, `-0.0` from the low edge and `0.0` from the high
+    // one, and `<=` refuses both. A non-finite entry means no axis is
+    // moving: a stationary overlap is not an impact.
     if t_enter > t_exit || t_exit <= 0.0 || t_enter > 1.0 || !t_enter.is_finite() {
         return None;
     }
@@ -211,6 +212,22 @@ mod tests {
                 Vec2::new(68.0, 0.0),
                 unit_radius(),
                 Vec2::new(-1.0, 0.0),
+                paddle()
+            )
+            .is_none()
+        );
+    }
+
+    /// The same from the far face, where the exit divides out to `0.0`, not
+    /// `-0.0`: the left paddle's case, its face toward the centre at `+x`.
+    #[test]
+    fn ball_touching_the_far_face_and_moving_away_misses() {
+        // Expanded far face at x = 72: the ball's centre starts on it.
+        assert!(
+            swept_circle_rect(
+                Vec2::new(72.0, 0.0),
+                unit_radius(),
+                Vec2::new(1.0, 0.0),
                 paddle()
             )
             .is_none()

@@ -4,7 +4,7 @@ Started 2026-11-11. Branch `feat/chaos-shell`. Roles: Claude drives; the user re
 Deviations from [m2-chaos-pong.md](../specs/m2-chaos-pong.md) and [m2-plan.md](m2-plan.md) per plan rule P.6, each with where it was recorded.
 
 Built 2026-11-11 and 2026-11-12: all five steps, plan 3.1 to 3.5.
-Closed 2026-11-12: the user played a Chaos match with Shrink in `just run` and declared plan 3.6 done; the work is committed on the branch (`0d7a661`, `6948c34`, `af7ea0d`).
+Closed 2026-11-12: the user played a Chaos match with Shrink in `just run` and declared plan 3.6 done; the work is committed on the branch (`0d7a661`, `6948c34`, `af7ea0d` on `feat/chaos-shell`; the same three commits are `e2cd670`, `d4d9d1f`, `01b3584` on `main`).
 
 ## Deviations
 
@@ -88,7 +88,7 @@ a v1 profile's records migrated under Chaos; a v2 settings file migrated to Chao
 Done by the user on 2026-11-12, in two rounds.
 
 - Round one: the match behaved correctly on its own. The sandbox read as faulty: the overlay showed only the forced values, not when they land. The join cue was first reported missing; the user had expected it at each shrink, and confirmed it plays at the join.
-- Between the rounds: the overlay's waiting-or-in-force lines and named keys (`af7ea0d`).
+- Between the rounds: the overlay's waiting-or-in-force lines and named keys (`af7ea0d`; `01b3584` on `main`).
 - Round two: the user followed the five-step sandbox script and confirmed it works.
 - No change to Shrink's view was asked for: the eased height of the spec 2.6.1 deviation was not built.
 

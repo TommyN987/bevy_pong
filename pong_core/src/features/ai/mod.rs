@@ -889,6 +889,62 @@ mod tests {
         );
     }
 
+    /// The effects' flaw is added to the star's own handicap, and replaces
+    /// none of it: a star's spread of 4 and an effect's of 6 aim up to 10
+    /// off, and a star's delay of two steps and an effect's of two and a
+    /// half hold the paddle for four and a half.
+    #[test]
+    fn an_effects_flaw_adds_to_the_stars_own_error_and_delay() {
+        let (own_error, added_error) = (4.0, 6.0);
+        let tuning = three_stars_with(2.0 / 60.0, own_error);
+        let mut effects = ActiveEffects::default();
+        effects.add(Box::new(Misjudged::costing(
+            added_error,
+            Duration::from_secs_f32(2.5 / 60.0),
+        )));
+        let flight = served_under(&effects);
+        let mut random = Random::seeded(7);
+        let mut ai = ai(Side::Right);
+        let paddle = paddle_at(Side::Right, 20.0, &tuning);
+        // Level through the centre: the crossing is at y = 0, far below the
+        // paddle, so every aim presses Down once the paddle may move.
+        let seen = Sighting {
+            ball: ball(Vec2::ZERO, Vec2::new(60.0, 0.0)),
+            flight: Some(&flight),
+            effects: &effects,
+        };
+        let away = ball(Vec2::ZERO, Vec2::new(-60.0, 0.0));
+
+        let after_turn: Vec<PaddleIntent> = (0..6)
+            .map(|_| ai.steer(seen, paddle, &tuning, step(), &mut random))
+            .collect();
+        assert_eq!(
+            after_turn,
+            vec![
+                PaddleIntent::Still,
+                PaddleIntent::Still,
+                PaddleIntent::Still,
+                PaddleIntent::Still,
+                PaddleIntent::Still,
+                PaddleIntent::Down,
+            ],
+            "four and a half steps of delay: neither term alone"
+        );
+
+        let mut widest: f32 = 0.0;
+        for _ in 0..60 {
+            ai.steer(flying(away), paddle, &tuning, step(), &mut random);
+            ai.steer(seen, paddle, &tuning, step(), &mut random);
+            let error = ai.aim().expect("an approach aims").error;
+            assert!(error.abs() <= own_error + added_error, "{error}");
+            widest = widest.max(error.abs());
+        }
+        assert!(
+            widest > own_error.max(added_error),
+            "no aim in sixty was off by more than either term alone: {widest}"
+        );
+    }
+
     /// Where a perfect AI on the right aims at a ball from the centre spot,
     /// level, pushed up by 20, when it believes the push to be `believed_push`.
     fn aim_under_a_push_believed_as(believed_push: Option<f32>) -> f32 {
@@ -959,6 +1015,13 @@ mod tests {
     /// them, and the serve's flight begins a phase later. Whichever runs
     /// first, the AI sees no approach on the serve's step and plans on the
     /// next, under the serve's flight.
+    ///
+    /// The test cannot see which of the two ran first: nothing in the app
+    /// shows it once the AI behaves alike in both orders. That both orders
+    /// occur among these twelve seeds was seen while the AI still differed
+    /// (M2 phase 4 report: eight of the twelve ran the AI after the serve).
+    /// A change to the schedule's shuffle could leave one order untested
+    /// and this test green.
     #[test]
     fn whatever_the_system_order_the_ai_plans_a_served_ball_one_step_on_under_its_flight() {
         for seed in 0..12 {
@@ -1037,7 +1100,10 @@ mod tests {
     /// How a launch at the AI ended.
     #[derive(Debug, PartialEq)]
     enum Outcome {
+        /// The AI's paddle turned the ball back.
         Returned,
+        /// The ball went past: untouched, or clipped by the paddle's end,
+        /// which touches it and lets it fly on to the goal.
         Missed,
     }
 
@@ -1112,10 +1178,12 @@ mod tests {
         // takes 3.65 s to reach the AI.
         for _ in 0..300 {
             frame(app);
-            if recorded::<BallHitPaddle>(app)
+            let touched = recorded::<BallHitPaddle>(app)
                 .iter()
-                .any(|hit| hit.side == Side::Right)
-            {
+                .any(|hit| hit.side == Side::Right);
+            // A touch that leaves the ball flying on toward the goal is an
+            // end clip, not a return: wait for the point.
+            if touched && ball_state(app).1.x < 0.0 {
                 return Outcome::Returned;
             }
             if !recorded::<PointScored>(app).is_empty() {

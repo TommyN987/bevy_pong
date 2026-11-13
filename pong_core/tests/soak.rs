@@ -3,11 +3,13 @@
 //! The nextest slow-timeout of thirty seconds (`.config/nextest.toml`) fails
 //! a slow run.
 //!
-//! Classic runs M1's soak. Chaos runs every subset of the effects its bag
-//! ships, up to the cap of three, each forced beside the mode's always-on
-//! effects with every dial full. One test per subset size, and each test
-//! divides the same hundred thousand steps among its subsets, so its running
-//! time does not grow with the roster.
+//! Classic runs M1's soak. Chaos runs it twice over: once as the game
+//! schedules it, effects joining and rotating with the score and every dial
+//! riding the rally; and for every subset of the effects its bag ships, up
+//! to the cap of three, each forced beside the mode's always-on effects with
+//! every dial full. One test per subset size, and each test divides the same
+//! hundred thousand steps among its subsets, so its running time does not
+//! grow with the roster.
 //!
 //! Both seats mix random intents with tracking aimed by the kernel's crossing
 //! prediction under the ball's own flight, off by a seeded error per
@@ -56,6 +58,10 @@ const MAX_FRAMES_PER_LIVE_STEP: u32 = 4;
 /// Paddle hits the seeded Classic run must produce at least, so a change that
 /// quietly shortens every rally fails here. The first green run made 1,118.
 const MIN_PADDLE_HITS: usize = 1_000;
+
+/// The same floor for Chaos played as scheduled. The first green run made
+/// 819; the floor is two thirds of that.
+const MIN_CHAOS_PADDLE_HITS: usize = 550;
 
 /// The return count held to put every dial at its full setting, whatever
 /// return its ramp is full at: the highest there is.
@@ -162,15 +168,16 @@ fn paddle(app: &mut App, side: Side) -> Paddle {
         .expect("one paddle per side in a match")
 }
 
-/// The ball's velocity along x, and where the ball will cross the face of
-/// each of `paddles`, predicted under the flight the ball is in: the same
-/// flight the physics steps it under, fields and all.
+/// The ball's velocity along x; where the ball will cross the face of each
+/// of `paddles`, predicted under the flight the ball is in, the same flight
+/// the physics steps it under, fields and all; and the return count that
+/// flight began at.
 fn sighted(
     app: &mut App,
     tuning: &Tuning,
     paddles: [Paddle; 2],
     dt: f32,
-) -> (f32, [Option<f32>; 2]) {
+) -> (f32, [Option<f32>; 2], u16) {
     let radius = tuning.ball().radius();
     let mut balls = app
         .world_mut()
@@ -188,7 +195,7 @@ fn sighted(
         };
         crossing_y(tuning.arena(), radius, ball, flight.flight(), face_x, dt)
     });
-    (ball.velocity.x, crossings)
+    (ball.velocity.x, crossings, flight.flight().returns())
 }
 
 /// One soak run to be made.
@@ -211,8 +218,11 @@ struct SoakRun {
     matches_ended: u32,
     paddle_hits: usize,
     top_speed: f32,
-    /// The effects in play when the run stopped.
-    in_play: Vec<EffectId>,
+    /// Every set of effects that was in play at some frame, in the order
+    /// first seen.
+    sets_in_play: Vec<Vec<EffectId>>,
+    /// The most returns any flight began at.
+    top_returns: u16,
 }
 
 impl Soak {
@@ -229,13 +239,8 @@ impl Soak {
         );
         record::<BallHitPaddle>(&mut app);
         boot(&mut app);
-        if let Some(effects) = &self.forced_at_full_dial {
-            let mut sandbox = app.world_mut().resource_mut::<Sandbox>();
-            sandbox.force_effects(effects);
-            sandbox.hold_returns(Some(EVERY_DIAL_FULL));
-        }
         let config = two_humans_to(5, self.mode);
-        enter_match(&mut app, config);
+        self.enter_match(&mut app, config);
 
         assert!(
             app.is_plugin_added::<SanityPlugin>(),
@@ -255,7 +260,8 @@ impl Soak {
             matches_ended: 0,
             paddle_hits: 0,
             top_speed: 0.0,
-            in_play: Vec::new(),
+            sets_in_play: Vec::new(),
+            top_returns: 0,
         };
 
         while app.world().resource::<LiveSteps>().0 < self.live_steps {
@@ -268,10 +274,15 @@ impl Soak {
             if match_state(&app) == MatchState::MatchOver {
                 run.matches_ended += 1;
                 leave_match(&mut app);
-                enter_match(&mut app, config);
+                self.enter_match(&mut app, config);
             }
             let paddles = [paddle(&mut app, Side::Left), paddle(&mut app, Side::Right)];
-            let (ball_velocity_x, crossings) = sighted(&mut app, &tuning, paddles, dt);
+            let (ball_velocity_x, crossings, returns) = sighted(&mut app, &tuning, paddles, dt);
+            run.top_returns = run.top_returns.max(returns);
+            let in_play = app.world().resource::<ActiveEffects>().ids();
+            if !run.sets_in_play.iter().any(|seen| seen == in_play) {
+                run.sets_in_play.push(in_play.to_vec());
+            }
             for ((player, paddle), crossing) in players.iter_mut().zip(paddles).zip(crossings) {
                 let intent = player.intent(&mut random, paddle, ball_velocity_x, crossing);
                 report_intent(&mut app, player.seat, intent);
@@ -285,8 +296,18 @@ impl Soak {
         }
 
         assert_eq!(app_state(&app), AppState::InMatch);
-        run.in_play = app.world().resource::<ActiveEffects>().ids().to_vec();
         run
+    }
+
+    /// Enters a match, forcing first what this soak forces: leaving a match
+    /// releases the sandbox, so every match is forced anew.
+    fn enter_match(&self, app: &mut App, config: MatchConfig) {
+        if let Some(effects) = &self.forced_at_full_dial {
+            let mut sandbox = app.world_mut().resource_mut::<Sandbox>();
+            sandbox.force_effects(effects);
+            sandbox.hold_returns(Some(EVERY_DIAL_FULL));
+        }
+        enter_match(app, config);
     }
 }
 
@@ -384,9 +405,11 @@ fn every_chaos_subset_soaks_without_a_fault(size: usize) {
             "chaos soak, {forced:?} at full dial: {live_steps} live steps in {} frames, {} matches, {} paddle hits, top speed {}",
             run.frames, run.matches_ended, run.paddle_hits, run.top_speed
         );
-        // The forcing took hold: these effects were in play, and a return
-        // left at the full dial's speed.
-        assert_eq!(run.in_play, forced);
+        // The forcing held through every match: no other set was ever in
+        // play, flights began at the held count, and a return left at the
+        // full dial's speed.
+        assert_eq!(run.sets_in_play, std::slice::from_ref(&forced));
+        assert_eq!(run.top_returns, EVERY_DIAL_FULL);
         assert!(
             run.top_speed >= cap - 1e-3,
             "{forced:?}: no return reached the speed cap {cap}; top speed {}",
@@ -398,6 +421,55 @@ fn every_chaos_subset_soaks_without_a_fault(size: usize) {
             run.frames
         );
     }
+}
+
+/// Chaos as the game schedules it (M2 spec 2.5.4): nothing forced, so the
+/// bag is drawn, effects join with the leader's progress and rotate with the
+/// points, and every dial rides each rally's own return count.
+#[test]
+fn chaos_as_scheduled_soaks_a_hundred_thousand_live_steps_without_a_fault() {
+    let run = Soak {
+        app_seed: 152,
+        player_seed: 42,
+        mode: chaos(),
+        forced_at_full_dial: None,
+        live_steps: LIVE_STEPS,
+    }
+    .run();
+    println!(
+        "chaos soak, as scheduled: {LIVE_STEPS} live steps in {} frames, {} matches, {} paddle hits, top speed {}, most returns {}, sets in play {:?}",
+        run.frames,
+        run.matches_ended,
+        run.paddle_hits,
+        run.top_speed,
+        run.top_returns,
+        run.sets_in_play
+    );
+    let tuning = Tuning::from_ron(EMBEDDED_RON).expect("the embedded tuning is valid");
+    let mode = tuning.mode(chaos());
+    assert!(run.matches_ended >= 1, "no match ended");
+    assert!(
+        run.paddle_hits >= MIN_CHAOS_PADDLE_HITS,
+        "only {} paddle hits in {} matches",
+        run.paddle_hits,
+        run.matches_ended
+    );
+    // The schedule ran: every effect of the bag was in play at some time,
+    // beside the always-on ones.
+    for effect in mode.bag() {
+        assert!(
+            run.sets_in_play.iter().any(|set| set.contains(effect)),
+            "{effect:?} was never in play: {:?}",
+            run.sets_in_play
+        );
+    }
+    // The dials rode the rally: some flight began past the return at which
+    // the embedded Shrink is full.
+    assert!(
+        run.top_returns >= 15,
+        "no rally reached fifteen returns: {}",
+        run.top_returns
+    );
 }
 
 #[test]

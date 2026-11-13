@@ -1,7 +1,7 @@
 # M1 phase 11 report: Playtest and close
 
 Started 2026-11-09. Branch `docs/playtest-close`. Roles: Claude drives; the user reviews, signs the review items, runs the playtests, and commits.
-Deviations from [m1-basic-pong.md](m1-basic-pong.md) and [m1-plan.md](m1-plan.md) per plan rule P.6, each with where it was recorded.
+Deviations from [m1-basic-pong.md](../specs/m1-basic-pong.md) and [m1-plan.md](m1-plan.md) per plan rule P.6, each with where it was recorded.
 
 ## Deviations
 

@@ -1,6 +1,6 @@
 # M1 Implementation Plan
 
-Decided 2026-10-30. Sequences [m0-spike.md](m0-spike.md) and [m1-basic-pong.md](m1-basic-pong.md) into phases.
+Decided 2026-10-30. Sequences [m0-spike.md](../specs/m0-spike.md) and [m1-basic-pong.md](../specs/m1-basic-pong.md) into phases.
 Spec item numbers (1.x.y) refer to the M1 spec. Each phase is one branch and one PR.
 
 ## Ordering rationale

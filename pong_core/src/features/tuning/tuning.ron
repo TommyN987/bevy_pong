@@ -63,9 +63,12 @@
 
     // Stars in the menu: one, two, three. Delay is how long the AI waits after
     // the ball turns toward it; error is the spread added to its predicted target.
-    // The delay is what makes a star beatable by play: under about 0.18 the
-    // paddle reaches every ball at the speed cap, however it is placed. The
-    // error only rolls dice, and only once it exceeds the paddle's reach of 8.
+    // The delay is what makes a star beatable by play: with the numbers above,
+    // a delay under about 0.18 lets the paddle reach every ball at the speed
+    // cap, however it is placed. The error only rolls dice, and only once it
+    // exceeds the paddle's reach: half the paddle's height plus the ball's
+    // radius, so less under Shrink than with a whole paddle. Both thresholds
+    // move with the paddle and ball numbers; `just ai-report` measures them.
     ai: (
         one_star: (reaction_delay_seconds: 0.35, prediction_error: 12.0),
         two_stars: (reaction_delay_seconds: 0.29, prediction_error: 7.0),

@@ -3,7 +3,7 @@ name: milestone-close
 description: Close a milestone of this project against its spec's close section and the plan's last phase - write the ADRs the spec requires, land every deviation still sitting in a phase report as a spec amendment (plan rule P.6), audit docs against code and each other, fill the close checklist with evidence, prepare the review items the user signs, log the playtest, and set docs/specs/CURRENT. Use whenever the user says "milestone close", "close M2", "wrap up C1", "last phase of the plan", "close checklist", or asks whether a milestone is done, even if they name only one of these steps.
 ---
 
-Close the milestone `docs/specs/CURRENT` names, the way M1 was closed ([m1-phase11-report.md](../../../docs/specs/m1-phase11-report.md) is the worked example; read it first).
+Close the milestone `docs/specs/CURRENT` names, the way M1 was closed ([m1-phase11-report.md](../../../docs/plans/m1-phase11-report.md) is the worked example; read it first).
 
 ## Roles
 

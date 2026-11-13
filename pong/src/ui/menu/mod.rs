@@ -7,7 +7,8 @@
 //! take only its keys; Escape always backs out.
 //!
 //! The flow: `Main` → `Mode` → `Opponent` → `PointsToWin` → `PickProfile` per
-//! human seat → the match (M2 spec 2.8.1 put the mode first). Two friends pick left seat first, then right. Against the
+//! human seat → the match (M2 spec 2.8.1 put the mode first). Two friends
+//! pick left seat first, then right. Against the
 //! computer, the seat that confirmed the computer plays on its own side and
 //! makes every later pick. New on a profile list leads to `NameProfile`, then
 //! `PickColor`, and back to the list with the new profile under the cursor.
@@ -327,8 +328,9 @@ impl Opponent {
     }
 }
 
-/// The most effects at once the mode screen offers: Chaos ● to Chaos ●●●
-/// (M2 spec 2.8.1), one row per count the schedule's thresholds can reach.
+/// The most effects at once the mode screen offers: Chaos ● to Chaos ●●●,
+/// the three rows M2 spec 2.8.1 fixes. Not read from the schedule's
+/// thresholds in tuning: a cap the schedule cannot reach never binds.
 const MAX_CHAOS_CAP: u8 = 3;
 
 /// The picks so far. Cleared when Play is picked.

@@ -14,7 +14,7 @@ use super::{Cue, SoundBank};
 const HZ: NonZero<u16> = NonZero::new(44_100).expect("a rate above zero");
 /// The loudest a sample gets: half of full scale, leaving room for sounds
 /// that overlap.
-pub const PEAK: f32 = 0.5;
+pub(crate) const PEAK: f32 = 0.5;
 /// How long a note takes to rise from silence, in seconds; a sound that
 /// starts at full height clicks.
 const FADE_IN: f32 = 0.005;
@@ -23,7 +23,7 @@ const FADE_IN: f32 = 0.005;
 const POINT_SECONDS: f32 = 0.35;
 
 /// A plain sine.
-pub const PLAIN: &[f32] = &[1.0];
+pub(crate) const PLAIN: &[f32] = &[1.0];
 /// A sine with its next three overtones, fading: brighter, brass-like.
 pub const BRASS: &[f32] = &[1.0, 0.5, 0.33, 0.25];
 
@@ -48,7 +48,7 @@ pub const fn tone(hz: &'static [f32], seconds: f32) -> Note {
 
 /// Silence for `seconds`.
 #[must_use]
-pub const fn rest(seconds: f32) -> Note {
+pub(crate) const fn rest(seconds: f32) -> Note {
     tone(&[], seconds)
 }
 

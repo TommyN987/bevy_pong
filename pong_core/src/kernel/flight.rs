@@ -100,8 +100,11 @@ pub struct Contribution {
 /// The composed state of one flight.
 ///
 /// Invariant: nothing but [`tick`](Self::tick) changes a flight after
-/// [`start`](Self::start) built it. Returns and steps stop at `u16::MAX`
-/// rather than wrap; both are `u16` because every `u16` is exact in `f32`.
+/// [`start`](Self::start) built it. [`believed_as`](Self::believed_as)
+/// builds the one other kind: a belief about a flight, with that flight's
+/// start and clock, made to be predicted under and never to be flown.
+/// Returns and steps stop at `u16::MAX` rather than wrap; both are `u16`
+/// because every `u16` is exact in `f32`.
 #[derive(Debug)]
 pub struct Flight {
     began_at: FlightStart,
