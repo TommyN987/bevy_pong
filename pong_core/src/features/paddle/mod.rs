@@ -179,10 +179,7 @@ impl Paddle {
     /// The AI aims its prediction at this line.
     #[must_use]
     pub fn contact_x(self, tuning: &Tuning) -> f32 {
-        let shape = tuning.paddle();
-        tuning.arena().goal_x(self.side)
-            - self.side.sign()
-                * (shape.inset() + shape.thickness() + tuning.ball().radius().value())
+        self.side.sign() * tuning.crossing_width() / 2.0
     }
 }
 
@@ -409,7 +406,9 @@ mod tests {
         let cramped = EMBEDDED_RON
             .replace("height: 90.0", "height: 12.0")
             .replace("height_max: 30.0", "height_max: 10.0")
-            .replace("height_default: 14.0", "height_default: 9.0");
+            .replace("height_default: 14.0", "height_default: 9.0")
+            // Wind's drift must stay under half the playable height, now 5.
+            .replace("max_drift: 24.0", "max_drift: 4.0");
         app.insert_resource(Tuning::from_ron(&cramped).expect("a cramped arena is valid"));
         report_intent(&mut app, Seat::Left, PaddleIntent::Up);
         frame(&mut app);

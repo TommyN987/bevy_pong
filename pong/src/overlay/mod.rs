@@ -521,7 +521,7 @@ mod tests {
              returns 7\n\
              AI left: centre\n\
              AI right: target 12.3, error +4.1\n\
-             sandbox keys: 1 Speed, 2 Shrink, [ ] returns, 0 release\n\
+             sandbox keys: 1 Speed, 2 Shrink, 3 Wind, [ ] returns, 0 release\n\
              InMatch / Playing"
         );
         let none = Readings {

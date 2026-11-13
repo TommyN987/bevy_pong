@@ -25,9 +25,10 @@ One embedded RON file of every number, validated once, so no system re-checks a 
 |---|---|---|
 | Raw shape | `file.rs` | Plain numbers. `#[serde(deny_unknown_fields)]`: a misspelt key is an error, not a silent default. |
 | Field checks | `Tuning::from_ron` | Each section through kernel constructors; a refusal names its path, e.g. `ball.radius`. |
-| Cross-field checks | `check_everything_fits_the_arena` | Paddle not taller than the arena; ball fits; paddles short of the centre line; speed cap under one playable height per step. Bindings reject duplicates and `Escape`. |
+| Cross-field checks | `check_everything_fits_the_arena` | Paddle not taller than the arena; ball fits; paddles short of the centre line; speed cap under one playable height per step; Wind's `max_drift` under half the playable height. Bindings reject duplicates and `Escape`. |
 
 `Tuning` has private fields and one constructor: holding one means it passed.
+`crossing_width()` is the distance between the two contact lines, the one formula `Paddle::contact_x` and Wind's drift both read.
 
 Loading goes through Bevy's asset system:
 `embedded_asset!` compiles `tuning.ron` into the binary under the `embedded://` source;
@@ -128,6 +129,12 @@ The flaw has two forms. The first adds to the star's own handicap: aim error and
 The second is a belief: the `Contribution` the AI thinks the effect makes, in place of the true one.
 The AI predicts under the flight composed from the beliefs, and the ball flies under the true one.
 An effect whose flaw is inherent, Speed's faster ball or Shrink's shorter paddle, adds nothing and is believed as it is.
+Wind's is the second form alone: the AI under-leads by the share of the drift it does not believe in.
+
+A rally has one seed (`RallySeed`, kernel), drawn from `Random`'s own stream of rally seeds before the rally's countdown.
+An effect that chooses something once per rally derives it from the seed and draws nothing itself:
+an effect value holds no state of its own, since the effects in play are built again at every countdown and on a tuning reload.
+The seed is drawn on entering a match and on the transition from play to a point; a pause, a re-entered countdown, and a fault restart draw none.
 
 | Piece | Shape and reason |
 |---|---|
@@ -135,13 +142,14 @@ An effect whose flaw is inherent, Speed's faster ball or Shrink's shorter paddle
 | `Flaw` | A struct without `Default`: `added_error`, `added_delay`, and `believed`, a `Contribution`. One effect's share of an AI's misjudgement of one flight. |
 | `FlightFlaw` | The flaws of the effects in play, composed: errors and delays by sum, beliefs into a `Flight` with the true flight's start and clock (`Flight::believed_as`). |
 | `Contribution` (kernel) | A struct without `Default`. Adding a channel adds a field, and every effect stops compiling until it states its stance. |
-| `build` | The crate's one match on `EffectId`: the registration. A new variant does not compile until it is built there. |
+| `build` | The crate's one match on `EffectId`: the registration. A new variant does not compile until it is built there. An effect is built for one rally, from tuning, the mode, and the rally's seed. |
 | `Sandbox` | Port resource (M2 spec 2.9.1): the shell's overlay writes it. `force_effects(effects)` forces the whole set in play, read by escalation at the next countdown, and `toggle(effect, in_play)` changes one effect of it; `hold_returns` holds the count every flight starts at, copied into `ActiveEffects` each step; `release` forces nothing. Any forcing marks the match touched, which persistence reads. Leaving a match releases the sandbox, so forcing does not carry into the next one; entering a match clears the mark unless something was forced for it beforehand, as a test harness does. |
-| `ActiveEffects` | Resource: the effects in play, set by escalation through `set(ids, tuning, mode)`. `start_flight(start)` asks each once, at the sandbox's held count if one is held. Every channel composes commutatively, so order does not matter. `flaw_over(flight, difficulty)` asks each for its flaw over the start the flight began at; the AI calls it when it plans an approach, so the per-star numbers cost nothing in a match without an AI. |
+| `ActiveEffects` | Resource: the effects in play, set by escalation through `set(ids, tuning, mode)`. `start_flight(start)` asks each once, at the sandbox's held count if one is held. Every channel composes commutatively, so order does not matter. `flaw_over(flight, difficulty)` asks each for its flaw over the start the flight began at; the AI calls it when it plans an approach, so the per-star numbers cost nothing in a match without an AI. It also holds the rally's `RallySeed`, and every effect in play is built for that rally: `rally_seed()` is what an effect that chooses once per rally chose from, so the shell can show the choice before it acts. |
 | `BallFlight` | Component, required by `Ball`: the ball's flight. Replaced only at a flight start (`begin`), cleared only between rallies (`clear`). `flight()` is the empty flight while cleared; `in_flight()` is `None` then, since a begun flight with no effect in play is just as empty. |
 | `probe.rs` | Test only: `Misjudged`, an effect no tuning builds, with a push, a believed push, and an added error and delay, for the tests of the base and of the AI. |
 | `speed.rs` | Speed: a launch-speed gain per return of the rally, at the per-hit increase of the mode played. One module per effect. |
 | `shrink.rs` | Shrink: a factor on both paddles' height, riding a `Ramp` over the rally's returns from one to `height_min / height_default`. |
+| `wind.rs` | Wind: a `Drift` field (kernel) whose drift over one crossing rides a `Ramp` from nothing to `max_drift`, up or down as `WindDirection::of` reads the rally's seed. Its flaw is the second form: each star believes its tuned share of the true drift. In no mode's bag until its shell half is built (M2 plan 5.2). |
 
 Channels, each composing so that effects cannot see each other:
 
@@ -149,7 +157,7 @@ Channels, each composing so that effects cannot see each other:
 |---|---|---|
 | Launch speed gain | Sum | `launch_speed` adds the serve speed and applies `ball.speed_cap`. |
 | Paddle height factor | Product | `Paddle::set_height` clamps to the tuned bounds. One factor for both paddles. |
-| Lateral field | Sum | None yet; no effect contributes one (M2 plan phase 5). |
+| Lateral field | Sum | The wall step cuts vertical speed to the playable height per step, what its one fold undoes (`advance_between_walls`, M2 spec 2.2.2). Wind contributes the first field. |
 
 Two counts that look alike and are not:
 the flight counts returns, face hits that turn the ball back and start a flight;
@@ -169,6 +177,7 @@ The base adds the serve speed and applies the cap (`SpeedRule::launch`): bounds 
 | `hold_the_sandbox_count` | Effects, before `start_flight_on_serve` | Copies the sandbox's held count to `ActiveEffects`, only when it changed, so every flight start passes through one place. |
 | `begin_the_match_untouched` | `OnEnter(InMatch)` | Sets the sandbox's touched mark to whether anything was forced for the match before it was entered. |
 | `release_the_sandbox_with_the_match` | `OnExit(InMatch)` | Releases whatever the sandbox forces: forcing does not outlive its match. |
+| `draw_the_next_rallys_seed` | `OnEnter(InMatch)`; `OnTransition` from `Playing` to `PointScored` | Draws the seed of the rally about to begin and builds the effects in play for it. |
 
 Later flights start in physics, at a paddle return:
 the collide system needs the new flight's speed in the middle of its own run, so it calls `start_flight` directly.

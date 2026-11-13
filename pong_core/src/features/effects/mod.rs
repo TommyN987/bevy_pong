@@ -20,18 +20,20 @@ use bevy::ecs::query::With;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::{Local, Query, Res, ResMut};
-use bevy::state::state::{OnEnter, OnExit};
+use bevy::state::state::{OnEnter, OnExit, OnTransition};
 
-use crate::domain::{Difficulty, EffectId, Mode, Serve};
+use crate::domain::{Difficulty, EffectId, Mode, Random, Serve};
 use crate::features::ball::Ball;
 use crate::features::paddle::Paddle;
 use crate::features::tuning::Tuning;
 use crate::flow::phases::{BallInPlay, FixedStepPhase};
 use crate::flow::states::{AppState, MatchState};
 use crate::kernel::flight::{Contribution, Flight, FlightStart};
+use crate::kernel::random::RallySeed;
 
 pub mod shrink;
 pub mod speed;
+pub mod wind;
 
 /// One effect's core half (ADR 0011).
 ///
@@ -94,10 +96,14 @@ pub struct FlightFlaw {
 
 /// The core's registration of every effect: the one place in this crate that
 /// matches on [`EffectId`]. A new variant does not compile until it is built here.
-fn build(id: EffectId, tuning: &Tuning, mode: Mode) -> Box<dyn Effect> {
+///
+/// An effect is built for one rally: `rally` is that rally's seed, handed to
+/// the effects that choose something once per rally.
+fn build(id: EffectId, tuning: &Tuning, mode: Mode, rally: RallySeed) -> Box<dyn Effect> {
     match id {
         EffectId::Speed => Box::new(speed::Speed::new(tuning.mode(mode).speed_rule())),
         EffectId::Shrink => Box::new(shrink::Shrink::new(tuning)),
+        EffectId::Wind => Box::new(wind::Wind::new(tuning, rally)),
     }
 }
 
@@ -116,6 +122,8 @@ fn build(id: EffectId, tuning: &Tuning, mode: Mode) -> Box<dyn Effect> {
 /// - The [`Sandbox`] port starts empty; its held count reaches every flight
 ///   start, leaving a match releases it, and entering a match clears its
 ///   touched mark unless something was forced for that match beforehand.
+/// - A rally's [`RallySeed`] is drawn before its countdown: on entering a
+///   match, and at each point for the rally after it.
 pub struct EffectsPlugin;
 
 impl Plugin for EffectsPlugin {
@@ -123,7 +131,17 @@ impl Plugin for EffectsPlugin {
         app.init_resource::<ActiveEffects>()
             .init_resource::<Sandbox>()
             .register_required_components::<Ball, BallFlight>()
-            .add_systems(OnEnter(AppState::InMatch), begin_the_match_untouched)
+            .add_systems(
+                OnEnter(AppState::InMatch),
+                (begin_the_match_untouched, draw_the_next_rallys_seed),
+            )
+            .add_systems(
+                OnTransition {
+                    exited: MatchState::Playing,
+                    entered: MatchState::PointScored,
+                },
+                draw_the_next_rallys_seed,
+            )
             .add_systems(
                 OnExit(AppState::InMatch),
                 release_the_sandbox_with_the_match,
@@ -149,7 +167,7 @@ impl Plugin for EffectsPlugin {
 /// commutatively.
 ///
 /// Invariant: `effects` holds exactly the effects `ids` names, each built
-/// from the tuning last seen, for `mode`.
+/// from the tuning last seen, for `mode` and for the rally of `rally_seed`.
 #[derive(Resource)]
 pub struct ActiveEffects {
     mode: Mode,
@@ -158,6 +176,8 @@ pub struct ActiveEffects {
     /// The [`Sandbox`]'s held count, copied here each step so that every
     /// flight start, the serve's and physics', passes through one place.
     held_returns: Option<u16>,
+    /// The seed of the rally in play, or about to be.
+    rally_seed: RallySeed,
 }
 
 /// No effects in play: what holds outside a match.
@@ -168,6 +188,7 @@ impl Default for ActiveEffects {
             ids: Vec::new(),
             effects: Vec::new(),
             held_returns: None,
+            rally_seed: RallySeed::default(),
         }
     }
 }
@@ -178,7 +199,24 @@ impl ActiveEffects {
     pub fn set(&mut self, ids: &[EffectId], tuning: &Tuning, mode: Mode) {
         self.mode = mode;
         self.ids = ids.to_vec();
-        self.effects = ids.iter().map(|id| build(*id, tuning, mode)).collect();
+        self.effects = ids
+            .iter()
+            .map(|id| build(*id, tuning, mode, self.rally_seed))
+            .collect();
+    }
+
+    /// Begins the rally of `seed`: the effects in play are built again for
+    /// it, from `tuning`, so what blows is what the seed shows from this
+    /// moment on.
+    fn begin_rally(&mut self, seed: RallySeed, tuning: &Tuning) {
+        self.rally_seed = seed;
+        self.rebuild(tuning);
+    }
+
+    /// Builds the effects in play again, from `tuning`.
+    fn rebuild(&mut self, tuning: &Tuning) {
+        let ids = std::mem::take(&mut self.ids);
+        self.set(&ids, tuning, self.mode);
     }
 
     /// Puts one more effect in play, as given: a test's probe, which no
@@ -193,6 +231,13 @@ impl ActiveEffects {
     #[must_use]
     pub fn ids(&self) -> &[EffectId] {
         &self.ids
+    }
+
+    /// The seed of the rally in play, or of the one about to begin: what an
+    /// effect that chooses once per rally chose from.
+    #[must_use]
+    pub const fn rally_seed(&self) -> RallySeed {
+        self.rally_seed
     }
 
     /// The flight that begins at `start`: every effect in play asked once
@@ -385,6 +430,25 @@ fn begin_the_match_untouched(mut sandbox: ResMut<Sandbox>) {
     }
 }
 
+/// Draws the seed of the rally about to begin, before its countdown shows
+/// what an effect chose from it.
+///
+/// Runs on entering a match, for its first rally, and on the transition
+/// from play to a point, for the rally after it. A pause resumes into the
+/// state it left without that transition, and a fault restarts the rally
+/// with no point, so neither draws.
+///
+/// Postcondition: the seed is constant from here until the next point is
+/// scored or the next match is entered, and the effects in play are built
+/// for it.
+fn draw_the_next_rallys_seed(
+    mut random: ResMut<Random>,
+    tuning: Res<Tuning>,
+    mut active: ResMut<ActiveEffects>,
+) {
+    active.begin_rally(random.next_rally_seed(), &tuning);
+}
+
 /// Forcing ends with its match: the next match plays, and records, as the
 /// game decides, with no key pressed to make it so.
 ///
@@ -413,9 +477,7 @@ fn rebuild_effects_from_changed_tuning(mut active: ResMut<ActiveEffects>, tuning
     if !tuning.is_changed() {
         return;
     }
-    let ids = active.ids().to_vec();
-    let mode = active.mode;
-    active.set(&ids, &tuning, mode);
+    active.rebuild(&tuning);
 }
 
 /// Sets both paddles to the default height times the flight's factor
@@ -491,12 +553,16 @@ mod tests {
     use bevy::state::state::NextState;
 
     use super::probe::Misjudged;
+    use super::wind::WindDirection;
     use super::{ActiveEffects, BallFlight, Effect, Flaw, Sandbox};
+    use crate::app::error_policy::{ErrorPolicy, ErrorPolicyPlugin};
     use crate::domain::{
-        BallHitPaddle, Controller, Difficulty, EffectId, MatchConfig, Mode, Seat, SeatPlayers,
+        BallHitPaddle, Controller, Difficulty, EffectId, MatchConfig, Mode, Random, Seat,
+        SeatPlayers, SimFault,
     };
     use crate::features::ball::{Ball, Position, Velocity};
     use crate::features::paddle::Paddle;
+    use crate::features::rules::MatchControl;
     use crate::features::seats::PaddleIntent;
     use crate::features::tuning::{EMBEDDED_RON, Tuning};
     use crate::flow::states::MatchState;
@@ -504,10 +570,12 @@ mod tests {
     use crate::kernel::geometry::Side;
     use crate::kernel::integrate::Motion;
     use crate::kernel::predict::crossing_y;
+    use crate::kernel::random::RallySeed;
     use crate::kernel::test_support::assert_near;
     use crate::testing::{
-        ball_state, boot, enter_match, fixed_timestep, frame, headless_app, leave_match,
-        match_state, place_ball, record, report_intent, run_until, start_match, take_recorded,
+        ball_state, boot, enter_match, fixed_timestep, frame, headless_app, headless_app_with,
+        leave_match, match_state, place_ball, record, report_intent, run_until, start_match,
+        take_recorded,
     };
 
     fn two_humans() -> MatchConfig {
@@ -526,6 +594,109 @@ mod tests {
         boot(&mut app);
         start_match(&mut app, two_humans());
         app
+    }
+
+    fn until(app: &mut App, state: MatchState) {
+        run_until(
+            app,
+            |app| match_state(app) == state,
+            1_000,
+            "the state never came",
+        );
+    }
+
+    /// Out over the right goal line, above the paddle: a point for the left.
+    fn left_scores(app: &mut App) {
+        until(app, MatchState::Playing);
+        place_ball(app, Vec2::new(70.0, 30.0), Vec2::new(250.0, 0.0));
+        until(app, MatchState::PointScored);
+    }
+
+    fn rally_seed(app: &App) -> RallySeed {
+        app.world().resource::<ActiveEffects>().rally_seed()
+    }
+
+    /// The rally seeds an app seeded with 1 draws, in order.
+    fn seeds_of_app_seed_one() -> [RallySeed; 3] {
+        let mut random = Random::seeded(1);
+        [(); 3].map(|()| random.next_rally_seed())
+    }
+
+    /// M2 plan 5.2: a rally has one seed, drawn before its countdown shows,
+    /// so what an effect chooses per rally can be shown there. The first is
+    /// drawn on entering the match, the next at each point.
+    #[test]
+    fn a_match_begins_with_a_drawn_rally_seed_and_each_point_draws_the_next() {
+        let [first, second, third] = seeds_of_app_seed_one();
+        let mut app = headless_app(1);
+        boot(&mut app);
+        enter_match(&mut app, two_humans());
+        assert_eq!(match_state(&app), MatchState::Countdown);
+        assert_eq!(rally_seed(&app), first, "in the first countdown");
+        until(&mut app, MatchState::Playing);
+        assert_eq!(rally_seed(&app), first, "in play");
+
+        left_scores(&mut app);
+        assert_eq!(rally_seed(&app), second, "from the point on");
+        until(&mut app, MatchState::Countdown);
+        assert_eq!(rally_seed(&app), second, "in the next countdown");
+        until(&mut app, MatchState::Playing);
+        assert_eq!(rally_seed(&app), second, "in the next rally");
+
+        // A new match draws on: it does not start the seeds over.
+        leave_match(&mut app);
+        enter_match(&mut app, two_humans());
+        assert_eq!(rally_seed(&app), third);
+    }
+
+    fn pause_and_resume(app: &mut App, paused_in: MatchState) {
+        app.world_mut()
+            .resource_mut::<MatchControl>()
+            .request_pause();
+        until(app, MatchState::Paused);
+        app.world_mut()
+            .resource_mut::<MatchControl>()
+            .request_resume();
+        until(app, paused_in);
+    }
+
+    /// Resuming a pause enters the paused state again. Neither a countdown
+    /// entered twice nor a point pause entered twice is a new rally: the
+    /// wind shown before a pause is the wind after it.
+    #[test]
+    fn a_pause_in_a_countdown_or_in_a_point_pause_draws_no_seed() {
+        let [first, second, _] = seeds_of_app_seed_one();
+        let mut app = headless_app(1);
+        boot(&mut app);
+        enter_match(&mut app, two_humans());
+        pause_and_resume(&mut app, MatchState::Countdown);
+        assert_eq!(rally_seed(&app), first, "after a pause in the countdown");
+        until(&mut app, MatchState::Playing);
+        pause_and_resume(&mut app, MatchState::Playing);
+        assert_eq!(rally_seed(&app), first, "after a pause in play");
+
+        left_scores(&mut app);
+        pause_and_resume(&mut app, MatchState::PointScored);
+        assert_eq!(rally_seed(&app), second, "after a pause in the point pause");
+        until(&mut app, MatchState::Playing);
+        assert_eq!(rally_seed(&app), second);
+    }
+
+    /// A fault restarts the rally from a countdown with no point between:
+    /// the same rally, played again, under the same seed.
+    #[test]
+    fn a_fault_restart_keeps_the_rallys_seed() {
+        let [first, ..] = seeds_of_app_seed_one();
+        let mut app =
+            headless_app_with(1, |core| core.set(ErrorPolicyPlugin(ErrorPolicy::Release)));
+        record::<SimFault>(&mut app);
+        boot(&mut app);
+        start_match(&mut app, two_humans());
+        place_ball(&mut app, Vec2::ZERO, Vec2::new(f32::NAN, 0.0));
+        until(&mut app, MatchState::Countdown);
+        assert_eq!(take_recorded::<SimFault>(&mut app).len(), 1);
+        until(&mut app, MatchState::Playing);
+        assert_eq!(rally_seed(&app), first);
     }
 
     /// Into the right paddle's face within one step, whatever the speed named.
@@ -936,6 +1107,53 @@ mod tests {
         }
     }
 
+    /// Where the kernel predicts the ball, as it is now, will cross
+    /// `target_x` under the flight it is in.
+    fn predicted_crossing(app: &mut App, target_x: f32) -> f32 {
+        let tuning = app.world().resource::<Tuning>().clone();
+        let dt = fixed_timestep(app).as_secs_f32();
+        let mut query = app
+            .world_mut()
+            .query_filtered::<(&Position, &Velocity, &BallFlight), With<Ball>>();
+        let (position, velocity, flight) = query.single(app.world()).expect("exactly one ball");
+        let now = Motion {
+            position: position.0,
+            velocity: velocity.0,
+        };
+        crossing_y(
+            tuning.arena(),
+            tuning.ball().radius(),
+            now,
+            flight.flight(),
+            target_x,
+            dt,
+        )
+        .expect("the ball flies toward the target")
+    }
+
+    /// Where the ball would cross `target_x` on a straight line from here.
+    fn straight_crossing(app: &mut App, target_x: f32) -> f32 {
+        let (position, velocity) = ball_state(app);
+        position.y + velocity.y * (target_x - position.x) / velocity.x
+    }
+
+    /// Runs the app until the ball passes `target_x`, and reads the crossing
+    /// off the straight line of the step that passed it.
+    fn flown_crossing(app: &mut App, target_x: f32) -> f32 {
+        let mut before = ball_state(app).0;
+        let toward = (target_x - before.x).signum();
+        for _ in 0..600 {
+            frame(app);
+            let after = ball_state(app).0;
+            if (after.x - target_x) * toward >= 0.0 {
+                let fraction = (target_x - before.x) / (after.x - before.x);
+                return before.y + fraction * (after.y - before.y);
+            }
+            before = after;
+        }
+        panic!("the ball never reached x = {target_x}");
+    }
+
     /// M2 spec 2.2.1 through the systems: the physics step applies the
     /// flight's force and runs its clock, so the ball goes where the kernel
     /// predicts from the same flight.
@@ -950,48 +1168,91 @@ mod tests {
         for _ in 0..10 {
             frame(&mut app);
         }
-        let tuning = app.world().resource::<Tuning>().clone();
-        let dt = fixed_timestep(&app).as_secs_f32();
         let target_x = -60.0;
-        let predicted = {
-            let mut query = app
-                .world_mut()
-                .query_filtered::<(&Position, &Velocity, &BallFlight), With<Ball>>();
-            let (position, velocity, flight) = query.single(app.world()).expect("exactly one ball");
-            let now = Motion {
-                position: position.0,
-                velocity: velocity.0,
-            };
-            crossing_y(
-                tuning.arena(),
-                tuning.ball().radius(),
-                now,
-                flight.flight(),
-                target_x,
-                dt,
-            )
-            .expect("the ball flies toward the target")
-        };
-        let unforced = {
-            let (position, velocity) = ball_state(&mut app);
-            position.y + velocity.y * (target_x - position.x) / velocity.x
-        };
+        let predicted = predicted_crossing(&mut app, target_x);
+        let unforced = straight_crossing(&mut app, target_x);
         assert!(
             (predicted - unforced).abs() > 3.0,
             "the field bends the course: {predicted} against {unforced}"
         );
-        let mut before = ball_state(&mut app).0;
-        for _ in 0..600 {
+        assert_near(flown_crossing(&mut app, target_x), predicted, 1e-2);
+    }
+
+    /// A match in play with Wind alone, every flight starting at `returns`:
+    /// forced before the match is entered, as a harness does.
+    fn playing_in_wind(returns: u16) -> App {
+        let mut app = headless_app(1);
+        boot(&mut app);
+        let mut sandbox = app.world_mut().resource_mut::<Sandbox>();
+        sandbox.force_effects(&[EffectId::Wind]);
+        sandbox.hold_returns(Some(returns));
+        start_match(&mut app, two_humans());
+        app
+    }
+
+    /// M2 spec 2.6.2's done-condition, through the systems: prediction
+    /// equals simulation at every tested dial, well within the one unit the
+    /// spec allows. The embedded wind carries a ball 24 units a crossing at
+    /// full dial: over these 120 units of the 146, two thirds of that.
+    #[test]
+    fn in_wind_the_ball_crosses_where_the_kernel_predicts_at_every_dial() {
+        for (returns, least_bend) in [(0, 0.0), (3, 3.0), (6, 7.0), (12, 15.0), (30, 15.0)] {
+            let mut app = playing_in_wind(returns);
+            // The serve's flight has begun; send the ball level across the middle.
             frame(&mut app);
-            let after = ball_state(&mut app).0;
-            if after.x <= target_x {
-                let fraction = (target_x - before.x) / (after.x - before.x);
-                assert_near(before.y + fraction * (after.y - before.y), predicted, 1e-2);
-                return;
-            }
-            before = after;
+            place_ball(&mut app, Vec2::new(-60.0, 0.0), Vec2::new(150.0, 0.0));
+            let target_x = 60.0;
+            let predicted = predicted_crossing(&mut app, target_x);
+            let bend = (predicted - straight_crossing(&mut app, target_x)).abs();
+            assert!(
+                bend >= least_bend && bend <= least_bend + 2.0,
+                "after {returns} returns the wind bent the course by {bend}"
+            );
+            assert_near(flown_crossing(&mut app, target_x), predicted, 1e-2);
         }
-        panic!("the ball never reached x = {target_x}");
+    }
+
+    /// The pull of the wind in play on a level ball: what the next flight
+    /// would be flown under.
+    fn pull_of_the_wind_in_play(app: &App) -> f32 {
+        let dt = fixed_timestep(app).as_secs_f32();
+        app.world()
+            .resource::<ActiveEffects>()
+            .start_flight(FlightStart::SERVE)
+            .force(level_ball(), dt)
+            .y
+    }
+
+    /// M2 spec 2.6.2: the direction is drawn per rally and shown in the
+    /// countdown. What can be shown is the direction of the rally's seed;
+    /// what blows is the wind built for the rally. The two are the same at
+    /// every moment of a match, the point pause included, and over a few
+    /// rallies both directions come up.
+    #[test]
+    fn the_wind_in_play_always_blows_the_way_the_rallys_seed_shows() {
+        let mut app = playing_in_wind(12);
+        let mut seen = Vec::new();
+        for _ in 0..8 {
+            for state in [
+                MatchState::Playing,
+                MatchState::PointScored,
+                MatchState::Countdown,
+            ] {
+                if state == MatchState::PointScored {
+                    left_scores(&mut app);
+                } else {
+                    until(&mut app, state);
+                }
+                let shown = WindDirection::of(rally_seed(&app));
+                let pull = pull_of_the_wind_in_play(&app);
+                assert!(
+                    pull * shown.sign() > 0.0,
+                    "in {state:?} the seed shows {shown:?} and the wind pulls {pull}"
+                );
+                seen.push(shown);
+            }
+        }
+        assert!(seen.contains(&WindDirection::Up) && seen.contains(&WindDirection::Down));
     }
 
     fn paddle_heights(app: &mut App) -> Vec<f32> {

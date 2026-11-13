@@ -15,6 +15,7 @@ use crate::audio::sound::Sound;
 
 pub mod shrink;
 pub mod speed;
+pub mod wind;
 
 /// An effect's icon: one glyph of the game's font, in the effect's colour.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -47,6 +48,7 @@ pub fn shell_half(id: EffectId) -> ShellHalf {
     match id {
         EffectId::Speed => speed::shell_half(),
         EffectId::Shrink => shrink::shell_half(),
+        EffectId::Wind => wind::shell_half(),
     }
 }
 

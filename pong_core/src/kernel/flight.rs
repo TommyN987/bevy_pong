@@ -52,6 +52,43 @@ pub trait Field: fmt::Debug + Send + Sync {
     fn lateral(&self, motion: Motion, seconds_in_flight: f32) -> f32;
 }
 
+/// A steady pull across the ball's path, stated as what it does to the ball
+/// (M2 spec 2.6.2): `per_crossing` arena units of lateral displacement over
+/// one crossing of `crossing_width`, at any horizontal speed. Positive
+/// carries the ball toward `+y`.
+///
+/// A slower ball is in the air longer and is pulled more gently, so the
+/// displacement at the far side is the same: the dial is what the player
+/// sees at the paddle, not an acceleration. From rest across the path the
+/// displacement is `a t² / 2` over the time `crossing_width / |vx|`, which
+/// gives `a = 2 · per_crossing · (vx / crossing_width)²`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Drift {
+    per_crossing: f32,
+    crossing_width: f32,
+}
+
+impl Drift {
+    /// A drift of `per_crossing` units over a crossing of `crossing_width`.
+    ///
+    /// Precondition (the caller's): `crossing_width` is positive and both
+    /// are finite, as geometry from validated tuning is.
+    #[must_use]
+    pub const fn new(per_crossing: f32, crossing_width: f32) -> Self {
+        Self {
+            per_crossing,
+            crossing_width,
+        }
+    }
+}
+
+impl Field for Drift {
+    fn lateral(&self, motion: Motion, _seconds_in_flight: f32) -> f32 {
+        let crossings_per_second = motion.velocity.x / self.crossing_width;
+        2.0 * self.per_crossing * crossings_per_second * crossings_per_second
+    }
+}
+
 /// The paddle return that starts a flight.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Hit {
@@ -228,9 +265,9 @@ impl Flight {
 mod tests {
     use bevy::math::Vec2;
 
-    use super::{Contribution, Field, Flight, FlightStart, Hit, StepMotion};
+    use super::{Contribution, Drift, Field, Flight, FlightStart, Hit, StepMotion};
     use crate::kernel::geometry::Side;
-    use crate::kernel::integrate::Motion;
+    use crate::kernel::integrate::{Motion, integrate};
     use crate::kernel::test_support::{assert_near, assert_vec_near};
 
     const DT: f32 = 1.0 / 60.0;
@@ -268,6 +305,51 @@ mod tests {
             paddle_height_factor: 1.0,
             field: Some(Box::new(field)),
         }
+    }
+
+    /// Where a level ball ends after `steps` steps at `velocity_x` under
+    /// `drift`, from the origin.
+    fn carried(drift: Drift, velocity_x: f32, steps: u16) -> Vec2 {
+        let mut flight = Flight::start(FlightStart::SERVE, [pushing(0.0, drift)]);
+        let mut motion = Motion {
+            position: Vec2::ZERO,
+            velocity: Vec2::new(velocity_x, 0.0),
+        };
+        for _ in 0..steps {
+            motion = integrate(motion, flight.force(motion, DT), DT);
+            flight.tick();
+        }
+        motion.position
+    }
+
+    /// M2 spec 2.6.2: the dial is in play terms. A drift moves the ball by
+    /// its amount over one crossing whatever the ball's speed and whichever
+    /// way it flies, apart from the integrator's own budget: semi-implicit
+    /// Euler lands a further `amount / steps` along the pull.
+    #[test]
+    fn a_drift_carries_the_ball_its_amount_over_one_crossing_at_any_speed() {
+        let width = 150.0;
+        // 150 units take 36 steps at 250 units/s and 120 at 75.
+        for (velocity_x, steps) in [(250.0, 36_u16), (-250.0, 36), (75.0, 120)] {
+            let end = carried(Drift::new(24.0, width), velocity_x, steps);
+            assert_near(end.x.abs(), width, 1e-2);
+            let budget = 24.0 / f32::from(steps);
+            assert!(
+                (24.0 - 1e-3..=24.0 + budget + 1e-3).contains(&end.y),
+                "at {velocity_x} the ball drifted {}, not 24 to {}",
+                end.y,
+                24.0 + budget
+            );
+        }
+    }
+
+    #[test]
+    fn a_negative_drift_carries_the_ball_down_and_a_drift_of_nothing_nowhere() {
+        let down = carried(Drift::new(-24.0, 150.0), 250.0, 36);
+        let up = carried(Drift::new(24.0, 150.0), 250.0, 36);
+        assert_near(down.y, -up.y, 1e-4);
+        let none = carried(Drift::new(0.0, 150.0), 250.0, 36);
+        assert_near(none.y, 0.0, 1e-6);
     }
 
     #[test]

@@ -16,7 +16,7 @@ use bevy::math::Vec2;
 use serde::{Deserialize, Serialize};
 
 use crate::kernel::geometry::Side;
-use crate::kernel::random::Pcg32;
+use crate::kernel::random::{Pcg32, RallySeed};
 
 /// A player's chair: which key set they hold and which profile slot they fill.
 ///
@@ -85,11 +85,14 @@ pub enum EffectId {
     /// Both paddles shorten as the rally grows (M2 spec 2.6.1).
     #[serde(rename = "shrink")]
     Shrink,
+    /// A steady pull up or down, its direction chosen per rally (M2 spec 2.6.2).
+    #[serde(rename = "wind")]
+    Wind,
 }
 
 impl EffectId {
     /// Every effect, in declaration order.
-    pub const ALL: [Self; 2] = [Self::Speed, Self::Shrink];
+    pub const ALL: [Self; 3] = [Self::Speed, Self::Shrink, Self::Wind];
 }
 
 /// Which game a match plays (M2 spec 2.1.1). A mode is data: tuning holds
@@ -188,26 +191,45 @@ impl MatchConfig {
 
 /// The only source of randomness in the core. The shell seeds it from entropy
 /// at startup; tests seed it with a constant and assert exact outcomes.
+///
+/// Two streams follow from the one seed. Rally seeds are drawn from the
+/// second, so drawing one moves no other draw: a match whose effects use no
+/// rally seed plays exactly as it would without them.
 #[derive(Resource, Debug, Clone, PartialEq, Eq)]
-pub struct Random(Pcg32);
+pub struct Random {
+    draws: Pcg32,
+    rally_seeds: Pcg32,
+}
 
 impl Random {
+    /// Sets the rally seeds' stream apart from the other draws of the same
+    /// seed: the 64-bit golden ratio, an arbitrary odd constant.
+    const RALLY_SEEDS: u64 = 0x9E37_79B9_7F4A_7C15;
+
     /// A generator whose whole future follows from `seed`.
     #[must_use]
     pub fn seeded(seed: u64) -> Self {
-        Self(Pcg32::seed(seed))
+        Self {
+            draws: Pcg32::seed(seed),
+            rally_seeds: Pcg32::seed(seed ^ Self::RALLY_SEEDS),
+        }
+    }
+
+    /// The next rally's seed, from the rally seeds' own stream.
+    pub fn next_rally_seed(&mut self) -> RallySeed {
+        RallySeed::new(self.rally_seeds.next_u32())
     }
 
     /// Uniform in `lo..hi`. Precondition: `lo <= hi`, both finite.
     pub fn next_f32_in(&mut self, lo: f32, hi: f32) -> f32 {
-        self.0.next_f32_in(lo, hi)
+        self.draws.next_f32_in(lo, hi)
     }
 
     /// A whole number in `0..below`, for picking one of `below` things.
     /// Precondition: `below > 0`. The modulo's bias is far below anything a
     /// shuffle of a handful of effects can show.
     pub fn next_below(&mut self, below: u32) -> u32 {
-        self.0.next_u32() % below
+        self.draws.next_u32() % below
     }
 }
 
@@ -364,6 +386,28 @@ mod tests {
         std::mem::take(&mut app.world_mut().resource_mut::<Received<M>>().0)
     }
 
+    /// Rally seeds have a stream of their own, of the same seed: drawing
+    /// them moves no other draw, so a mode whose effects use no seed plays
+    /// as it did before the seeds existed (M2 plan 5.2).
+    #[test]
+    fn rally_seeds_come_from_their_own_stream_and_leave_every_other_draw_as_it_was() {
+        let mut drawing = Random::seeded(7);
+        let mut plain = Random::seeded(7);
+        let seeds: Vec<_> = (0..8).map(|_| drawing.next_rally_seed()).collect();
+        for _ in 0..8 {
+            assert_eq!(drawing.next_below(1_000), plain.next_below(1_000));
+        }
+
+        let mut again = Random::seeded(7);
+        let seeds_again: Vec<_> = (0..8).map(|_| again.next_rally_seed()).collect();
+        assert_eq!(seeds, seeds_again, "the same seed, the same rally seeds");
+        assert!(
+            seeds.windows(2).all(|pair| pair[0] != pair[1]),
+            "a rally's seed repeated the one before: {seeds:?}"
+        );
+        assert_ne!(Random::seeded(8).next_rally_seed(), seeds[0]);
+    }
+
     #[test]
     fn every_core_event_survives_a_write_and_read_in_a_headless_app() {
         assert_eq!(
@@ -511,6 +555,10 @@ mod tests {
             ron::to_string(&EffectId::Shrink).expect("an effect id serializes"),
             "shrink"
         );
+        assert_eq!(
+            ron::to_string(&EffectId::Wind).expect("an effect id serializes"),
+            "wind"
+        );
     }
 
     /// `ALL` is written by hand; this match stops compiling when a variant is
@@ -521,6 +569,7 @@ mod tests {
             let declared = match id {
                 EffectId::Speed => 0,
                 EffectId::Shrink => 1,
+                EffectId::Wind => 2,
             };
             assert_eq!(index, declared);
         }

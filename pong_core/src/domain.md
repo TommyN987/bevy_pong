@@ -27,7 +27,7 @@ Identifier types, which only name one thing of a kind, are outside the cap (ADR 
 | `Mode` | enum | Which game a match plays: `Classic`, or `Chaos { cap }` with the most scheduled effects at once. A mode is data in tuning; nothing branches on it but the lookup (M2 spec 2.1.1). |
 | `ProfileId` | identifier, outside the cap | A profile's identity, stable across renames. |
 | `EffectId` | identifier, outside the cap | An effect's identity, closed and serialized under a stable name (ADR 0011). Matched once per crate, to register; behaviour is reached through the effect's trait. |
-| `Random` | `Resource` | The core's only randomness, a seeded `Pcg32`. One seed reproduces a match. |
+| `Random` | `Resource` | The core's only randomness: two seeded `Pcg32` streams of one seed. Rally seeds are drawn from the second, so drawing one moves no other draw. One seed reproduces a match. |
 
 ## Messages
 
