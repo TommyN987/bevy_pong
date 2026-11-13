@@ -45,7 +45,7 @@ and whether more stars win (2.5.5). Every effect phase reports through it (M2 pl
 | Piece | Does |
 |---|---|
 | `AiMatch` | One match between two computers: their stars, the mode, the points to win, what the sandbox forces, and the hit limit. `play(seed)` plays it on an app of its own, seeded for the random source and the system order: the same seed plays the same match. |
-| `Forcing` | What the developer `Sandbox` forces for the whole match: the whole set of effects in play, the return count every flight starts at, both, or neither. A held count holds every dial still, so a dial can be measured at one setting. |
+| `Forcing` | What the developer `Sandbox` forces for the whole match: the whole set of effects in play, the return count every flight starts at, the paddle motion every return is told, any of them, or none. A held count holds every dial still, so a dial can be measured at one setting. A held hit motion makes every return count as off a moving paddle: two computers with no speed ramp stand still at every hit, so Spin, which reads the motion, is measured with one held. |
 | `MatchPlayed`, `RallyPlayed` | The winner and every rally: its paddle hits, as the longest-rally record counts them, and who won it. |
 | `rally_hit_limit` | A rally that reaches it is reported unended and the match unfinished. It is how a test asks whether rallies end at all. |
 | Stall guard | A match with neither a hit nor a point in thirty seconds of game time panics with its setup and seed: a broken fixture says why, and does not wait for the test timeout. |
@@ -91,4 +91,4 @@ The soak asserts that `SanityPlugin` is present, so it cannot go quiet.
 The subsets come from the mode's data, so an effect added to the bag is soaked with no edit.
 A size the bag cannot fill yet has no subset: its test says so and passes.
 Dividing one budget among the subsets keeps each test's running time the same however many effects ship:
-with Shrink and Wind in the bag, 6 to 9 s for each soak inside the full parallel run on the development machine (M2 phase 5 report).
+with Shrink, Wind, and Spin in the bag, 7 to 11 s for each soak inside the full parallel run on the development machine (M2 phase 6 report).

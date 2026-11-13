@@ -41,7 +41,7 @@
         chaos: (
             per_hit_increase: 3.0,
             always: [speed],
-            bag: [shrink, wind],
+            bag: [shrink, wind, spin],
             thresholds_percent: [30, 70],
             rotate_every_points: 1,
         ),

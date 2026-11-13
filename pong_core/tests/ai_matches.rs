@@ -13,6 +13,7 @@ use std::num::{NonZeroU8, NonZeroU32};
 
 use pong_core::domain::{Difficulty, EffectId, Mode};
 use pong_core::features::tuning::{EMBEDDED_RON, Tuning};
+use pong_core::kernel::flight::StepMotion;
 use pong_core::kernel::geometry::Side;
 use pong_core::testing::ai_match::{AiMatch, Forcing, MatchPlayed, RallyLengths};
 
@@ -131,6 +132,7 @@ fn with_no_effect_in_play_no_rally_between_competent_computers_ends() {
             forced: Forcing {
                 effects: Some(Vec::new()),
                 returns: None,
+                hit_motion: None,
             },
             rally_hit_limit: SLOW_RALLY_HIT_LIMIT,
             ..chaos_match(stars_each, stars_each)
@@ -268,6 +270,7 @@ fn chaos_rallies_shorten_as_breadth_and_return_count_rise_together() {
                     forced: Forcing {
                         effects: Some(effects.clone()),
                         returns: Some(returns),
+                        hit_motion: None,
                     },
                     rally_hit_limit: SLOW_RALLY_HIT_LIMIT,
                     ..chaos_match(stars_each, stars_each)
@@ -288,9 +291,17 @@ fn chaos_rallies_shorten_as_breadth_and_return_count_rise_together() {
 /// every dial is mild (R9), past where the embedded dials are full.
 const DIAL_LADDER: [u16; 6] = [0, 5, 10, 15, 20, 30];
 
+/// The paddle motion every return of a dial test is told. With no speed
+/// ramp a computer reaches its aim and stands still at every hit, so an
+/// effect that reads the motion, as Spin does, would never act: unheld, Spin
+/// alone plays the same rallies at every rung (M2 phase 6 report). An
+/// effect that does not read the motion plays the same held or not.
+const HELD_HIT_MOTION: StepMotion = StepMotion::Up;
+
 /// R3 per effect (M2 spec 2.5.2, plan E.4): `effect` alone, with no speed
-/// ramp beside it, at each rung of the ladder. The rallies of the mirror
-/// match of `stars_each`, rung by rung.
+/// ramp beside it, at each rung of the ladder, every return told as off a
+/// paddle moving [`HELD_HIT_MOTION`]. The rallies of the mirror match of
+/// `stars_each`, rung by rung.
 fn rallies_up_the_dial(effect: EffectId, stars_each: Difficulty) -> Vec<RallyLengths> {
     DIAL_LADDER
         .iter()
@@ -299,6 +310,7 @@ fn rallies_up_the_dial(effect: EffectId, stars_each: Difficulty) -> Vec<RallyLen
                 forced: Forcing {
                     effects: Some(vec![effect]),
                     returns: Some(returns),
+                    hit_motion: Some(HELD_HIT_MOTION),
                 },
                 rally_hit_limit: SLOW_RALLY_HIT_LIMIT,
                 ..chaos_match(stars_each, stars_each)

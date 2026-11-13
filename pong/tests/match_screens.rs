@@ -365,10 +365,27 @@ fn chaos(players: SeatPlayers, points: u8) -> MatchConfig {
     }
 }
 
-fn shrink_glyph() -> &'static str {
-    shell_half(EffectId::Shrink)
+/// The bag effect a Chaos match of cap one has in play: which one a match
+/// starts with is the seeded draw's to say, and moves when the bag grows.
+fn scheduled_effect(app: &App) -> EffectId {
+    let tuning = app.world().resource::<Tuning>();
+    let bag = tuning
+        .mode(Mode::Chaos {
+            cap: NonZeroU8::MIN,
+        })
+        .bag();
+    *app.world()
+        .resource::<ActiveEffects>()
+        .ids()
+        .iter()
+        .find(|id| bag.contains(id))
+        .expect("Chaos has one bag effect in play")
+}
+
+fn glyph_of(effect: EffectId) -> &'static str {
+    shell_half(effect)
         .icon
-        .expect("Shrink has an icon")
+        .expect("a scheduled effect has an icon")
         .glyph
 }
 
@@ -395,16 +412,17 @@ fn the_joining_effect_shows_large_in_the_countdown_then_takes_its_place_in_the_r
     let mut app = screens_app();
     enter_match(&mut app, chaos(SeatPlayers::GUESTS, 10));
     frame(&mut app);
+    let joined = scheduled_effect(&app);
     assert_eq!(
         joining(&mut app),
-        (Some(EffectId::Shrink), shrink_glyph().to_owned())
+        (Some(joined), glyph_of(joined).to_owned())
     );
     assert_eq!(icons_in_the_row(&mut app), []);
 
     until(&mut app, MatchState::Playing);
     frame(&mut app);
     assert_eq!(joining(&mut app), (None, String::new()));
-    assert_eq!(icons_in_the_row(&mut app), [EffectId::Shrink]);
+    assert_eq!(icons_in_the_row(&mut app), [joined]);
     // Every effect with an icon has a place in the row; only the ones in
     // play are laid out.
     let mut query = app.world_mut().query::<(&EffectIcon, &Node, &Text)>();
@@ -413,7 +431,7 @@ fn the_joining_effect_shows_large_in_the_countdown_then_takes_its_place_in_the_r
         .filter(|(_, node, _)| node.display != Display::None)
         .map(|(_, _, text)| text.0.as_str())
         .collect();
-    assert_eq!(glyphs, [shrink_glyph()]);
+    assert_eq!(glyphs, [glyph_of(joined)]);
 }
 
 /// A countdown that is paused and resumed still shows who joined: the join
@@ -426,7 +444,7 @@ fn the_joining_icon_survives_a_pause_in_its_countdown() {
     tap(&mut app, KeyCode::Escape);
     tap(&mut app, KeyCode::Escape);
     assert_eq!(match_state(&app), MatchState::Countdown);
-    assert_eq!(joining(&mut app).0, Some(EffectId::Shrink));
+    assert_eq!(joining(&mut app).0, Some(scheduled_effect(&app)));
 }
 
 /// The row follows the effects in play, not the messages: an effect that
@@ -437,7 +455,7 @@ fn an_effect_no_longer_in_play_leaves_the_row() {
     let config = chaos(SeatPlayers::GUESTS, 10);
     start_match(&mut app, config);
     frame(&mut app);
-    assert_eq!(icons_in_the_row(&mut app), [EffectId::Shrink]);
+    assert_eq!(icons_in_the_row(&mut app), [scheduled_effect(&app)]);
     let tuning = app.world().resource::<Tuning>().clone();
     app.world_mut()
         .resource_mut::<ActiveEffects>()

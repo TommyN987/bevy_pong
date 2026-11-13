@@ -87,7 +87,7 @@ Realizes spec 2.2.1, 2.2.2, 2.6.2. Depends on 3 and 4. Effect protocol.
 ### 6. Spin
 Realizes spec 2.6.4. Depends on 5. Effect protocol.
 
-- **6.1 MUST** Spin per E.1 through E.7. Done: spec 2.6.4.
+- **6.1 MUST** Spin per E.1 through E.7. Done: spec 2.6.4. Amended 2026-11-13 ([phase 6 report](m2-phase6-report.md)): built with one base capability the proposal added, the sandbox's held hit motion (spec 2.9.1, amended), and with the flaw as a believed share, not a delay (spec 2.6.4, amended).
 - **6.2 MUST** The Wind-versus-Spin hypothesis observed in its session. Done: outcome in the playtest log.
 
 ### 7. Fog

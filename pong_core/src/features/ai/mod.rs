@@ -1530,6 +1530,56 @@ mod tests {
         }
     }
 
+    /// R10 (M2 plan E.7): spin gives the hitter a use, not only the defender
+    /// a tax. Three stars as tuned return a level ball at the cap from 27
+    /// off the centre when the paddle that sent it stood still. Sent off a
+    /// paddle moving toward the near wall, at full dial, the same ball
+    /// curves out along the wall, past where the paddle gets in time, and
+    /// scores; off a paddle moving the other way it curves to the middle
+    /// and comes back. With the dial at zero it comes back whatever the
+    /// paddle did.
+    #[test]
+    fn a_ball_three_stars_return_off_a_still_paddle_scores_off_one_moving_toward_the_wall() {
+        let tuning = Tuning::from_ron(EMBEDDED_RON).expect("the embedded tuning is valid");
+        let from_x = Paddle::new(Side::Left, tuning.paddle()).contact_x(&tuning) + 1.0;
+        let level_from = |y: f32| ball(Vec2::new(from_x, y), Vec2::new(250.0, 0.0));
+        let motions = [StepMotion::Up, StepMotion::Still, StepMotion::Down];
+
+        let mut dial_at_zero = ai_on_the_right_playing_with_spin(tuning.clone(), 0);
+        for y in [27.0, -27.0] {
+            for paddle_motion in motions {
+                assert_eq!(
+                    launch_at_ai_off_a_paddle_moving(
+                        &mut dial_at_zero,
+                        level_from(y),
+                        paddle_motion
+                    ),
+                    Outcome::Returned,
+                    "with the dial at zero, from {y}, off a paddle moving {paddle_motion:?}"
+                );
+            }
+        }
+
+        for (y, toward_the_wall, toward_the_middle) in [
+            (27.0, StepMotion::Up, StepMotion::Down),
+            (-27.0, StepMotion::Down, StepMotion::Up),
+        ] {
+            // A match of its own per side: the miss, last, ends the rally.
+            let mut full_dial = ai_on_the_right_playing_with_spin(tuning.clone(), 12);
+            for (paddle_motion, outcome) in [
+                (StepMotion::Still, Outcome::Returned),
+                (toward_the_middle, Outcome::Returned),
+                (toward_the_wall, Outcome::Missed),
+            ] {
+                assert_eq!(
+                    launch_at_ai_off_a_paddle_moving(&mut full_dial, level_from(y), paddle_motion),
+                    outcome,
+                    "at full dial, from {y}, off a paddle moving {paddle_motion:?}"
+                );
+            }
+        }
+    }
+
     /// R10 (M2 plan E.7): the wind gives the hitter a use, not only the
     /// defender a tax. Three stars as tuned return a level ball at the cap
     /// from 20 off the centre. Sent on the side the wind blows toward, at

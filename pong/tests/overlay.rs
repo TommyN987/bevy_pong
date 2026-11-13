@@ -17,7 +17,8 @@ use common::tap;
 use pong::overlay::{OverlayPlugin, OverlayText};
 use pong::ui::ScreensPlugin;
 use pong_core::domain::{Controller, Difficulty, EffectId, MatchConfig, Mode, Seat, SeatPlayers};
-use pong_core::features::effects::Sandbox;
+use pong_core::features::effects::{ActiveEffects, Sandbox};
+use pong_core::features::tuning::Tuning;
 use pong_core::flow::states::MatchState;
 use pong_core::testing::{
     boot, enter_match, frame, headless_app, match_state, place_ball, run_until, start_match,
@@ -120,23 +121,51 @@ fn with_the_overlay_shown_the_number_keys_toggle_effects_and_the_brackets_hold_t
     tap(&mut app, KeyCode::F3);
     assert_eq!(sandbox(&app).forced_effects(), None);
 
-    // Shrink is the second effect: key 2 takes it out of what is in play.
-    tap(&mut app, KeyCode::Digit2);
+    // Which bag effect the match starts with is the seeded draw's to say.
+    // Its key, by its place among the effects, takes it out of what is in
+    // play.
+    let bag = app
+        .world()
+        .resource::<Tuning>()
+        .mode(chaos().mode)
+        .bag()
+        .to_vec();
+    let digits = [
+        KeyCode::Digit1,
+        KeyCode::Digit2,
+        KeyCode::Digit3,
+        KeyCode::Digit4,
+        KeyCode::Digit5,
+        KeyCode::Digit6,
+        KeyCode::Digit7,
+        KeyCode::Digit8,
+        KeyCode::Digit9,
+    ];
+    let in_play = app.world().resource::<ActiveEffects>().ids().to_vec();
+    let (key, scheduled) = digits
+        .into_iter()
+        .zip(EffectId::ALL)
+        .find(|(_, effect)| bag.contains(effect) && in_play.contains(effect))
+        .expect("Chaos has one bag effect in play");
+    tap(&mut app, key);
     assert_eq!(
         sandbox(&app).forced_effects(),
         Some([EffectId::Speed].as_slice())
     );
-    // Shrink plays on until the point: the overlay reads both.
+    // It plays on until the point: the overlay reads both.
     let text = overlay(&mut app).1;
-    assert!(text.contains("\neffects Speed, Shrink\n"), "{text}");
+    assert!(
+        text.contains(&format!("\neffects Speed, {scheduled:?}\n")),
+        "{text}"
+    );
     assert!(
         text.contains("\n  effects from the next point: Speed\n"),
         "{text}"
     );
-    tap(&mut app, KeyCode::Digit2);
+    tap(&mut app, key);
     assert_eq!(
         sandbox(&app).forced_effects(),
-        Some([EffectId::Speed, EffectId::Shrink].as_slice())
+        Some([EffectId::Speed, scheduled].as_slice())
     );
 
     // The count starts from the rally's own, zero here, and stops at zero.
