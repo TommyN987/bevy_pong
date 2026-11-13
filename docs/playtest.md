@@ -60,3 +60,33 @@ Interpretation (may be empty):
 - One shared session stood in for one session per child: each child played both modes in it.
 Proposed change (at most one):
 - None.
+
+### 2026-11-12 · M2 phase 4 (the stars' retune, spec 2.1.2) · the developer alone · build feat/ai-effects, commits not recorded
+Duration: not recorded.
+Recorded on 2026-11-13 from the [phase 4 report](plans/m2-phase4-report.md); no notes were taken during play.
+Observations (what happened, in order):
+- At M1's handicaps the developer played three stars over several attempts and scored one point in all, in a long rally.
+- The stars were retuned by delays alone, to 0.29 s for two stars and 0.24 s for three. The developer played three stars and lost 10 to 0.
+- The errors were then raised to 12, 7, and 3, the same evening. That candidate was not played that day.
+Quotes (verbatim, by role):
+- the developer: "leave it like this for now" (of the second candidate)
+Interpretation (may be empty):
+- None recorded.
+Proposed change (at most one):
+- None beyond the retune already made.
+
+### 2026-11-13 · M2 phase 5 (plan 5.4, spec 2.10.1; E.6 for Shrink and Wind) · the 9-year-old, the 11-year-old, and the parent · build feat/wind at 74d9bea, the branch's head; not stated in the report
+Duration: not recorded.
+Reported by the parent after the session; no notes were taken during it.
+Observations (what happened, in order):
+- The children played each other, each played the parent, and they played the computer.
+- Chaos was played with Shrink and Wind, the two effects in its bag.
+- The 9-year-old beat the two-star computer in Chaos.
+- Before the session the parent did the hand checks owed: Wind in `just run`, and the stars as retuned in phase 4. No detail of either was reported.
+Quotes (verbatim, by role):
+- None recorded.
+Interpretation (may be empty):
+- The parent's reading: both children like both Chaos effects, and like Chaos more than Classic.
+- One shared session stood in for one session per effect: it covered Shrink and Wind, as plan 5.4 set.
+Proposed change (at most one):
+- None. The parent ruled neither a retune nor a drop for Shrink or for Wind (spec 2.10.2), and declared the phase complete.

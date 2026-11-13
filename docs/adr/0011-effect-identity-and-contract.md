@@ -1,6 +1,6 @@
 # ADR 0011: Effect identity is a closed enum; behaviour sits behind a contract
 
-Date: 2026-11-10, amended 2026-11-11
+Date: 2026-11-10, amended 2026-11-11 and 2026-11-13
 Status: accepted
 
 ## Context
@@ -34,6 +34,13 @@ Identity stays a closed enum; behaviour moves behind a per-effect contract.
 
 Amended 2026-11-11: "perturbation", the first round's working name, is retired for "effect"; the contract's form and the channel model, left open on 2026-11-10, are decided as above.
 
+Amended 2026-11-13 ([M2 phase 5 report](../plans/m2-phase5-report.md)), with Wind, the first effect that chooses something once per rally:
+
+- An effect value holds no state. The effects in play are built again at every countdown and on a tuning reload, so nothing kept inside one would last a rally.
+- What an effect chooses once per rally is a pure function of the rally's seed: one number per rally, drawn by the base from the seeded source's own stream of rally seeds and given to each effect when it is built. The shell reads the same seed, so it can show the choice before it acts.
+- A field more than one effect needs lives in the kernel, since effects do not depend on each other: `Drift`, Wind's now and Spin's to come.
+- The vertical speed bound is derived in the wall step from what its one fold undoes; it is not a tuned number.
+
 ## Alternatives considered
 
 - Rule 6 unchanged, exhaustive matches at every site: rejected; dropping or adding an effect edits every spawn table, cue map, and AI branch, the system-wide friction the roster's expected churn cannot afford.
@@ -51,4 +58,5 @@ Amended 2026-11-11: "perturbation", the first round's working name, is retired f
 - Adding a channel touches every effect by one line, where each states its stance.
 - An effect that needs a new base capability pays for it once, outside its touch list.
 - The paddle must expose its motion in the current step, for effects that read it at a hit.
+- An effect that needs a choice per rally takes it from the rally's seed and draws nothing itself (amended 2026-11-13).
 - Amends `docs/architecture.md` rule 6 and its "Effects" section, and `.claude/rules/pong_core.md`.
