@@ -3,8 +3,8 @@
 Started 2026-11-13. Branch `feat/wind`. Roles: Claude drives; the user reviews and commits.
 Deviations from [m2-chaos-pong.md](../specs/m2-chaos-pong.md) and [m2-plan.md](m2-plan.md) per plan rule P.6, each with where it was recorded.
 
-Built 2026-11-13: steps 1 to 3 of the proposal the user approved that day (plan 5.1, and the core half of 5.2).
-Not built: steps 4 to 8 (the shell half, Wind in the bag and the harness, the wall cue limit, the record step, the hand check and the kids' session).
+Built 2026-11-13: steps 1 to 6 of the proposal the user approved that day (plan 5.1, 5.2, and 5.3).
+Not done: step 7, the record step, and step 8, the user's look in `just run`, the hand checks, and the kids' session (plan 5.4).
 Not closed. `docs/specs/CURRENT` names phase 5.
 
 ## Deviations
@@ -90,9 +90,130 @@ Shown in "the countdown" (spec 2.6.2) is step 4's: the core gives the shell `Act
 - **Not red first:** `in_wind_the_ball_crosses_where_the_kernel_predicts_at_every_dial`, and the AI's three Wind tests. They pin what the kernel, the base, and Wind already gave.
 - **Checked against two deliberate breaks, since removed.** With every AI believing the truth, `..believes_too_little..misses_some_balls` failed. With every AI believing in no wind, `..believes_all_of_it..returns_every_ball` failed.
 
+## Step 4: Wind's shell half (E.1, E.3)
+
+### What was built
+
+- **Icon:** `≋`, pale blue. The font holds the glyph (its charset covers U+2190 to U+2311).
+- **Cue:** two plain notes rising a fifth, the second held. Shrink's is three falling brass notes.
+- **View:** fourteen small arrowheads on the floor, one per column across the arena, at heights spread by the golden ratio. They point and drift the way the wind blows, at 12 units/s while the dial is at zero and up to 60 at full dial, and wrap from one wall to the other. Dim and under the paddles, the trail, and the ball.
+- **Where and look are apart,** as in `views/`: `WindArrowsPlugin` touches only `Transform` and `Visibility` and is tested headless; the mesh and the material are added by the shell half's view, with the render assets.
+
+### Decisions taken
+
+- **The direction is read from the rally's seed,** by the same `WindDirection::of` the core's Wind uses, not from a message. So what the countdown shows cannot differ from what blows; `in_the_countdown_the_arrows_point_and_drift_the_way_the_ball_is_then_carried` ties the two through the ball itself.
+- **An arrow turns over by a negative height,** not by a rotation: one fewer new API.
+- **The arrows hold still while play is paused and once the match is over,** as the ball's view does.
+- **The next rally's wind shows from the point on,** in the point pause already: the seed is drawn at the point.
+- **`views::layer` is the crate's now** (`pub(crate)`), with a `WIND` layer between the centre line and the paddles: a file outside the touch list.
+
+### Done-conditions
+
+| Condition | Evidence |
+|---|---|
+| E.1: API check before code | See "Bevy API". |
+| R1: the cause on screen before the consequence | `in_the_countdown_the_arrows_point_and_drift_the_way_the_ball_is_then_carried` (six seeds, both directions); `after_each_point_the_arrows_turn_to_the_next_rallys_wind`. |
+| R9 on screen | `the_arrows_drift_faster_at_full_dial_than_in_the_countdown`. |
+| R11: nothing flashes | `with_wind_in_play_every_arrow_shows_from_the_countdown_on_and_never_blinks`. An arrow wraps at most once a second and a half, at full dial. The review item at milestone close stays. |
+| Spec 2.3.3, 2.7.1: icon and cue | `wind_states_an_icon_a_join_cue_and_a_view`; the generic cue and glyph tests now cover Wind. |
+| E.3: visible in `just run` | **Not done: the user's look.** No one has seen the arrows, the icon, or heard the cue. |
+
+### Red first, and where it was not
+
+- Red by compile failure, then green on the first run: the seven tests of `pong/tests/wind.rs`. Red by assertion: `wind_states_an_icon_a_join_cue_and_a_view`.
+- **Checked against two deliberate breaks, since removed.** With the direction fixed upward, the two direction tests failed. With the pause ignored, `while_play_is_paused_the_arrows_hold_still` failed.
+
+## Step 5: into the bag, and the harness (E.4, E.7)
+
+`tuning.ron`: Chaos's bag is `[shrink, wind]`. The tuning numbers did not move: every condition below held at the starting numbers.
+
+### What the bag of two moved
+
+A bag of two is shuffled, which draws, so every seeded Chaos number moved. Classic's did not: its soak still prints 67,714 frames, 16 matches, 1,025 paddle hits, and its harness lines are phase 4's.
+
+Tests that named Shrink as the one bag effect, each kept on its assertion:
+
+- Escalation: `two_in_the_bag` finds the new text; four tests that follow one named effect now play a fixture with Shrink alone in the bag (`shrink_alone_in_the_bag`); `speed_after` reads the launch speed under the same fixture, since a wind in play bends the ball within the step of the return.
+- Shell, audio: `entering_a_chaos_match_plays_the_joining_effects_cue` asks the core which bag effect joined, where it named Shrink.
+- Shell, HUD: `the_joining_effect_shows_large_in_the_countdown_then_takes_its_place_in_the_row` reads the glyphs of the icons laid out, where it read every icon spawned: two effects have icons now.
+
+### Measured (`just ai-report`, matches to five points, hits per rally; no rally unended)
+
+| Pairing | Classic | Chaos, cap 3 |
+|---|---|---|
+| 1 v 1 | 28 rallies, mean 2.4, longest 11 | 29 rallies, mean 2.1, longest 12 |
+| 1 v 2 | 20 rallies, mean 5.7, longest 44 | 20 rallies, mean 3.5, longest 10 |
+| 1 v 3 | 20 rallies, mean 6.4, longest 26 | 20 rallies, mean 5.9, longest 16 |
+| 2 v 2 | 32 rallies, mean 33.5, longest 65 | 30 rallies, mean 10.6, longest 25 |
+| 2 v 3 | 22 rallies, mean 30.1, longest 46 | 20 rallies, mean 14.1, longest 23 |
+| 3 v 3 | 30 rallies, mean 41.7, longest 143 | 27 rallies, mean 55.0, longest 156 |
+
+More stars won 8 matches to 0 in each of the three pairings, in each mode (spec 2.5.5).
+Spec 2.5.1 holds: every rally ended in every pairing.
+
+### Wind's R3 measure (E.4)
+
+Wind alone, no speed ramp beside it, matches to five points, hit limit 200 (the dial is full at 12 returns):
+
+| Held count | Drift | 1 v 1, 8 seeds | 2 v 2, 2 seeds |
+|---|---|---|---|
+| 0 | 0 | 57 rallies, mean 2.4 | none ended (2 of 2) |
+| 5 | 10 | 56 rallies, mean 2.4 | 16 rallies, mean 14.5 |
+| 10 | 20 | 56 rallies, mean 1.6 | 12 rallies, mean 6.5 |
+| 15 | 24 | 66 rallies, mean 1.6 | 14 rallies, mean 5.5 |
+| 20, 30 | 24 | mean 1.6 | mean 5.5 |
+
+- **R3 holds for Wind against one and two stars.**
+- **Against three stars, Wind alone ends nothing at the serve speed:** their share of 0.9 leaves the aim 2.4 off at most, and with their error of 3 that is inside the whole paddle's reach of 8. Not measured; by arithmetic.
+
+### R3 against three stars: shown (owed from phase 4, spec 2.5.2)
+
+The stack's test now plays three-star mirrors too:
+
+| Level | 1 v 1 | 2 v 2 | 3 v 3 |
+|---|---|---|---|
+| Speed at 0 returns | 57 rallies, mean 2.4 | none ended | none ended |
+| Speed, Shrink at 15 | 61 rallies, mean 0.6 | 15 rallies, mean 2.0 | none ended |
+| Speed, Shrink, Wind at 30 | 56 rallies, mean 0.7 | 15 rallies, mean 1.9 | 15 rallies, mean 43.8, longest 103 |
+
+Wind's flaw is what reaches three stars: 2.4 of misjudged drift beside an error of 3 is past the shrunk paddle's reach of 5.
+The one-star rise from 0.6 to 0.7 is inside the half hit the comparison allows for noise.
+
+### The soaks
+
+| Soak | Frames | Matches | Paddle hits | Top speed | Most returns |
+|---|---|---|---|---|---|
+| Classic | 67,714 | 16 | 1,025 | 250 | not read |
+| Chaos as scheduled | 66,543 | 15 | 865 | 167.5 | 28 |
+| Speed, Shrink at full dial (half the budget) | 66,974 | 46 | 684 | 250 | held |
+| Speed, Wind at full dial (half the budget) | 41,120 | 15 | 951 | 287.1 | held |
+| Speed, Shrink, Wind at full dial | 126,642 | 82 | 1,419 | 287.8 | held |
+
+No fault in any. The pair test is live for the first time; the triple still finds no subset.
+
+- **A ball in wind flies faster than the speed cap,** 287 against 250. The cap is on the launch speed; the wind adds vertical speed in flight, and never horizontal speed. Sanity's slack past a goal line is by horizontal travel, so it holds.
+- **The same set shows in two orders** in the scheduled soak, `[Speed, Wind, Shrink]` and `[Speed, Shrink, Wind]`: the order is the bag's rotation, and every channel composes commutatively.
+
+### R10 (E.7)
+
+`a_ball_three_stars_return_in_still_air_scores_when_sent_with_the_wind`: three stars as tuned return a level ball at the cap from 20 off the centre. At full dial, sent on the side the wind blows toward, it is carried to the wall and scores; sent on the other side it comes back; with the dial at zero it comes back from both.
+
+### Running times
+
+Development machine, inside the full parallel run of `just dev-check`: eleven heavy tests now, 3.2 to 8.8 s each, against the 30 s limit.
+The two new ones: the pair soak 8.6 s, the second bag effect's dial test 8.6 s. The stack's test, with three stars, 6.6 s.
+
+## Step 6: the wall cue rate limit (plan 5.3)
+
+- **The limit is the shell's.** The core reports every bounce, since each happened; the cue map plays at most one wall cue per 150 ms, and one for a frame's wall hits.
+- **Why 150 ms.** A pinned ball bounces every other step, thirty times a second. Wall to wall takes the ball over a quarter of a second at its fastest, so no bounce of ordinary play is dropped.
+- **Tests.** Red first, by assertion: `a_ball_pinned_to_a_wall_plays_a_bounded_number_of_wall_cues_a_second` (30 cues, now 6), `wall_hits_in_the_same_frame_play_one_cue`. Passing before and after: `wall_hits_a_quarter_of_a_second_apart_each_play`.
+- **One earlier test changed its vehicle.** `a_cue_plays_at_the_volume_set_then_and_goes_when_done` sent two wall hits a frame apart to compare volumes; it sends paddle hits now. Its assertions are the same.
+- **Not shown by test:** that the core does pin a ball. The limit is tested against the message rate, not against a pinned rally.
+
 ## Test changes
 
-439 core tests and 168 shell tests pass, 607 in all; 574 existed before this phase. 33 were added, all in the core.
+440 core tests and 182 shell tests pass, 622 in all; 574 existed before this phase. 48 were added: 34 in the core, 14 in the shell.
 
 No assertion of an earlier test changed for behaviour. Changed for the roster's growth or a new rule:
 
@@ -102,14 +223,27 @@ No assertion of an earlier test changed for behaviour. Changed for the roster's 
 - `VALID` in the tuning tests gained Wind's section.
 - `under_a_field_the_ball_crosses_where_the_kernel_predicts_from_its_flight` (effects) now calls three helpers the new Wind test shares; its assertions are the same.
 
+The changes of steps 4 to 6 to earlier tests are listed in those steps: the escalation fixtures, two shell tests, and the volume test.
+
 ## Bevy API
 
 Steps 1 to 3 wrote no API new to the repository, so `bevy-api-check` was not run.
 `OnTransition` is as rules uses it for the serve.
 
+Step 4 wrote one: `bevy::shape::Triangle2d`. `bevy-api-check` ran before the code, against the pinned 0.20.1 source:
+
+- `Triangle2d::new(a, b, c)` is at `bevy::shape`, beside `Circle` and `Rectangle`; `bevy::math::primitives` does not exist at this version.
+- It converts into a `Mesh`, so `meshes.add(Triangle2d::new(..))` works as it does for a rectangle. The builder normalises the winding.
+- The 2D mesh pipeline does not cull (`cull_mode: None`), so a negative scale draws; frustum culling ignores the sign too.
+- `Mesh2d` brings `Visibility` only where the camera plugin is installed. Headless, an entity that needs one is given one: the arrows are spawned with `Visibility::Hidden`.
+- An entity spawned with `Transform` and `Visibility` takes `Mesh2d` and its material later, and keeps the visibility it had.
+
+Steps 5 and 6 wrote none: `Local` and `Time` are as the effects base and the overlay use them.
+
 ## Open
 
-- **Wind can be forced from the sandbox before it can be seen.** Key 3 in the overlay puts it in play today, with no icon, cue, or view. Developer-only, until step 4.
-- **Docs owed at step 7:** the two spec amendments above, ADR 0011's note on the rally seed, and the touch-list comparison (E.5). Files outside the touch list so far: the kernel (`integrate`, `predict`, `flight`, `random`), `domain.rs`, the effects base, `paddle`, and the overlay's key line.
-- **The numbers are starting numbers.** The harness tunes them in step 5, the kids' session after.
-- **Carried from phase 4:** the hand check of the retuned stars and its playtest entry, at step 8; R3 against three stars, at step 5.
+- **No one has seen or heard Wind.** The arrows' look, the icon, and the cue are untested by eye and ear: the user's look in `just run` (E.3), with step 8.
+- **Docs owed at step 7:** the two spec amendments above, spec 2.5.2's note that R3 is now shown for three stars, ADR 0011's note on the rally seed, and the touch-list comparison (E.5). Files outside the touch list so far: the kernel (`integrate`, `predict`, `flight`, `random`), `domain.rs`, the effects base, `paddle`, the overlay's key line, `views/mod.rs`, the cue map, and the tests and fixtures named in steps 3 to 6.
+- **The numbers are the starting numbers.** The harness asked for no change; the kids' session may.
+- **CI has not run the new tests.** Eleven heavy tests share its cores now, where nine did.
+- **Carried from phase 4:** the hand check of the retuned stars and its playtest entry, at step 8. R3 against three stars is shown (step 5).

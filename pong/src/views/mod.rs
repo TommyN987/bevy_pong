@@ -21,10 +21,13 @@ pub mod paddle;
 pub mod shake;
 pub mod trail;
 
-/// Draw order, back to front.
-mod layer {
+/// Draw order, back to front. The crate's own: an effect's view takes its
+/// place among the bodies here.
+pub(crate) mod layer {
     pub const ARENA: f32 = 0.0;
     pub const CENTRE_LINE: f32 = 0.5;
+    /// Wind's arrows: on the floor, under everything that plays.
+    pub const WIND: f32 = 0.75;
     pub const PADDLE: f32 = 1.0;
     pub const TRAIL: f32 = 1.5;
     pub const BALL: f32 = 2.0;

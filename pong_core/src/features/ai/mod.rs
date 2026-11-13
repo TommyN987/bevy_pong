@@ -337,6 +337,7 @@ mod tests {
     };
     use crate::features::ball::Ball;
     use crate::features::effects::probe::Misjudged;
+    use crate::features::effects::wind::WindDirection;
     use crate::features::effects::{ActiveEffects, BallFlight, Sandbox};
     use crate::features::paddle::Paddle;
     use crate::features::seats::PaddleIntent;
@@ -1388,5 +1389,44 @@ mod tests {
                 "launch {i}: {launch:?}"
             );
         }
+    }
+    /// R10 (M2 plan E.7): the wind gives the hitter a use, not only the
+    /// defender a tax. Three stars as tuned return a level ball at the cap
+    /// from 20 off the centre. Sent on the side the wind blows toward, at
+    /// full dial, the same ball is carried out to the wall and scores; sent
+    /// on the other side it is carried to the middle and comes back. With
+    /// the dial at zero it comes back from either side.
+    #[test]
+    fn a_ball_three_stars_return_in_still_air_scores_when_sent_with_the_wind() {
+        let tuning = Tuning::from_ron(EMBEDDED_RON).expect("the embedded tuning is valid");
+        let from_x = Paddle::new(Side::Left, tuning.paddle()).contact_x(&tuning) + 1.0;
+        let level_from = |y: f32| ball(Vec2::new(from_x, y), Vec2::new(250.0, 0.0));
+        let downwind = |app: &App| {
+            let seed = app.world().resource::<ActiveEffects>().rally_seed();
+            20.0 * WindDirection::of(seed).sign()
+        };
+
+        let mut still = ai_on_the_right_playing_in_wind(tuning.clone(), 0);
+        for y in [20.0, -20.0] {
+            assert_eq!(
+                launch_at_ai(&mut still, level_from(y)),
+                Outcome::Returned,
+                "with the dial at zero, from {y}"
+            );
+        }
+
+        let mut windy = ai_on_the_right_playing_in_wind(tuning, 12);
+        let with_the_wind = downwind(&windy);
+        assert_eq!(
+            launch_at_ai(&mut windy, level_from(-with_the_wind)),
+            Outcome::Returned,
+            "into the wind, from {}",
+            -with_the_wind
+        );
+        assert_eq!(
+            launch_at_ai(&mut windy, level_from(with_the_wind)),
+            Outcome::Missed,
+            "with the wind, from {with_the_wind}"
+        );
     }
 }
