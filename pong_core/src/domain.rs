@@ -88,11 +88,15 @@ pub enum EffectId {
     /// A steady pull up or down, its direction chosen per rally (M2 spec 2.6.2).
     #[serde(rename = "wind")]
     Wind,
+    /// A return from a moving paddle curves the way the paddle moved (M2
+    /// spec 2.6.4).
+    #[serde(rename = "spin")]
+    Spin,
 }
 
 impl EffectId {
     /// Every effect, in declaration order.
-    pub const ALL: [Self; 3] = [Self::Speed, Self::Shrink, Self::Wind];
+    pub const ALL: [Self; 4] = [Self::Speed, Self::Shrink, Self::Wind, Self::Spin];
 }
 
 /// Which game a match plays (M2 spec 2.1.1). A mode is data: tuning holds
@@ -559,6 +563,10 @@ mod tests {
             ron::to_string(&EffectId::Wind).expect("an effect id serializes"),
             "wind"
         );
+        assert_eq!(
+            ron::to_string(&EffectId::Spin).expect("an effect id serializes"),
+            "spin"
+        );
     }
 
     /// `ALL` is written by hand; this match stops compiling when a variant is
@@ -570,6 +578,7 @@ mod tests {
                 EffectId::Speed => 0,
                 EffectId::Shrink => 1,
                 EffectId::Wind => 2,
+                EffectId::Spin => 3,
             };
             assert_eq!(index, declared);
         }

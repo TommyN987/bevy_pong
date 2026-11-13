@@ -28,11 +28,12 @@ use crate::features::paddle::Paddle;
 use crate::features::tuning::Tuning;
 use crate::flow::phases::{BallInPlay, FixedStepPhase};
 use crate::flow::states::{AppState, MatchState};
-use crate::kernel::flight::{Contribution, Flight, FlightStart};
+use crate::kernel::flight::{Contribution, Flight, FlightStart, Hit, StepMotion};
 use crate::kernel::random::RallySeed;
 
 pub mod shrink;
 pub mod speed;
+pub mod spin;
 pub mod wind;
 
 /// One effect's core half (ADR 0011).
@@ -104,6 +105,7 @@ fn build(id: EffectId, tuning: &Tuning, mode: Mode, rally: RallySeed) -> Box<dyn
         EffectId::Speed => Box::new(speed::Speed::new(tuning.mode(mode).speed_rule())),
         EffectId::Shrink => Box::new(shrink::Shrink::new(tuning)),
         EffectId::Wind => Box::new(wind::Wind::new(tuning, rally)),
+        EffectId::Spin => Box::new(spin::Spin::new(tuning)),
     }
 }
 
@@ -120,7 +122,7 @@ fn build(id: EffectId, tuning: &Tuning, mode: Mode, rally: RallySeed) -> Box<dyn
 /// - The flight's paddle height factor reaches the paddles in the effects
 ///   phase (M2 spec 2.2.3).
 /// - The [`Sandbox`] port starts empty; its held count reaches every flight
-///   start, leaving a match releases it, and entering a match clears its
+///   start and its held hit motion every return, leaving a match releases it, and entering a match clears its
 ///   touched mark unless something was forced for that match beforehand.
 /// - A rally's [`RallySeed`] is drawn before its countdown: on entering a
 ///   match, and at each point for the rally after it.
@@ -151,7 +153,7 @@ impl Plugin for EffectsPlugin {
                 FixedUpdate,
                 (
                     rebuild_effects_from_changed_tuning.in_set(FixedStepPhase::Effects),
-                    hold_the_sandbox_count
+                    hold_what_the_sandbox_holds
                         .in_set(FixedStepPhase::Effects)
                         .before(start_flight_on_serve),
                     fit_paddles_to_the_flight.in_set(FixedStepPhase::Effects),
@@ -176,6 +178,8 @@ pub struct ActiveEffects {
     /// The [`Sandbox`]'s held count, copied here each step so that every
     /// flight start, the serve's and physics', passes through one place.
     held_returns: Option<u16>,
+    /// The [`Sandbox`]'s held hit motion, copied here as the count is.
+    held_hit_motion: Option<StepMotion>,
     /// The seed of the rally in play, or about to be.
     rally_seed: RallySeed,
 }
@@ -188,6 +192,7 @@ impl Default for ActiveEffects {
             ids: Vec::new(),
             effects: Vec::new(),
             held_returns: None,
+            held_hit_motion: None,
             rally_seed: RallySeed::default(),
         }
     }
@@ -242,12 +247,17 @@ impl ActiveEffects {
 
     /// The flight that begins at `start`: every effect in play asked once
     /// for its contribution (M2 spec 2.2.4). While the [`Sandbox`] holds a
-    /// count, the flight starts at that count instead of `start`'s.
+    /// count, the flight starts at that count instead of `start`'s; while
+    /// it holds a hit motion, a return starts as if its paddle had moved
+    /// that way. A serve has no hit, held motion or not.
     #[must_use]
     pub fn start_flight(&self, start: FlightStart) -> Flight {
         let start = FlightStart {
             returns: self.held_returns.unwrap_or(start.returns),
-            ..start
+            hit: start.hit.map(|hit| Hit {
+                paddle_motion: self.held_hit_motion.unwrap_or(hit.paddle_motion),
+                ..hit
+            }),
         };
         Flight::start(
             start,
@@ -290,10 +300,13 @@ impl ActiveEffects {
 /// Port: the developer sandbox (M2 spec 2.9.1). The shell's overlay writes
 /// it; escalation, this feature, and persistence read it. It forces which
 /// effects are in play and holds the return count every flight starts at, so
-/// one effect can be looked at alone, at one dial.
+/// one effect can be looked at alone, at one dial. For a harness it also
+/// holds the paddle motion every return is told, so an effect that reads
+/// the motion acts whether or not a paddle moved.
 ///
 /// Forcing keeps the simulation's invariants (M2 spec 2.4.3): a forced set
-/// takes hold at the next countdown, a held count at the next flight start.
+/// takes hold at the next countdown, a held count or hit motion at the next
+/// flight start.
 /// A match in which anything was forced is [touched](Self::touched_match)
 /// and records nothing, since the overlay ships in release builds.
 ///
@@ -306,6 +319,7 @@ pub struct Sandbox {
     /// The whole set in play while forced, in [`EffectId::ALL`]'s order.
     effects: Option<Vec<EffectId>>,
     returns: Option<u16>,
+    hit_motion: Option<StepMotion>,
     touched_match: bool,
 }
 
@@ -340,10 +354,20 @@ impl Sandbox {
         self.touched_match = true;
     }
 
+    /// Holds the paddle motion every return starts its flight with at
+    /// `motion`, whatever the paddle did; `None` tells the paddle's own
+    /// again. A serve is no hit and is given none. For a harness: no
+    /// overlay key writes it.
+    pub const fn hold_hit_motion(&mut self, motion: Option<StepMotion>) {
+        self.hit_motion = motion;
+        self.touched_match = true;
+    }
+
     /// Forces nothing any more. The match stays touched.
     pub fn release(&mut self) {
         self.effects = None;
         self.returns = None;
+        self.hit_motion = None;
     }
 
     /// The effects forced into play; `None` while the schedule decides.
@@ -358,10 +382,18 @@ impl Sandbox {
         self.returns
     }
 
-    /// Whether anything is forced now: a set of effects, a held count, or both.
+    /// The paddle motion every return starts its flight with; `None` while
+    /// each paddle's own is told.
+    #[must_use]
+    pub const fn held_hit_motion(&self) -> Option<StepMotion> {
+        self.hit_motion
+    }
+
+    /// Whether anything is forced now: a set of effects, a held count, a
+    /// held hit motion, or any of them together.
     #[must_use]
     pub const fn is_forcing(&self) -> bool {
-        self.effects.is_some() || self.returns.is_some()
+        self.effects.is_some() || self.returns.is_some() || self.hit_motion.is_some()
     }
 
     /// Whether anything was forced at any time in the current match.
@@ -463,11 +495,15 @@ fn release_the_sandbox_with_the_match(mut sandbox: ResMut<Sandbox>) {
     }
 }
 
-/// Copies the sandbox's held count to where flights start. Writes only on a
-/// change, so the effects in play are not marked changed every step.
-fn hold_the_sandbox_count(sandbox: Res<Sandbox>, mut active: ResMut<ActiveEffects>) {
+/// Copies the sandbox's held count and held hit motion to where flights
+/// start. Writes only on a change, so the effects in play are not marked
+/// changed every step.
+fn hold_what_the_sandbox_holds(sandbox: Res<Sandbox>, mut active: ResMut<ActiveEffects>) {
     if active.held_returns != sandbox.returns {
         active.held_returns = sandbox.returns;
+    }
+    if active.held_hit_motion != sandbox.hit_motion {
+        active.held_hit_motion = sandbox.hit_motion;
     }
 }
 
@@ -771,6 +807,74 @@ mod tests {
         assert_eq!(returns(&mut app), 10);
     }
 
+    /// The start the ball's flight began at.
+    fn began_at(app: &mut App) -> FlightStart {
+        app.world_mut()
+            .query_filtered::<&BallFlight, With<Ball>>()
+            .single(app.world())
+            .expect("exactly one ball")
+            .flight()
+            .began_at()
+    }
+
+    fn by_the_right_paddle_moving(paddle_motion: StepMotion) -> Hit {
+        Hit {
+            side: Side::Right,
+            paddle_motion,
+        }
+    }
+
+    /// M2 plan phase 6, step 1: the sandbox holds a hit motion as it holds
+    /// the count. Every return starts its flight as if the paddle had moved
+    /// that way, whatever the paddle did, so a harness can look at an
+    /// effect that reads the motion without timing a paddle.
+    #[test]
+    fn a_held_hit_motion_is_the_motion_every_return_starts_its_flight_with() {
+        let mut app = playing();
+        app.world_mut()
+            .resource_mut::<Sandbox>()
+            .hold_hit_motion(Some(StepMotion::Up));
+        into_the_right_paddle(&mut app, Vec2::new(200.0, 0.0));
+        assert_eq!(
+            began_at(&mut app).hit,
+            Some(by_the_right_paddle_moving(StepMotion::Up)),
+            "a still paddle"
+        );
+        report_intent(&mut app, Seat::Right, PaddleIntent::Down);
+        into_the_right_paddle(&mut app, Vec2::new(200.0, 0.0));
+        assert_eq!(
+            began_at(&mut app).hit,
+            Some(by_the_right_paddle_moving(StepMotion::Up)),
+            "a paddle moving down"
+        );
+
+        // Released, the paddle's own motion is told again.
+        app.world_mut()
+            .resource_mut::<Sandbox>()
+            .hold_hit_motion(None);
+        into_the_right_paddle(&mut app, Vec2::new(200.0, 0.0));
+        assert_eq!(
+            began_at(&mut app).hit,
+            Some(by_the_right_paddle_moving(StepMotion::Down))
+        );
+    }
+
+    /// A serve is no hit: a held motion gives it none.
+    #[test]
+    fn a_held_hit_motion_leaves_a_serve_without_a_hit() {
+        let mut app = headless_app(1);
+        boot(&mut app);
+        app.world_mut()
+            .resource_mut::<Sandbox>()
+            .hold_hit_motion(Some(StepMotion::Up));
+        start_match(&mut app, two_humans());
+        for _ in 0..3 {
+            frame(&mut app);
+        }
+        assert!(in_flight(&mut app), "the serve began a flight");
+        assert_eq!(began_at(&mut app), FlightStart::SERVE);
+    }
+
     /// The first toggle starts from what is in play, so one key press
     /// changes one effect; the forced list keeps the enum's order.
     #[test]
@@ -821,22 +925,31 @@ mod tests {
         assert!(!sandbox.touched_match());
         sandbox.toggle(EffectId::Shrink, &[]);
         sandbox.hold_returns(Some(4));
+        sandbox.hold_hit_motion(Some(StepMotion::Down));
+        assert!(sandbox.is_forcing());
         sandbox.release();
         assert_eq!(
-            (sandbox.forced_effects(), sandbox.held_returns()),
-            (None, None)
+            (
+                sandbox.forced_effects(),
+                sandbox.held_returns(),
+                sandbox.held_hit_motion()
+            ),
+            (None, None, None)
         );
+        assert!(!sandbox.is_forcing());
         assert!(sandbox.touched_match());
     }
 
     /// A new match is untouched unless something was forced for it before
-    /// it was entered: a held count, or a set of effects, each on its own.
+    /// it was entered: a held count, a set of effects, or a held hit motion,
+    /// each on its own.
     #[test]
     fn a_new_match_is_touched_only_if_something_was_forced_for_it_beforehand() {
         let touched = |app: &App| app.world().resource::<Sandbox>().touched_match();
-        let forcings: [fn(&mut Sandbox); 2] = [
+        let forcings: [fn(&mut Sandbox); 3] = [
             |sandbox| sandbox.hold_returns(Some(3)),
             |sandbox| sandbox.force_effects(&[EffectId::Speed]),
+            |sandbox| sandbox.hold_hit_motion(Some(StepMotion::Up)),
         ];
         for force in forcings {
             let mut app = headless_app(1);
@@ -859,11 +972,16 @@ mod tests {
         let mut sandbox = app.world_mut().resource_mut::<Sandbox>();
         sandbox.force_effects(&[EffectId::Shrink]);
         sandbox.hold_returns(Some(9));
+        sandbox.hold_hit_motion(Some(StepMotion::Up));
         leave_match(&mut app);
         let sandbox = app.world().resource::<Sandbox>();
         assert_eq!(
-            (sandbox.forced_effects(), sandbox.held_returns()),
-            (None, None)
+            (
+                sandbox.forced_effects(),
+                sandbox.held_returns(),
+                sandbox.held_hit_motion()
+            ),
+            (None, None, None)
         );
         assert!(!sandbox.is_forcing());
     }
@@ -1253,6 +1371,75 @@ mod tests {
             }
         }
         assert!(seen.contains(&WindDirection::Up) && seen.contains(&WindDirection::Down));
+    }
+
+    /// A match in play with Spin alone, every flight starting at `returns`:
+    /// forced before the match is entered, as a harness does. With no Speed
+    /// beside it every return leaves at the serve speed.
+    fn playing_in_spin(returns: u16) -> App {
+        let mut app = headless_app(1);
+        boot(&mut app);
+        let mut sandbox = app.world_mut().resource_mut::<Sandbox>();
+        sandbox.force_effects(&[EffectId::Spin]);
+        sandbox.hold_returns(Some(returns));
+        start_match(&mut app, two_humans());
+        app
+    }
+
+    /// How far off its straight course the ball crosses `TARGET_X`, after
+    /// the right paddle returned it level while the right seat held
+    /// `intent`, in a rally held at `returns`. Positive is toward `+y`.
+    ///
+    /// The ball is sent at the height the paddle's centre has in the step
+    /// of the hit, one step of travel from the middle, so it leaves level.
+    /// The crossing flown is also checked against the kernel's prediction
+    /// from the flight the return began.
+    fn bend_of_a_return(returns: u16, intent: PaddleIntent) -> f32 {
+        const TARGET_X: f32 = -40.0;
+        let mut app = playing_in_spin(returns);
+        // The serve's flight has begun.
+        frame(&mut app);
+        let step_travel =
+            app.world().resource::<Tuning>().paddle().speed() * fixed_timestep(&app).as_secs_f32();
+        let contact_y = match intent {
+            PaddleIntent::Up => step_travel,
+            PaddleIntent::Still => 0.0,
+            PaddleIntent::Down => -step_travel,
+        };
+        report_intent(&mut app, Seat::Right, intent);
+        place_ball(&mut app, Vec2::new(72.0, contact_y), Vec2::new(200.0, 0.0));
+        frame(&mut app);
+        let (_, velocity) = ball_state(&mut app);
+        assert!(velocity.x < 0.0, "the right paddle returned the ball");
+        let straight = straight_crossing(&mut app, TARGET_X);
+        let predicted = predicted_crossing(&mut app, TARGET_X);
+        let flown = flown_crossing(&mut app, TARGET_X);
+        assert_near(flown, predicted, 1e-2);
+        flown - straight
+    }
+
+    /// M2 spec 2.6.4's done-condition, through the systems: a moving-paddle
+    /// hit curves the ball the way the paddle moved and a still one does
+    /// not. At full dial the embedded spin carries a ball 16 units a
+    /// crossing: over the 110 or so of the 146 flown here, a little under
+    /// three fifths of that.
+    #[test]
+    fn a_moving_paddle_hit_curves_the_ball_that_way_and_a_still_one_does_not() {
+        let up = bend_of_a_return(12, PaddleIntent::Up);
+        let down = bend_of_a_return(12, PaddleIntent::Down);
+        let still = bend_of_a_return(12, PaddleIntent::Still);
+        assert!((8.0..=10.5).contains(&up), "up: {up}");
+        assert!((-10.5..=-8.0).contains(&down), "down: {down}");
+        assert_near(still, 0.0, 1e-3);
+    }
+
+    /// M2 spec 2.6.4's done-condition, its last clause: at dial zero
+    /// neither a moving-paddle hit nor a still one curves the ball.
+    #[test]
+    fn at_dial_zero_neither_a_moving_paddle_hit_nor_a_still_one_curves_the_ball() {
+        for intent in [PaddleIntent::Up, PaddleIntent::Still, PaddleIntent::Down] {
+            assert_near(bend_of_a_return(0, intent), 0.0, 1e-3);
+        }
     }
 
     fn paddle_heights(app: &mut App) -> Vec<f32> {
