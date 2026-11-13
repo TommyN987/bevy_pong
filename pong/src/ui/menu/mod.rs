@@ -8,10 +8,10 @@
 //!
 //! The flow: `Main` → `Mode` → `Opponent` → `PointsToWin` → `PickProfile` per
 //! human seat → the match (M2 spec 2.8.1 put the mode first). Two friends
-//! pick left seat first, then right. Against the
-//! computer, the seat that confirmed the computer plays on its own side and
-//! makes every later pick. New on a profile list leads to `NameProfile`, then
-//! `PickColor`, and back to the list with the new profile under the cursor.
+//! pick left seat first, then right. Against the computer, the seat that
+//! confirmed the computer plays on its own side and makes every later pick.
+//! New on a profile list leads to `NameProfile`, then `PickColor`, and back
+//! to the list with the new profile under the cursor.
 //! Edit on it (spec 1.6.3 SHOULD) lists the profiles the seat may pick; one
 //! of them leads to `ProfileActions`: `RenameProfile` or `RecolorProfile`,
 //! each back to the list with it under the cursor, or `DeleteProfile`, which

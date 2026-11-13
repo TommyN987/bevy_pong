@@ -55,7 +55,7 @@ and whether more stars win (2.5.5). Every effect phase reports through it (M2 pl
 
 | Question | How |
 |---|---|
-| Do rallies end? (M2 spec 2.5.1) | Every pairing of stars, Chaos and Classic, nothing forced: no rally reaches the hit limit. The control: with no effect forced into play, two-star and three-star mirrors score no point. |
+| Do rallies end? (M2 spec 2.5.1) | Every pairing of stars, Chaos and Classic, nothing forced: no rally reaches the hit limit. The control: with the empty set forced, so that no effect is in play, two-star and three-star mirrors score no point. |
 | Do more stars win? (2.5.5) | Each pairing from both sides, in both modes. |
 | Does the stack shorten rallies? (2.5.2) | Levels of breadth and held count rising together. |
 | Does each effect shorten rallies as its dial rises? (R3, plan E.4) | Each effect of the bag alone, no speed ramp beside it, up a ladder of held counts. One test per place in the bag, seven places, so the cost of one effect never adds to another's; a place the bag does not fill passes with nothing to measure. |
@@ -85,7 +85,7 @@ The soak asserts that `SanityPlugin` is present, so it cannot go quiet.
 | Test | Plays | Asserts at the end |
 |---|---|---|
 | Classic (spec 1.5.2) | M1's soak: the mode's own schedule, 100,000 live steps. | A match ended, the speed cap was reached, at least 1,000 paddle hits. |
-| Chaos as scheduled (M2 spec 2.5.4) | The same, in Chaos with nothing forced: the bag is drawn, effects join and rotate with the score, and every dial rides each rally's own count. | A match ended, at least 550 paddle hits, every effect of the bag was in play at some time, some flight began at fifteen returns or more. |
+| Chaos as scheduled (M2 spec 2.5.4) | The same, in Chaos with nothing forced: the bag is drawn, effects join and rotate with the score, and every dial rides each rally's own count. | A match ended, at least 550 paddle hits, every effect of the bag was in play at some time, some flight began with Shrink's dial full, read from the tuning. |
 | Chaos, one test per subset size 1, 2, 3 (M2 spec 2.5.3, 2.5.4) | Every choice of that many effects from Chaos's bag, forced beside the always-on effects, the return count held at `u16::MAX` so every dial is full. Forced anew at every match, since leaving a match releases the sandbox. The test's 100,000 live steps are divided evenly among its subsets. | Per subset: no other set of effects was ever in play, flights began at the held count, a return reached the speed cap, a match ended. |
 
 The subsets come from the mode's data, so an effect added to the bag is soaked with no edit.

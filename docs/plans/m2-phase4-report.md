@@ -5,7 +5,9 @@ Deviations from [m2-chaos-pong.md](../specs/m2-chaos-pong.md) and [m2-plan.md](m
 
 Built 2026-11-12: step 0, and steps 1 to 4 (plan 4.1 to 4.4).
 Reviewed 2026-11-13, with phase 3, by four independent reviewers; every finding was worked through the same day ("The review").
-Not closed: see "Open at phase close". `docs/specs/CURRENT` names phase 4.
+The fixes were reviewed once more the same day ("The second pass").
+Closed 2026-11-13 by the user's word, with CI green on the fixes (`8d6c8b5`) and the items of "Open at phase close" carried.
+`docs/specs/CURRENT` names phase 5, Wind, on branch `feat/wind`.
 
 This report was rewritten once, on 2026-11-13, after the review found it disagreeing with itself:
 it had been written step by step through a finding and two retunes.
@@ -34,6 +36,7 @@ The first three were proposed before implementation and approved by the user on 
 - 2026-11-12: retune the stars now, so that more stars are harder to beat and no star is unbeatable, in Chaos or in Classic (step 2).
 - 2026-11-12: after losing 10 to 0 to three stars at the first candidate, errors of 12, 7, and 3; then "leave it like this for now".
 - 2026-11-13, after the review: the phase is not closed; the `bevy-api-check` rule gains an exception for an API already used in the repository; hiding the overlay and leaving a match both release the sandbox; Chaos gets a soak as scheduled.
+- 2026-11-13, after the second pass: fix all ten findings and close the phase; the next branch is `feat/wind`.
 
 ## Step 0
 
@@ -205,7 +208,7 @@ In Chaos the ramp is 3 a return, so those speeds come at the 50th and 44th retur
 | 3 v 3 | 30 rallies, mean 41.7, longest 143 | 33 rallies, mean 66.0, longest 105 |
 
 More stars won 8 matches to 0 in each of the three pairings, in each mode.
-With no effect forced into play, two-star and three-star mirrors score no point in 200 hits.
+The control: with the empty set forced, so that no effect is in play, two-star and three-star mirrors score no point in 200 hits.
 Against the first try, Classic and the three-star mirror moved little; two stars' Chaos rallies shortened from a mean of 38.0 to 14.7, since an error of 7 is outside the shrinking paddle's reach before full dial.
 
 **What the errors do and do not do,** by a temporary test since removed: 100 launches per speed at the three-star AI resting at the centre, any height, any angle, percent missed.
@@ -254,7 +257,7 @@ A test that had pinned the three-star gap, and a Chaos-only version of the first
 - **The refactor changed nothing in Classic.** Before and after, and again after the review's changes, the seeded run prints the same line: 67,714 frames, 16 matches, 1,025 paddle hits, top speed 250.00002. Its three assertions are untouched.
 - **The players predict under the ball's own flight,** so a field effect is tracked from the phase it ships in.
 - **Chaos, one test per subset size 1, 2, 3.** Every choice of that many effects from Chaos's bag is forced beside the mode's always-on effects, with the return count held at `u16::MAX`: full for every dial whatever return its ramp is full at. Since the review the run forces anew at every match, as leaving a match releases the sandbox, and asserts per subset that no other set of effects was ever in play, that flights began at the held count, that a return reached the speed cap, and that a match ended.
-- **Chaos as scheduled,** added after the review by the user's ruling: nothing forced, a hundred thousand live steps. It asserts a match ended, at least 550 paddle hits, every effect of the bag in play at some time, and some flight beginning at fifteen returns or more.
+- **Chaos as scheduled,** added after the review by the user's ruling: nothing forced, a hundred thousand live steps. It asserts a match ended, at least 550 paddle hits, every effect of the bag in play at some time, and some flight beginning with Shrink's dial full, read from the tuning.
 - **The subsets come from the mode's tuning,** so an effect added to the bag is soaked with no edit to the test.
 
 Measured, no fault in any:
@@ -318,6 +321,24 @@ Left as they are, each for a stated reason:
 - **The launch `(72, 2)` at 200,** repeated across test files with its reason stated in one: not gathered into a shared helper, since the files are in two crates' separate test trees.
 - **The stall guard** of the harness has no test (step 2).
 
+## The second pass (2026-11-13)
+
+One more review, of the fixes alone (`8d6c8b5`, 48 files), after the user committed and pushed them.
+`just ci-check` was green locally and CI green on the push.
+Checked and found true: every relative link in the docs, every test name the docs cite, the commit hashes the phase 3 report names, the `OnExit` behaviour recorded under "Bevy API" against the pinned source, and the stall guard's arithmetic.
+No fault was found in the code. Ten findings, none blocking, all fixed the same day by the user's ruling:
+
+- **`tuning.ron` said `just ai-report` measures the delay and error thresholds.** It measures neither. The comment now names what does pin the delay's side, and this report for the sweeps.
+- **This report and the spec said CI had not run the tests.** It has: see "Running times".
+- **"No effect forced into play"** read as "nothing forced", against the table above it. The control forces the empty set; this report, the spec's 2.5.1, and the testing README now say so.
+- **The overlay's `sandbox_is_open` took one fact twice:** whether a ball exists, and the match state, which exists exactly while a ball does. It takes the match state alone.
+- **The synth's note vocabulary had two visibilities.** `tone`, `rest`, `PLAIN`, `BRASS`, `phrase`, and `Note` are all the crate's own now; `Synth` is what the app and its tests are given.
+- **`every_effect_of_chaos_bag_has_a_dial_test` counted the dial tests' places** and would have passed a place measured twice with another skipped. It asserts the places are each place once.
+- **The scheduled Chaos soak asked for fifteen returns,** Shrink's `full_at_return` written as a literal. It asks the tuning whether Shrink's dial was full at the most returns a flight began at.
+- **`SLOW_RALLY_HIT_LIMIT` was described for a ball near the serve speed** and used by the stack's test, which holds Speed at fifteen returns a level. Its comment now describes a forced match at a held count.
+- **A link in `docs/claude-code-setup.md`** still showed the plan's old path as its text.
+- **A doc comment in the menu** was rewrapped halfway.
+
 ## Spec items of this phase
 
 | Item | State |
@@ -334,9 +355,8 @@ Left as they are, each for a stated reason:
 - **The user's hand check of the shipped handicaps.** The first candidate lost the user a match 10 to 0 against three stars; the second is unplayed. By the launch table it gives a player no points below the speed cap. The user's word on 2026-11-12: "leave it like this for now".
 - **A playtest-log entry** for the two observations behind the retune and for the hand check.
 - **R3 against three stars** (spec 2.5.2): to be shown once an effect's flaw reaches them, from Wind on.
-- **CI's running times:** not measured. See "Running times".
 - **The Classic soak's paddle-hit floor:** 1,025 against 1,000.
-- **Seeded numbers across machines.** The simulation uses `sin_cos`, which Rust does not promise to be bit-identical across platforms. Whether CI's seeded numbers equal the development machine's is not known until CI runs these tests; the margins that matter are stated under "Running times" and in the tables.
+- **Seeded numbers across machines.** The simulation uses `sin_cos`, which Rust does not promise to be bit-identical across platforms. CI ran every seeded test green on 2026-11-13, so each asserted margin held on its machine. The run does not print the numbers, so whether they equal the development machine's is still not known; `just ai-report` and the soaks' output would show it.
 
 ## Running times
 
@@ -345,7 +365,11 @@ the AI-match tests take 1.6 to 5.2 s each (the dial test 5.2 s for one effect, e
 the Classic soak 3.6 to 4.1 s, Chaos as scheduled 4.2 s, Chaos at full dial 7.2 s.
 
 Inside the full parallel run of `just dev-check` the same tests take longer, since nine heavy tests share the cores: 8.5 to 13.8 s each on 2026-11-13.
-Nextest ends a test at 30 s. CI has not run them.
+Nextest ends a test at 30 s.
+
+CI, 2026-11-13, on `8d6c8b5` (run 43406965444), the same nine inside the full parallel run: 2.3 to 8.1 s each.
+The soaks took 5.4 s (Classic), 5.0 s (Chaos as scheduled), and 6.5 s (Chaos at full dial); the slowest test was the first bag effect's dial test at 8.1 s.
+Nextest took 18.3 s for all 574 tests, and the `just ci-check` job 2 min 39 s.
 
 ## Test changes
 
@@ -361,6 +385,8 @@ No assertion of a test that existed before this phase was changed. Call sites ch
 
 Tests of this phase changed by the review: the two R3 tests assert through `no_longer` and `shorter`; the per-effect one became one test per bag place; the Chaos subset soak asserts the forcing held through every match; `a_new_match_is_touched_only_if_something_was_forced_for_it_beforehand` replaces a test that tried a held count only; the overlay's unit tests expect the new released line and the sandbox keys only while the sandbox is open.
 
+Tests of this phase changed by the second pass, with no test added or removed: `every_effect_of_chaos_bag_has_a_dial_test` asserts the places are each place once; the scheduled Chaos soak reads Shrink's full dial from the tuning.
+
 Comments corrected: the AI tests' `launches` (step 0); `match_screens.rs`, which still described the double-counted return as current (review).
 
 ## Bevy API
@@ -375,6 +401,8 @@ The review's changes wrote one: the `OnExit` schedule label, for releasing the s
 - In a transition from `InMatch` to `Menu` it runs in `StateTransition`, after the sub-state's own exit and before `OnTransition` and `OnEnter(Menu)`; entities marked `DespawnOnExit(InMatch)` are still alive while it runs.
 - It does not run when the app starts, nor when the app is dropped in a match.
 - It does run for a transition from `InMatch` to `InMatch` requested with `NextState::set`, whatever the type's own doc comment says. Nothing requests one today; the system's doc comment records it.
+
+The second pass's fixes wrote no API new to the repository, so `bevy-api-check` was not run for them.
 
 ## Facts learned
 

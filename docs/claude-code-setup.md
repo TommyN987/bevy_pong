@@ -5,7 +5,7 @@ Implemented in plan phase 0 on branch `chore/claude-setup` (2026-10-31): `CLAUDE
 
 ## Working agreement
 
-Git is the user's domain. Claude runs only read-only git and `git stash`. Pair-programming roles vary per phase: Claude may drive, navigate, or review. See the phase protocol in [specs/m1-plan.md](plans/m1-plan.md).
+Git is the user's domain. Claude runs only read-only git and `git stash`. Pair-programming roles vary per phase: Claude may drive, navigate, or review. See the phase protocol in [plans/m1-plan.md](plans/m1-plan.md).
 
 ## Requirements the setup answers
 

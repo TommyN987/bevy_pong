@@ -68,7 +68,9 @@
     // cap, however it is placed. The error only rolls dice, and only once it
     // exceeds the paddle's reach: half the paddle's height plus the ball's
     // radius, so less under Shrink than with a whole paddle. Both thresholds
-    // move with the paddle and ball numbers; `just ai-report` measures them.
+    // move with the paddle and ball numbers. No standing test measures
+    // either: the AI's launch tests pin the delay's side of it at the speed
+    // cap, and the M2 phase 4 report has the sweeps both were read from.
     ai: (
         one_star: (reaction_delay_seconds: 0.35, prediction_error: 12.0),
         two_stars: (reaction_delay_seconds: 0.29, prediction_error: 7.0),
