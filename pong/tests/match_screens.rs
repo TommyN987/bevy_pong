@@ -260,13 +260,7 @@ fn match_over_names_the_winner_and_what_each_profile_gained() {
 #[test]
 fn after_a_chaos_match_match_over_shows_what_each_profile_gained_in_chaos() {
     let mut app = screens_app();
-    let chaos = MatchConfig {
-        mode: Mode::Chaos {
-            cap: NonZeroU8::MIN,
-        },
-        ..humans(zoe_and_max(), 1)
-    };
-    start_match(&mut app, chaos);
+    start_match(&mut app, chaos(zoe_and_max(), 1));
     score_for(&mut app, Side::Left);
     until(&mut app, MatchState::MatchOver);
     frame(&mut app);
@@ -283,13 +277,7 @@ fn a_rally_record_in_classic_does_not_hide_a_shorter_first_one_in_chaos() {
         .records_mut(ZOE, Mode::Classic)
         .expect("Zoë exists")
         .record_rally(17);
-    let chaos = MatchConfig {
-        mode: Mode::Chaos {
-            cap: NonZeroU8::MIN,
-        },
-        ..humans(zoe_and_max(), 1)
-    };
-    start_match(&mut app, chaos);
+    start_match(&mut app, chaos(zoe_and_max(), 1));
     let mut hits = app.world_mut().resource_mut::<Messages<BallHitPaddle>>();
     for _ in 0..3 {
         hits.write(BallHitPaddle { side: Side::Left });
@@ -459,9 +447,7 @@ fn in_chaos_the_return_count_shows_and_rises_with_each_return() {
     start_match(&mut app, chaos(SeatPlayers::GUESTS, 10));
     frame(&mut app);
     assert_eq!(texts::<ReturnCountText>(&mut app), ["0"]);
-    // Into the right paddle's face in the middle of one step. Not at 60
-    // units/s: that step ends exactly on the face, and the next step counts
-    // the touch again (phase 3 report, "Facts learned").
+    // Into the right paddle's face in the middle of one step.
     place_ball(&mut app, Vec2::new(72.0, 2.0), Vec2::new(200.0, 0.0));
     frame(&mut app);
     frame(&mut app);

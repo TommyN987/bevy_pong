@@ -4,6 +4,7 @@
 use bevy::color::Color;
 
 use super::{Icon, ShellHalf};
+use crate::audio::sound::Sound;
 use crate::audio::synth::{BRASS, phrase, tone};
 
 /// Two arrowheads pressing toward each other: something squeezed shorter.
@@ -14,21 +15,26 @@ const ICON: Icon = Icon {
 
 /// Shrink's icon and cue.
 ///
-/// - Cue: three falling notes, each shorter in pitch than the last.
+/// - Cue: [`join_cue`].
 /// - View: none of its own. The paddle view draws each paddle's rectangle
 ///   every frame, so a shorter paddle is already a shorter bar (R1).
 #[must_use]
-pub fn shell_half() -> ShellHalf {
+pub const fn shell_half() -> ShellHalf {
     ShellHalf {
         icon: Some(ICON),
-        join_cue: Some(phrase(
-            &[
-                tone(&[659.25], 0.09),
-                tone(&[523.25], 0.09),
-                tone(&[392.0], 0.22),
-            ],
-            BRASS,
-        )),
+        join_cue: Some(join_cue),
         view: None,
     }
+}
+
+/// Three falling notes, each lower than the last, the last one held.
+fn join_cue() -> Sound {
+    phrase(
+        &[
+            tone(&[659.25], 0.09),
+            tone(&[523.25], 0.09),
+            tone(&[392.0], 0.22),
+        ],
+        BRASS,
+    )
 }

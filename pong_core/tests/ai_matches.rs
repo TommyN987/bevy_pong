@@ -9,7 +9,7 @@
 //! in either mode, and the stars keep their order in both (the user's
 //! ruling, M2 phase 4 report).
 
-use std::num::NonZeroU8;
+use std::num::{NonZeroU8, NonZeroU32};
 
 use pong_core::domain::{Difficulty, EffectId, Mode};
 use pong_core::features::tuning::{EMBEDDED_RON, Tuning};
@@ -20,9 +20,21 @@ const ONE: Difficulty = Difficulty::OneStar;
 const TWO: Difficulty = Difficulty::TwoStars;
 const THREE: Difficulty = Difficulty::ThreeStars;
 
-/// Hits at which a rally is given up as unended. The longest rally that
-/// ended in the measured runs of M2 plan phase 4 had 195 hits.
-const RALLY_HIT_LIMIT: u32 = 500;
+/// Hits at which a rally of an unforced match is given up as unended. At the
+/// shipped handicaps the longest rally `just ai-report` shows has 143 hits;
+/// across every handicap swept in M2 plan phase 4, shipped or not, the
+/// longest that ended had 195.
+const RALLY_HIT_LIMIT: NonZeroU32 = hits(500);
+
+/// Hits at which a rally is given up where the question is whether rallies
+/// end at all, with the ball held at or near the serve speed: 200 hits there
+/// are over six minutes of one rally, and each unended rally costs the test
+/// that long in game time.
+const SLOW_RALLY_HIT_LIMIT: NonZeroU32 = hits(200);
+
+const fn hits(limit: u32) -> NonZeroU32 {
+    NonZeroU32::new(limit).expect("a positive limit")
+}
 
 /// Every pairing of stars, each once.
 const PAIRINGS: [(Difficulty, Difficulty); 6] = [
@@ -119,7 +131,7 @@ fn with_no_effect_in_play_no_rally_between_competent_computers_ends() {
                 effects: Some(Vec::new()),
                 returns: None,
             },
-            rally_hit_limit: 300,
+            rally_hit_limit: SLOW_RALLY_HIT_LIMIT,
             ..chaos_match(stars_each, stars_each)
         };
         let played = play_seeds(&setup, 0..2);
@@ -168,6 +180,59 @@ fn in_both_modes_the_computer_with_more_stars_wins_more_matches() {
     }
 }
 
+/// Sampling noise allowed between two means of ended rallies, in hits. The
+/// seeded runs are small, and a mean may wobble by a fraction of a hit from
+/// one rung to the next without the effect having eased.
+const NOISE: f32 = 0.5;
+
+/// Whether the rallies of `after` are no longer than those of `before`, as
+/// far as two seeded runs can tell.
+///
+/// A run with unended rallies has no true mean: the mean it reports is a
+/// floor set by the hit limit. Such runs are compared by how many of their
+/// rallies never ended; only two runs whose rallies all ended are compared
+/// by their means, within [`NOISE`].
+fn no_longer(before: RallyLengths, after: RallyLengths) -> bool {
+    if before.unended > 0 || after.unended > 0 {
+        // after.unended / after.rallies <= before.unended / before.rallies
+        after.unended * before.rallies <= before.unended * after.rallies
+    } else {
+        after.mean <= before.mean + NOISE
+    }
+}
+
+/// Whether the rallies of `after` are shorter than those of `before` by
+/// more than noise: every rally of `after` ended, and either some of
+/// `before` never did, or its mean is higher by more than [`NOISE`].
+fn shorter(before: RallyLengths, after: RallyLengths) -> bool {
+    after.unended == 0 && (before.unended > 0 || after.mean < before.mean - NOISE)
+}
+
+/// Asserts R3 along `rungs`, lowest dial first: rallies never lengthen from
+/// one rung to the next, and are shorter at the top than at the bottom.
+fn assert_rallies_shorten(what: &str, rungs: &[RallyLengths]) {
+    for pair in rungs.windows(2) {
+        assert!(
+            no_longer(pair[0], pair[1]),
+            "{what}: rallies grew from one rung to the next:\n{}\n{}",
+            pair[0],
+            pair[1]
+        );
+    }
+    let (bottom, top) = (rungs[0], rungs[rungs.len() - 1]);
+    assert!(
+        shorter(bottom, top),
+        "{what}: rallies at the top are no shorter than at the bottom:\n{bottom}\n{top}"
+    );
+}
+
+/// Seeds per rung for a mirror match of `stars_each`. One-star rallies are a
+/// few hits long, so many are needed for a steady mean and they cost little;
+/// two-star rallies at a low dial never end, and each costs its hit limit.
+fn seeds_per_rung(stars_each: Difficulty) -> std::ops::Range<u64> {
+    if stars_each == ONE { 0..8 } else { 0..2 }
+}
+
 /// Return counts held per level of breadth: each step up adds one scheduled
 /// effect and this many returns, so breadth and intensity rise together.
 const RETURNS_PER_LEVEL: u16 = 15;
@@ -187,7 +252,7 @@ fn chaos_rallies_shorten_as_breadth_and_return_count_rise_together() {
     let levels = mode.bag().len().min(3);
     assert!(levels >= 1, "Chaos schedules no effect");
     for stars_each in [ONE, TWO] {
-        let means: Vec<f32> = (0..=levels)
+        let rungs: Vec<RallyLengths> = (0..=levels)
             .map(|level| {
                 let effects: Vec<EffectId> = mode
                     .always()
@@ -202,29 +267,18 @@ fn chaos_rallies_shorten_as_breadth_and_return_count_rise_together() {
                         effects: Some(effects.clone()),
                         returns: Some(returns),
                     },
-                    rally_hit_limit: 200,
+                    rally_hit_limit: SLOW_RALLY_HIT_LIMIT,
                     ..chaos_match(stars_each, stars_each)
                 };
-                let lengths = lengths(&play_seeds(&setup, 0..3));
+                let lengths = lengths(&play_seeds(&setup, seeds_per_rung(stars_each)));
                 println!(
                     "stack, {}, {effects:?} at {returns} returns: {lengths}",
                     stars(&setup)
                 );
-                lengths.mean
+                lengths
             })
             .collect();
-        for pair in means.windows(2) {
-            assert!(
-                pair[1] <= pair[0],
-                "{} stars: rallies grew from one level to the next: {means:?}",
-                stars_each.stars()
-            );
-        }
-        assert!(
-            means[levels] < means[0],
-            "{} stars: the full stack is no shorter than none: {means:?}",
-            stars_each.stars()
-        );
+        assert_rallies_shorten(&format!("the stack, {} stars", stars_each.stars()), &rungs);
     }
 }
 
@@ -232,10 +286,10 @@ fn chaos_rallies_shorten_as_breadth_and_return_count_rise_together() {
 /// every dial is mild (R9), past where the embedded dials are full.
 const DIAL_LADDER: [u16; 6] = [0, 5, 10, 15, 20, 30];
 
-/// R3 per effect (M2 spec 2.5.2, plan E.4): each effect of Chaos's bag alone,
-/// with no speed ramp beside it, at each rung of the ladder. Mean hits per
-/// rally of the mirror match of `stars_each`, rung by rung.
-fn mean_hits_up_the_dial(effect: EffectId, stars_each: Difficulty) -> Vec<f32> {
+/// R3 per effect (M2 spec 2.5.2, plan E.4): `effect` alone, with no speed
+/// ramp beside it, at each rung of the ladder. The rallies of the mirror
+/// match of `stars_each`, rung by rung.
+fn rallies_up_the_dial(effect: EffectId, stars_each: Difficulty) -> Vec<RallyLengths> {
     DIAL_LADDER
         .iter()
         .map(|&returns| {
@@ -244,45 +298,112 @@ fn mean_hits_up_the_dial(effect: EffectId, stars_each: Difficulty) -> Vec<f32> {
                     effects: Some(vec![effect]),
                     returns: Some(returns),
                 },
-                rally_hit_limit: 200,
+                rally_hit_limit: SLOW_RALLY_HIT_LIMIT,
                 ..chaos_match(stars_each, stars_each)
             };
-            let lengths = lengths(&play_seeds(&setup, 0..3));
+            let lengths = lengths(&play_seeds(&setup, seeds_per_rung(stars_each)));
             println!(
                 "dial, {effect:?} alone at {returns} returns, {}: {lengths}",
                 stars(&setup)
             );
-            lengths.mean
+            lengths
         })
         .collect()
 }
 
+/// How many effects Chaos's bag can hold and still have each one measured:
+/// one test below per place in the bag.
+const BAG_PLACES: usize = 7;
+
 /// M2 spec 2.5.2 and R3, per effect (plan E.4): an effect raises the miss
 /// probability, monotone in its dial; falsified if rally length does not
-/// shorten as the dial rises. Every effect of Chaos's bag is measured, so a
-/// new one is held to this with no edit here.
+/// shorten as the dial rises. The effect at `place` in Chaos's bag is
+/// measured, whichever it is, so a new effect is held to this with no edit
+/// here. One test per place keeps each inside the per-test time limit
+/// however long the bag grows; a place the bag does not fill yet has
+/// nothing to measure, and its test says so and passes.
 ///
 /// Mirror matches of one and of two stars. Three stars' aim error is inside
 /// the reach of the shortest paddle, so Shrink alone ends none of their
 /// rallies at any rung (M2 phase 4 report).
-#[test]
-fn each_bag_effect_alone_shortens_rallies_as_its_dial_rises() {
+fn the_bag_effect_alone_shortens_rallies_as_its_dial_rises(place: usize) {
     let tuning = Tuning::from_ron(EMBEDDED_RON).expect("the embedded tuning is valid");
-    for &effect in tuning.mode(chaos()).bag() {
-        for stars_each in [ONE, TWO] {
-            let means = mean_hits_up_the_dial(effect, stars_each);
-            for pair in means.windows(2) {
-                assert!(
-                    pair[1] <= pair[0],
-                    "{effect:?}, {} stars: rallies grew as the dial rose: {means:?}",
-                    stars_each.stars()
-                );
+    let Some(&effect) = tuning.mode(chaos()).bag().get(place) else {
+        println!("dial: Chaos's bag has no effect at place {place}");
+        return;
+    };
+    for stars_each in [ONE, TWO] {
+        assert_rallies_shorten(
+            &format!("{effect:?} alone, {} stars", stars_each.stars()),
+            &rallies_up_the_dial(effect, stars_each),
+        );
+    }
+}
+
+macro_rules! one_dial_test_per_bag_place {
+    ($($test:ident: $place:expr,)*) => {
+        $(
+            #[test]
+            fn $test() {
+                the_bag_effect_alone_shortens_rallies_as_its_dial_rises($place);
             }
+        )*
+
+        /// Every effect of the bag has a place a test measures, and the bag
+        /// is not empty: no effect goes unmeasured for want of a test.
+        #[test]
+        fn every_effect_of_chaos_bag_has_a_dial_test() {
+            let places: &[usize] = &[$($place),*];
+            assert_eq!(places.len(), BAG_PLACES);
+            let tuning = Tuning::from_ron(EMBEDDED_RON).expect("the embedded tuning is valid");
+            let bag = tuning.mode(chaos()).bag().len();
             assert!(
-                means[means.len() - 1] < means[0],
-                "{effect:?}, {} stars: the full dial is no shorter than none: {means:?}",
-                stars_each.stars()
+                (1..=BAG_PLACES).contains(&bag),
+                "the bag holds {bag} effects; the dial tests cover 1 to {BAG_PLACES}"
             );
         }
-    }
+    };
+}
+
+one_dial_test_per_bag_place! {
+    the_first_bag_effect_alone_shortens_rallies_as_its_dial_rises: 0,
+    the_second_bag_effect_alone_shortens_rallies_as_its_dial_rises: 1,
+    the_third_bag_effect_alone_shortens_rallies_as_its_dial_rises: 2,
+    the_fourth_bag_effect_alone_shortens_rallies_as_its_dial_rises: 3,
+    the_fifth_bag_effect_alone_shortens_rallies_as_its_dial_rises: 4,
+    the_sixth_bag_effect_alone_shortens_rallies_as_its_dial_rises: 5,
+    the_seventh_bag_effect_alone_shortens_rallies_as_its_dial_rises: 6,
+}
+
+/// The comparisons above must be able to fail: a run pinned at the hit
+/// limit is not "longer" than another pinned there, and a top rung with any
+/// unended rally has not been shown shorter than anything.
+#[test]
+fn censored_runs_are_compared_by_their_unended_rallies_not_their_means() {
+    let run = |rallies: usize, unended: usize, mean: f32| RallyLengths {
+        rallies,
+        unended,
+        mean,
+        median: 0,
+        longest: 0,
+    };
+    let never_ends = run(3, 3, 200.0);
+    let mostly_unended = run(4, 3, 195.2);
+    let all_end_long = run(20, 0, 199.0);
+    let all_end_short = run(20, 0, 4.0);
+
+    assert!(no_longer(never_ends, never_ends));
+    assert!(no_longer(never_ends, mostly_unended));
+    assert!(!no_longer(mostly_unended, never_ends));
+    assert!(no_longer(mostly_unended, all_end_long));
+    assert!(!no_longer(all_end_short, mostly_unended));
+    // Between runs whose rallies all ended, the means decide, within noise.
+    assert!(no_longer(all_end_short, run(20, 0, 4.4)));
+    assert!(!no_longer(all_end_short, run(20, 0, 4.6)));
+
+    assert!(shorter(never_ends, all_end_long));
+    assert!(!shorter(never_ends, mostly_unended));
+    assert!(!shorter(never_ends, never_ends));
+    assert!(shorter(all_end_long, all_end_short));
+    assert!(!shorter(all_end_short, run(20, 0, 3.6)));
 }

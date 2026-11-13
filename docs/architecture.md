@@ -56,7 +56,7 @@ Rules:
 5. **Components own their invariants.** Mutation happens through the component's API from any feature. Cross-feature triggers are events, never direct calls.
 6. **Extension points are exhaustive enums.** Effect, boss, and item identities. Adding a variant makes the compiler enumerate every spawn table, cue map, and AI branch to extend. Amended 2026-11-10 by [ADR 0011](adr/0011-effect-identity-and-contract.md): for effects, only identity is a closed enum; behaviour sits behind a per-effect trait with a core half and a shell half, and each crate registers effects in one exhaustive match.
 7. **A feature is a directory with a plugin at its root.** Growable sub-concepts (individual effects, bosses) are submodules with a uniform shape: components, systems, spawn function.
-8. **The shell mirrors core.** One view module per core body (arena, ball, paddle), beside presentation modules that serve them all (camera, motion, trail, shake); one screen per state; the overlay apart. A port is written by its adapter in `ports/` or by a named screen (the pause screen writes `MatchControl`, as focus loss does). The shell's spawn table matches the same enum as core's. Amended 2026-11-09 at milestone close: the rule said one view per core feature and one adapter per port, which M1's shell outgrew.
+8. **The shell mirrors core.** One view module per core body (arena, ball, paddle), beside presentation modules that serve them all (camera, motion, trail, shake); one screen per state; the overlay apart. A port is written by its adapter in `ports/` or by a named screen (the pause screen writes `MatchControl`, as focus loss does). The shell's spawn table matches the same enum as core's. Amended 2026-11-09 at milestone close: the rule said one view per core feature and one adapter per port, which M1's shell outgrew. Amended 2026-11-13 (ADR 0011, [M2 phase 4 report](plans/m2-phase4-report.md)): no spawn table exists; the shell's one match on the effect enum is its registration of each effect's shell half, as the core's is of each core half.
 9. **Tests live beside the feature.** A shared testing module behind a cargo feature builds a minimal app with chosen plugins and fake ports.
 10. **Size decides depth.** A floor is a file until it needs a directory.
 
@@ -64,17 +64,17 @@ Orientational shape at the final milestone:
 
 ```
 pong_core/src/
-  kernel/        geometry, integrate, collide, reflect, predict, random   (no ECS)
+  kernel/        geometry, integrate, collide, reflect, flight, ramp, predict, random   (no ECS)
   domain/        Seat, EffectId, BossId, ItemId, events
   flow/          AppState, MatchState, phase sets, step gate, FIXED_HZ   (ADR 0002, 0003)
   features/
     seats/       intent port and latch, per-side paddle intents
     ball/        Ball, Velocity, Position, snap marker
     paddle/      Paddle with clamped size API
-    physics/     systems wrapping kernel; force accumulator
+    physics/     systems wrapping kernel
     rules/       scoring, match-flow transitions, pause port, fault heal
     ai/          mirror controller; bosses/ one module each
-    effects/     EffectPool, spawn table; one module per effect   (C1)
+    effects/     effect contract and registration, the flight on the ball, sandbox port; one module per effect   (C1)
     escalation/  breadth schedule and rally hit count     (C1; first drawn as meter/, amended 2026-11-11)
     rooms/       RoomDescriptor, composition loader       (C3)
     items/       pick-ups, inventory, fire                (C2)
@@ -159,7 +159,7 @@ Rules owns every `MatchState` transition; the shell requests pause and resume th
 ## Presentation
 
 - All simulation, tuning, and AI values are in arena units, never pixels. The camera fits the arena with letterboxing. UI scales with viewport-relative units.
-- A debug overlay on a function key shows fixed-step rate, ball speed, AI target and error, active effects, and the rally's hit count (first written as "meter value", amended 2026-11-11). It ships in release builds, hidden by default. Amended 2026-11-12 ([M2 phase 3 report](plans/m2-phase3-report.md)): while shown in a match it is also the sandbox of M2 spec 2.9.1, through the `Sandbox` port.
+- A debug overlay on a function key shows fixed-step rate, ball speed, AI target and error, active effects, and the rally's hit count (first written as "meter value", amended 2026-11-11). It ships in release builds, hidden by default. Amended 2026-11-12 ([M2 phase 3 report](plans/m2-phase3-report.md)): while shown in a match it is also the sandbox of M2 spec 2.9.1, through the `Sandbox` port. Amended 2026-11-13 ([M2 phase 4 report](plans/m2-phase4-report.md)): hiding the overlay releases the sandbox, as leaving the match does, and the keys do nothing once a match is over.
 
 ## Error policy
 
@@ -174,7 +174,7 @@ Principles:
 5. Progress is never half-written: atomic write via temp file and rename.
 6. Every error class has a test, or the class is made impossible by construction.
 
-Mechanism: typed error enums only where a caller branches (persistence load and save, tuning validation). Audio init needs none: Bevy's audio plugin handles a missing device itself (amended 2026-11-08, [phase 9 report](specs/m1-phase9-report.md)). Interior systems return `Result<(), BevyError>` with context and go to Bevy's app-level error handler, set per build profile. The sanity system writes a `SimFault` and returns it as its error in both builds; the handler panics in dev and logs it at error level in release, and rules answers the message by restarting the rally (amended 2026-11-09 at milestone close, [ADR 0009](adr/0009-error-policy.md)). Tuning and save data use validated constructors, so invalid values cannot enter. A panic hook writes a crash file to the XDG state directory.
+Mechanism: typed error enums only where a caller branches (persistence load and save, tuning validation). Audio init needs none: Bevy's audio plugin handles a missing device itself (amended 2026-11-08, [phase 9 report](plans/m1-phase9-report.md)). Interior systems return `Result<(), BevyError>` with context and go to Bevy's app-level error handler, set per build profile. The sanity system writes a `SimFault` and returns it as its error in both builds; the handler panics in dev and logs it at error level in release, and rules answers the message by restarting the rally (amended 2026-11-09 at milestone close, [ADR 0009](adr/0009-error-policy.md)). Tuning and save data use validated constructors, so invalid values cannot enter. A panic hook writes a crash file to the XDG state directory.
 
 | Class                 | Example                                  | Detect                                    | Dev                                                                               | Release                                            | Notice           | Test                                     |
 | --------------------- | ---------------------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------- | -------------------------------------------------- | ---------------- | ---------------------------------------- |

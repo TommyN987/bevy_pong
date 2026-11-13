@@ -20,7 +20,7 @@ use bevy::ecs::query::With;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::{Local, Query, Res, ResMut};
-use bevy::state::state::OnEnter;
+use bevy::state::state::{OnEnter, OnExit};
 
 use crate::domain::{Difficulty, EffectId, Mode, Serve};
 use crate::features::ball::Ball;
@@ -44,6 +44,11 @@ pub trait Effect: Send + Sync + 'static {
 
     /// This effect's share of the flight that begins at `start`. Called once
     /// per flight; the answer holds until the next flight starts.
+    ///
+    /// Postcondition (the effect's): the answer depends on `start` and on
+    /// nothing that changes while the flight lasts. [`flaw`](Self::flaw) is
+    /// asked later in the same flight, and an effect that is believed as it
+    /// is answers it by contributing again.
     fn contribute(&self, start: &FlightStart) -> Contribution;
 
     /// How an AI of `difficulty` misjudges this effect over the flight that
@@ -109,8 +114,8 @@ fn build(id: EffectId, tuning: &Tuning, mode: Mode) -> Box<dyn Effect> {
 /// - The flight's paddle height factor reaches the paddles in the effects
 ///   phase (M2 spec 2.2.3).
 /// - The [`Sandbox`] port starts empty; its held count reaches every flight
-///   start, and entering a match clears its touched mark unless it still
-///   forces something.
+///   start, leaving a match releases it, and entering a match clears its
+///   touched mark unless something was forced for that match beforehand.
 pub struct EffectsPlugin;
 
 impl Plugin for EffectsPlugin {
@@ -119,6 +124,10 @@ impl Plugin for EffectsPlugin {
             .init_resource::<Sandbox>()
             .register_required_components::<Ball, BallFlight>()
             .add_systems(OnEnter(AppState::InMatch), begin_the_match_untouched)
+            .add_systems(
+                OnExit(AppState::InMatch),
+                release_the_sandbox_with_the_match,
+            )
             .add_systems(OnEnter(MatchState::Countdown), clear_flights)
             .add_systems(
                 FixedUpdate,
@@ -136,7 +145,8 @@ impl Plugin for EffectsPlugin {
     }
 }
 
-/// The effects in play, in no meaningful order: every channel composes by sum.
+/// The effects in play, in no meaningful order: every channel composes
+/// commutatively.
 ///
 /// Invariant: `effects` holds exactly the effects `ids` names, each built
 /// from the tuning last seen, for `mode`.
@@ -207,6 +217,11 @@ impl ActiveEffects {
     /// [`start_flight`](Self::start_flight) with these effects in play, as
     /// the ball's flight does within a rally. With no effect in play the
     /// answer adds nothing and believes an empty flight.
+    ///
+    /// Known gap, dev builds only: a tuning file reloaded in mid-flight
+    /// rebuilds the effects at once, and the ball's flight keeps the
+    /// contributions of the old ones until its next start. An AI that plans
+    /// in between is told the new numbers about the old flight.
     #[must_use]
     pub fn flaw_over(&self, flight: &Flight, difficulty: Difficulty) -> FlightFlaw {
         let start = flight.began_at();
@@ -228,14 +243,19 @@ impl ActiveEffects {
 }
 
 /// Port: the developer sandbox (M2 spec 2.9.1). The shell's overlay writes
-/// it; escalation and this feature read it. It forces which effects are in
-/// play and holds the return count every flight starts at, so one effect can
-/// be looked at alone, at one dial.
+/// it; escalation, this feature, and persistence read it. It forces which
+/// effects are in play and holds the return count every flight starts at, so
+/// one effect can be looked at alone, at one dial.
 ///
 /// Forcing keeps the simulation's invariants (M2 spec 2.4.3): a forced set
 /// takes hold at the next countdown, a held count at the next flight start.
 /// A match in which anything was forced is [touched](Self::touched_match)
 /// and records nothing, since the overlay ships in release builds.
+///
+/// Forcing does not outlive its match: this feature releases the sandbox
+/// when a match is left, so the next one plays and records as the game
+/// decides. What is forced before a match is entered, as a test harness
+/// does, holds for that match.
 #[derive(Resource, Debug, Default, Clone, PartialEq, Eq)]
 pub struct Sandbox {
     /// The whole set in play while forced, in [`EffectId::ALL`]'s order.
@@ -291,6 +311,12 @@ impl Sandbox {
     #[must_use]
     pub const fn held_returns(&self) -> Option<u16> {
         self.returns
+    }
+
+    /// Whether anything is forced now: a set of effects, a held count, or both.
+    #[must_use]
+    pub const fn is_forcing(&self) -> bool {
+        self.effects.is_some() || self.returns.is_some()
     }
 
     /// Whether anything was forced at any time in the current match.
@@ -350,12 +376,26 @@ impl BallFlight {
     }
 }
 
-/// A new match is untouched by the sandbox, unless it still forces
-/// something: then the match is touched from its first step.
+/// A new match is untouched by the sandbox, unless something was forced for
+/// it before it was entered: then the match is touched from its first step.
 fn begin_the_match_untouched(mut sandbox: ResMut<Sandbox>) {
-    let forcing = sandbox.effects.is_some() || sandbox.returns.is_some();
+    let forcing = sandbox.is_forcing();
     if sandbox.touched_match != forcing {
         sandbox.touched_match = forcing;
+    }
+}
+
+/// Forcing ends with its match: the next match plays, and records, as the
+/// game decides, with no key pressed to make it so.
+///
+/// Runs in `OnExit(InMatch)`: in the transition that leaves the match,
+/// before the next state is entered, and not when the app is dropped in a
+/// match. Bevy 0.20.1 also runs it for a transition from `InMatch` to
+/// `InMatch` requested with `NextState::set`; nothing requests one today,
+/// and a rematch that did would start unforced.
+fn release_the_sandbox_with_the_match(mut sandbox: ResMut<Sandbox>) {
+    if sandbox.is_forcing() {
+        sandbox.release();
     }
 }
 
@@ -618,22 +658,43 @@ mod tests {
         assert!(sandbox.touched_match());
     }
 
-    /// A new match is untouched unless the sandbox still forces something.
+    /// A new match is untouched unless something was forced for it before
+    /// it was entered: a held count, or a set of effects, each on its own.
     #[test]
-    fn a_new_match_is_touched_only_if_the_sandbox_still_forces_something() {
-        let mut app = headless_app(1);
-        boot(&mut app);
+    fn a_new_match_is_touched_only_if_something_was_forced_for_it_beforehand() {
         let touched = |app: &App| app.world().resource::<Sandbox>().touched_match();
-        app.world_mut()
-            .resource_mut::<Sandbox>()
-            .hold_returns(Some(3));
-        start_match(&mut app, two_humans());
-        assert!(touched(&app), "a count is still held");
+        let forcings: [fn(&mut Sandbox); 2] = [
+            |sandbox| sandbox.hold_returns(Some(3)),
+            |sandbox| sandbox.force_effects(&[EffectId::Speed]),
+        ];
+        for force in forcings {
+            let mut app = headless_app(1);
+            boot(&mut app);
+            force(&mut app.world_mut().resource_mut::<Sandbox>());
+            start_match(&mut app, two_humans());
+            assert!(touched(&app), "forced before the match was entered");
 
-        app.world_mut().resource_mut::<Sandbox>().release();
+            leave_match(&mut app);
+            start_match(&mut app, two_humans());
+            assert!(!touched(&app), "nothing is forced any more");
+        }
+    }
+
+    /// The user's ruling after the phase 3 and 4 review: forcing does not
+    /// outlive its match, so no one has to remember to let go of it.
+    #[test]
+    fn leaving_a_match_releases_what_the_sandbox_forces() {
+        let mut app = playing();
+        let mut sandbox = app.world_mut().resource_mut::<Sandbox>();
+        sandbox.force_effects(&[EffectId::Shrink]);
+        sandbox.hold_returns(Some(9));
         leave_match(&mut app);
-        start_match(&mut app, two_humans());
-        assert!(!touched(&app), "nothing is forced any more");
+        let sandbox = app.world().resource::<Sandbox>();
+        assert_eq!(
+            (sandbox.forced_effects(), sandbox.held_returns()),
+            (None, None)
+        );
+        assert!(!sandbox.is_forcing());
     }
 
     /// It borrows Speed's name: the identity enum is closed, and a probe is

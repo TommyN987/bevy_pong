@@ -5,7 +5,7 @@ Implemented in plan phase 0 on branch `chore/claude-setup` (2026-10-31): `CLAUDE
 
 ## Working agreement
 
-Git is the user's domain. Claude runs only read-only git and `git stash`. Pair-programming roles vary per phase: Claude may drive, navigate, or review. See the phase protocol in [specs/m1-plan.md](specs/m1-plan.md).
+Git is the user's domain. Claude runs only read-only git and `git stash`. Pair-programming roles vary per phase: Claude may drive, navigate, or review. See the phase protocol in [specs/m1-plan.md](plans/m1-plan.md).
 
 ## Requirements the setup answers
 
@@ -47,7 +47,7 @@ The quality gate for the user's own git flow is a native `pre-push` hook in `.gi
 - `/adr`: write an architecture decision record
 - `/bevy-upgrade` (not built yet; at the first Bevy upgrade, plan 0.5): walk the migration guide, bump, build, list lagging crates
 - `/playtest`: append a session to the playtest log in observe-then-interpret format
-- `/milestone-close` (written 2026-11-09 from the M1 close, [phase 11 report](specs/m1-phase11-report.md)): records, deviations into the spec, a docs-against-code audit, the evidenced checklist, the user's signatures, the playtest, `CURRENT`
+- `/milestone-close` (written 2026-11-09 from the M1 close, [phase 11 report](plans/m1-phase11-report.md)): records, deviations into the spec, a docs-against-code audit, the evidenced checklist, the user's signatures, the playtest, `CURRENT`
 
 **Subagents**:
 - one custom, read-only `bevy-api-check`: reads the pinned crate source in the local cargo registry (docs.rs as fallback) and reports API mismatches, feature gates, and quoted behavior before Bevy code is written. Amended 2026-11-03: in phase 3 items 3.8–3.10 Claude read the registry source directly instead of calling the agent, which found two behaviors docs.rs does not show (a double failure event on refused reload, a `debug`-gated field); the agent now does that itself

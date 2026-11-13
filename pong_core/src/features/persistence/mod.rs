@@ -44,8 +44,9 @@ pub mod model;
 /// one [`Notice`]; if it cannot even be moved, the game starts fresh and never
 /// writes that file this session. Without [`SavePaths`] nothing is written.
 ///
-/// Precondition: the shell inserts [`SavePaths`] before the app runs, or
-/// not at all.
+/// Preconditions: the shell inserts [`SavePaths`] before the app runs, or
+/// not at all; the effects feature's plugin is added, for the [`Sandbox`]
+/// whose touched matches are not recorded.
 pub struct PersistencePlugin;
 
 impl Plugin for PersistencePlugin {

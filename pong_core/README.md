@@ -77,14 +77,14 @@ Rust enforces direction only between crates, so `just arch-check` enforces it he
 inside `just dev-check` and `just ci-check`.
 
 ```
-kernel  ←  domain  ←  flow  ←  features (tuning → seats → ball → paddle → physics → rules → …)  ←  app
-                                                                                                     ↑
-                                                                                         testing, tests/soak
+kernel  ←  domain  ←  flow  ←  features (tuning → seats → ball → paddle → effects → physics → rules → …)  ←  app
+                                                                                                               ↑
+                                                                                   testing, tests/soak, tests/ai_matches
 ```
 
 | Layer | Path | Holds | Imports |
 |---|---|---|---|
-| [kernel](src/kernel/README.md) | `src/kernel/` | Pure math: geometry, integration, collision, reflection, prediction, PCG32. | `bevy::math` only |
+| [kernel](src/kernel/README.md) | `src/kernel/` | Pure math: geometry, integration, collision, reflection, the flight and its fields, the dial's ramp, prediction, PCG32. | `bevy::math` only |
 | [domain](src/domain.md) | `src/domain.rs` | Vocabulary shared by two or more features; the core's messages. | kernel |
 | [flow](src/flow/README.md) | `src/flow/` | App and match states, fixed-step phases, step gate, `FIXED_HZ`. | kernel, domain, Bevy |
 | [features](src/features/README.md) | `src/features/` | One plugin per feature, in a declared order. | lower layers; earlier features' public data types |

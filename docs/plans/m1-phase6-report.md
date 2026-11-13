@@ -1,7 +1,7 @@
 # M1 phase 6 report: sanity and heal
 
 Started 2026-11-08. Branch `feat/sanity`. Roles: Claude drives; the user reviews and commits.
-Deviations from [m1-basic-pong.md](m1-basic-pong.md) and [m1-plan.md](m1-plan.md) per plan rule P.6, each with where it was recorded.
+Deviations from [m1-basic-pong.md](../specs/m1-basic-pong.md) and [m1-plan.md](m1-plan.md) per plan rule P.6, each with where it was recorded.
 
 ## Deviations
 

@@ -319,9 +319,10 @@ fn end_match_at_target(
 }
 
 /// Paddle hits in the rally in play, and the most in any rally this match
-/// (plan 7.4): the "longest rally" record (spec 1.4.9) and, at C1, the
-/// meter's driver. A rally runs from a serve to the point that ends it;
-/// wall bounces do not count.
+/// (plan 7.4): the "longest rally" record (spec 1.4.9). A rally runs from a
+/// serve to the point that ends it; wall bounces do not count. The Chaos
+/// HUD's count is not this one: it reads the flight's returns (M2 spec
+/// 2.7.2).
 ///
 /// Invariant: `longest >= hits`. Both stop at `u32::MAX` rather than wrap.
 #[derive(Resource, Debug, Default, Clone, Copy, PartialEq, Eq)]

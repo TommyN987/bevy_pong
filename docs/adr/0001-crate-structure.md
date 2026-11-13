@@ -11,7 +11,7 @@ Status: accepted
 
 Keep the workspace. `pong_core` depends on `bevy = "=0.20.1"` with `default-features = false` and features `std`, `async_executor`, `bevy_asset`, `bevy_state`. The shell depends on `bevy` with `2d`, `2d_api`, `ui`, `audio`.
 
-Amended 2026-11-09 at milestone close ([phase 3](../specs/m1-phase3-report.md) and [phase 4](../specs/m1-phase4-report.md) reports): the core also enables `bevy_color` (the palette's colour type), `keyboard` and `serialize` (`KeyCode` bindings as tuning data); `cargo tree` showed no render, window, audio, or UI crate after. The shell also enables `keyboard` (its adapter names it directly) and `tonemapping_luts` with `zstd_rust` (TonyMcMapface's lookup table, spec 1.6.2). The reason for each is a comment beside the dependency in each crate's `Cargo.toml`. Test builds of the core also enable `debug`, through its `testing` feature: the schedule walker needs system names and the shuffle its seed; resolver 3 keeps it out of normal builds.
+Amended 2026-11-09 at milestone close ([phase 3](../plans/m1-phase3-report.md) and [phase 4](../plans/m1-phase4-report.md) reports): the core also enables `bevy_color` (the palette's colour type), `keyboard` and `serialize` (`KeyCode` bindings as tuning data); `cargo tree` showed no render, window, audio, or UI crate after. The shell also enables `keyboard` (its adapter names it directly) and `tonemapping_luts` with `zstd_rust` (TonyMcMapface's lookup table, spec 1.6.2). The reason for each is a comment beside the dependency in each crate's `Cargo.toml`. Test builds of the core also enable `debug`, through its `testing` feature: the schedule walker needs system names and the shuffle its seed; resolver 3 keeps it out of normal builds.
 
 ## Evidence
 

@@ -11,13 +11,17 @@ use bevy::camera::visibility::Visibility;
 use bevy::ecs::query::With;
 use bevy::input::InputPlugin;
 use bevy::input::keyboard::KeyCode;
+use bevy::math::Vec2;
 use bevy::ui::widget::Text;
 use common::tap;
 use pong::overlay::{OverlayPlugin, OverlayText};
 use pong::ui::ScreensPlugin;
 use pong_core::domain::{Controller, Difficulty, EffectId, MatchConfig, Mode, Seat, SeatPlayers};
 use pong_core::features::effects::Sandbox;
-use pong_core::testing::{boot, enter_match, frame, headless_app, start_match};
+use pong_core::flow::states::MatchState;
+use pong_core::testing::{
+    boot, enter_match, frame, headless_app, match_state, place_ball, run_until, start_match,
+};
 
 fn overlay_app() -> App {
     let mut app = headless_app(1);
@@ -176,4 +180,72 @@ fn the_sandbox_keys_do_nothing_while_the_overlay_is_hidden_or_outside_a_match() 
         tap(&mut app, key);
     }
     assert_eq!(*sandbox(&app), Sandbox::default(), "hidden");
+}
+
+/// A count is first held from the rally's own, wherever the rally stands:
+/// one above three returns is four, not one.
+#[test]
+fn the_first_bracket_holds_the_count_one_from_the_rallys_own() {
+    let mut app = overlay_app();
+    start_match(&mut app, chaos());
+    tap(&mut app, KeyCode::F3);
+    for _ in 0..3 {
+        // Into the right paddle's face in the middle of one step.
+        place_ball(&mut app, Vec2::new(72.0, 2.0), Vec2::new(200.0, 0.0));
+        frame(&mut app);
+    }
+    assert!(overlay(&mut app).1.contains("\nreturns 3\n"));
+    tap(&mut app, KeyCode::BracketRight);
+    assert_eq!(sandbox(&app).held_returns(), Some(4));
+}
+
+/// The user's ruling after the phase 3 and 4 review: nothing stays forced
+/// out of sight. Hiding the overlay lets go of the effects and the count;
+/// the match it touched still records nothing.
+#[test]
+fn hiding_the_overlay_releases_the_sandbox() {
+    let mut app = overlay_app();
+    start_match(&mut app, chaos());
+    tap(&mut app, KeyCode::F3);
+    tap(&mut app, KeyCode::Digit2);
+    tap(&mut app, KeyCode::BracketRight);
+    assert!(sandbox(&app).is_forcing());
+
+    tap(&mut app, KeyCode::F3);
+    assert!(!shown(&mut app));
+    assert_eq!(
+        (sandbox(&app).forced_effects(), sandbox(&app).held_returns()),
+        (None, None)
+    );
+    assert!(sandbox(&app).touched_match());
+}
+
+/// A match that is over was recorded, or skipped, when it ended: the keys
+/// do nothing there, and the overlay does not offer them.
+#[test]
+fn once_the_match_is_over_the_sandbox_keys_do_nothing_and_are_not_offered() {
+    let mut app = overlay_app();
+    let to_one_point = MatchConfig {
+        points_to_win: NonZeroU8::MIN,
+        ..chaos()
+    };
+    start_match(&mut app, to_one_point);
+    tap(&mut app, KeyCode::F3);
+    assert!(overlay(&mut app).1.contains("\nsandbox keys: "));
+
+    // Out over the right goal line, above the paddle: the match's one point.
+    place_ball(&mut app, Vec2::new(70.0, 30.0), Vec2::new(250.0, 0.0));
+    run_until(
+        &mut app,
+        |app| match_state(app) == MatchState::MatchOver,
+        1_000,
+        "the match never ended",
+    );
+    frame(&mut app);
+    for key in [KeyCode::Digit2, KeyCode::BracketRight] {
+        tap(&mut app, key);
+    }
+    assert_eq!(*sandbox(&app), Sandbox::default());
+    let text = overlay(&mut app).1;
+    assert!(!text.contains("sandbox"), "{text}");
 }

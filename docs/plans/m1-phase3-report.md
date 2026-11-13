@@ -1,7 +1,7 @@
 # M1 phase 3 report: core vertical slice
 
 Started 2026-10-31. Branch `feat/headless-rally`. Roles: Claude drives, the user reviews.
-Deviations from [m1-basic-pong.md](m1-basic-pong.md) per plan rule P.6, each with where it was recorded.
+Deviations from [m1-basic-pong.md](../specs/m1-basic-pong.md) per plan rule P.6, each with where it was recorded.
 
 ## Deviations
 

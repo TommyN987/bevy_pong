@@ -4,11 +4,13 @@
 //! It ships in release builds, hidden by default (`docs/architecture.md`):
 //! the rates mean something only in an optimized build, and playtests run one.
 //!
-//! While it shows during a match it is also the sandbox (M2 spec 2.9.1): the
-//! number keys toggle effects, the brackets hold the return count, and 0 lets
-//! go. It names each key's effect, and reads each forced value as waiting or
-//! in force. The keys write the core's [`Sandbox`] port and nothing else; the core
-//! decides when a forced value takes hold, and that the match records nothing.
+//! While it shows during a match that is not over it is also the sandbox
+//! (M2 spec 2.9.1): the number keys toggle effects, the brackets hold the
+//! return count, and 0 lets go. Hiding the overlay lets go too, so nothing
+//! stays forced out of sight. It names each key's effect, and reads each
+//! forced value as waiting or in force. The keys write the core's
+//! [`Sandbox`] port and nothing else; the core decides when a forced value
+//! takes hold, and that the match records nothing.
 
 use std::time::Duration;
 
@@ -86,20 +88,34 @@ fn count_frame(time: Res<Time>, mut rates: ResMut<Rates>) {
     rates.frame(time.elapsed());
 }
 
+/// F3 shows or hides the overlay. Hiding it releases the sandbox: what is
+/// forced is on screen only here, and must not play on unseen. The match in
+/// play stays touched, as after any release.
 fn toggle_overlay(
     keys: Res<ButtonInput<KeyCode>>,
     mut overlays: Query<&mut Visibility, With<OverlayText>>,
+    mut sandbox: ResMut<Sandbox>,
 ) {
     if !keys.just_pressed(TOGGLE) {
         return;
     }
     for mut visibility in &mut overlays {
-        *visibility = if *visibility == Visibility::Hidden {
-            Visibility::Inherited
+        if *visibility == Visibility::Hidden {
+            *visibility = Visibility::Inherited;
         } else {
-            Visibility::Hidden
-        };
+            *visibility = Visibility::Hidden;
+            if sandbox.is_forcing() {
+                sandbox.release();
+            }
+        }
     }
+}
+
+/// Whether the sandbox takes keys: in a match, which is exactly while a
+/// ball exists, that is not over. A match that is over has been recorded or
+/// skipped already, and forcing could change neither.
+fn sandbox_is_open(a_ball_exists: bool, match_state: Option<&State<MatchState>>) -> bool {
+    a_ball_exists && match_state.is_some_and(|state| *state.get() != MatchState::MatchOver)
 }
 
 /// The keys that toggle an effect, in [`EffectId::ALL`]'s order: key 1 the
@@ -121,20 +137,23 @@ const LOWER_RETURNS: KeyCode = KeyCode::BracketLeft;
 /// Force nothing any more.
 const RELEASE: KeyCode = KeyCode::Digit0;
 
-/// While the overlay shows in a match, turns the sandbox keys into writes
-/// to the [`Sandbox`] port. A count is first held from the rally's own.
+/// While the overlay shows and the sandbox is open, turns the sandbox keys
+/// into writes to the [`Sandbox`] port. A count is first held from the
+/// rally's own.
 fn drive_sandbox(
     keys: Res<ButtonInput<KeyCode>>,
     overlays: Query<&Visibility, With<OverlayText>>,
     active: Res<ActiveEffects>,
     flights: Query<&BallFlight, With<Ball>>,
+    match_state: Option<Res<State<MatchState>>>,
     mut sandbox: ResMut<Sandbox>,
 ) {
     let shown = overlays
         .iter()
         .any(|visibility| *visibility != Visibility::Hidden);
-    // A ball exists exactly while a match does.
-    let Some(flight) = flights.iter().next().filter(|_| shown) else {
+    let flight = flights.iter().next();
+    let Some(flight) = flight.filter(|_| shown && sandbox_is_open(true, match_state.as_deref()))
+    else {
         return;
     };
     for (&key, effect) in EFFECT_KEYS.iter().zip(EffectId::ALL) {
@@ -192,15 +211,15 @@ fn show_readings(
         // A ball exists exactly while a match does.
         let ball = in_match.balls.iter().next();
         let sandbox = &*in_match.sandbox;
-        let forcing = sandbox.forced_effects().is_some() || sandbox.held_returns().is_some();
         let readings = Readings {
             rates: *rates,
             ball_speed: ball.map(|(velocity, _)| velocity.0.length()),
             effects: ball.map(|_| in_match.active.ids().to_vec()),
             returns: ball.map(|(_, flight)| flight.flight().returns()),
             sandbox: ball
-                .filter(|_| forcing || sandbox.touched_match())
+                .filter(|_| sandbox.is_forcing() || sandbox.touched_match())
                 .map(|_| sandbox.clone()),
+            sandbox_open: sandbox_is_open(ball.is_some(), match_state.as_deref()),
             aims,
             states: states.into_iter().flatten().collect(),
         };
@@ -281,6 +300,8 @@ pub struct Readings {
     /// What the sandbox forces or has touched, during a match in which it
     /// did either (M2 spec 2.9.1).
     pub sandbox: Option<Sandbox>,
+    /// Whether the sandbox takes keys now: in a match that is not over.
+    pub sandbox_open: bool,
     /// Each computer player's side and aim, left first.
     pub aims: Vec<(Side, Option<Aim>)>,
     /// The state, then the sub-state if there is one.
@@ -323,7 +344,7 @@ pub fn overlay_text(readings: &Readings) -> String {
         lines.push("sandbox: this match records nothing".to_owned());
         lines.extend(sandbox_lines(sandbox, readings));
     }
-    if readings.effects.is_some() {
+    if readings.sandbox_open {
         let effect_keys: Vec<String> = (1..)
             .zip(EffectId::ALL)
             .map(|(key, effect): (usize, _)| format!("{key} {effect:?}"))
@@ -342,6 +363,12 @@ pub fn overlay_text(readings: &Readings) -> String {
 /// count at the next flight start (M2 spec 2.4.3), so until then the sandbox
 /// and the match differ: the line says `from the next ...` while they do,
 /// and `forced` or `held` once they agree.
+///
+/// With nothing forced, in a match the sandbox touched, one line says so.
+/// The overlay cannot tell when the game has taken its own effects and count
+/// back, so the line names the latest moment and holds for the whole match:
+/// the count is the game's again at the next hit or serve, the effects at
+/// the next point.
 fn sandbox_lines(sandbox: &Sandbox, readings: &Readings) -> Vec<String> {
     let effects = sandbox.forced_effects().map(|forced| {
         if readings.effects.as_deref() == Some(forced) {
@@ -359,7 +386,7 @@ fn sandbox_lines(sandbox: &Sandbox, readings: &Readings) -> Vec<String> {
     });
     let lines: Vec<String> = [effects, returns].into_iter().flatten().collect();
     if lines.is_empty() {
-        vec!["  released: the game's own effects from the next point".to_owned()]
+        vec!["  released: the game's own effects and count are back by the next point".to_owned()]
     } else {
         lines
     }
@@ -447,6 +474,7 @@ mod tests {
             effects: None,
             returns: None,
             sandbox: None,
+            sandbox_open: false,
             aims: vec![
                 (Side::Left, None),
                 (
@@ -480,6 +508,7 @@ mod tests {
         let in_chaos = Readings {
             effects: Some(vec![EffectId::Speed, EffectId::Shrink]),
             returns: Some(7),
+            sandbox_open: true,
             ..readings()
         };
         assert_eq!(
@@ -495,9 +524,19 @@ mod tests {
         );
         let none = Readings {
             effects: Some(Vec::new()),
-            ..in_chaos
+            ..in_chaos.clone()
         };
         assert!(overlay_text(&none).contains("\neffects none\n"));
+        // Once the match is over the keys do nothing, and are not offered.
+        let over = Readings {
+            sandbox_open: false,
+            ..in_chaos
+        };
+        assert!(
+            !overlay_text(&over).contains("sandbox keys"),
+            "{}",
+            overlay_text(&over)
+        );
     }
 
     /// M2 spec 2.9.1: what is forced is on screen, with when it lands. A
@@ -541,12 +580,13 @@ mod tests {
         );
     }
 
-    /// Released, the schedule decides again, also from the next point; the
-    /// match stays without records.
+    /// Released, the game decides again, by the next point at the latest,
+    /// whether effects were forced, a count held, or both; the match stays
+    /// without records.
     #[test]
     fn a_released_sandbox_still_reads_that_the_match_records_nothing() {
         let mut sandbox = Sandbox::default();
-        sandbox.toggle(EffectId::Shrink, &[]);
+        sandbox.hold_returns(Some(4));
         sandbox.release();
         let released = Readings {
             effects: Some(vec![EffectId::Shrink]),
@@ -557,7 +597,7 @@ mod tests {
         assert!(
             overlay_text(&released).contains(
                 "\nsandbox: this match records nothing\n  \
-                 released: the game's own effects from the next point\n"
+                 released: the game's own effects and count are back by the next point\n"
             ),
             "{}",
             overlay_text(&released)

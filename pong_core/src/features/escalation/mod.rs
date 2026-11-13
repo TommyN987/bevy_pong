@@ -23,7 +23,9 @@ pub mod schedule;
 
 use schedule::Rotation;
 
-/// Decides the effects in play: the one writer of [`ActiveEffects`].
+/// Decides the effects in play: the one writer of which effects
+/// [`ActiveEffects`] holds. The effects feature itself writes only the
+/// sandbox's held count there.
 ///
 /// - Entering a match draws the mode's bag in a seeded order.
 /// - Entering a countdown brings the effects in play up to date with the
@@ -494,6 +496,37 @@ mod tests {
         left_scores(&mut app);
         until(&mut app, MatchState::Countdown);
         assert_eq!(in_play(&app), []);
+    }
+
+    /// The schedule keeps turning under a forced set, and says nothing while
+    /// it does: a bag of two shows both, where the embedded bag of one has
+    /// nothing to rotate.
+    #[test]
+    fn while_effects_are_forced_the_schedule_turns_unseen_and_unannounced() {
+        // Chaos with a bag of two, one in play at a time, turning every point.
+        let mut app = playing(chaos(1), 10, Some(two_in_the_bag()));
+        let first = in_play(&app);
+        assert_eq!(first.len(), 1, "one of the bag's two is in play");
+        started(&mut app);
+        ended(&mut app);
+
+        app.world_mut().resource_mut::<Sandbox>().force_effects(&[]);
+        left_scores(&mut app);
+        until(&mut app, MatchState::Countdown);
+        assert_eq!(in_play(&app), [], "the forced set, here none");
+        assert_eq!(
+            (started(&mut app), ended(&mut app)),
+            (vec![], vec![]),
+            "the schedule turned over, and said so while forced"
+        );
+
+        // Two points, two turns: the schedule is back at its first effect.
+        // Had it stood still while forced, this turn would be its first,
+        // and the other effect would be in play.
+        app.world_mut().resource_mut::<Sandbox>().release();
+        left_scores(&mut app);
+        until(&mut app, MatchState::Countdown);
+        assert_eq!(in_play(&app), first);
     }
 
     #[test]

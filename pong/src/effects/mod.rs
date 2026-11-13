@@ -31,8 +31,10 @@ pub struct ShellHalf {
     /// Shown in the HUD while the effect is in play; `None` for an effect
     /// the players are not told about.
     pub icon: Option<Icon>,
-    /// Played once when the effect joins the effects in play.
-    pub join_cue: Option<Sound>,
+    /// Builds the sound played once when the effect joins the effects in
+    /// play. A constructor, not the sound: the sounds are built once, when
+    /// they are loaded, and asking for an effect's icon synthesizes nothing.
+    pub join_cue: Option<fn() -> Sound>,
     /// Adds the systems that draw what the base views do not; `None` when
     /// the base views already show the effect.
     pub view: Option<fn(&mut App)>,
@@ -116,9 +118,10 @@ mod tests {
     #[test]
     fn every_join_cue_sounds_finite_audible_within_the_peak_and_ends_in_silence() {
         for id in EffectId::ALL {
-            let Some(sound) = shell_half(id).join_cue else {
+            let Some(join_cue) = shell_half(id).join_cue else {
                 continue;
             };
+            let sound = join_cue();
             let samples = sound.samples();
             assert!(samples.iter().all(|s| s.is_finite()), "{id:?}");
             assert!(samples.iter().all(|s| s.abs() <= PEAK), "{id:?}");

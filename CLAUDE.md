@@ -6,7 +6,8 @@ Pong in Rust + Bevy with escalating chaos twists, built for two kids (9 and 11) 
 - `docs/frame.md`: problem, constraints, non-goals
 - `docs/design.md`: chosen twists, milestone spine, binding decisions
 - `docs/architecture.md`: crate layout, boundaries, error policy, intra-crate rules
-- `docs/specs/`: milestone specs and plan; `docs/specs/CURRENT` names the active phase
+- `docs/specs/`: milestone specs; `docs/specs/CURRENT` names the active phase
+- `docs/plans/`: milestone plans and phase reports
 - `docs/adr/`: decision records; `docs/claude-code-setup.md`: this tooling
 
 ## Toolchain
@@ -16,7 +17,7 @@ Pong in Rust + Bevy with escalating chaos twists, built for two kids (9 and 11) 
 - Clippy pedantic with no upfront allows. Silence inline with `#[expect(clippy::x, reason = "...")]`; promote to a workspace allow only at ~5 expects across 2+ modules.
 
 ## Non-negotiables
-1. Verify every Bevy API against the pinned version before writing it, through the `bevy-api-check` agent (pinned source first, docs.rs fallback). Reading the source directly instead is a deviation to state in the handoff.
+1. Verify every Bevy API against the pinned version before writing it, through the `bevy-api-check` agent (pinned source first, docs.rs fallback). Reading the source directly instead is a deviation to state in the handoff. Exception: an API already used in this repository at the pinned version needs no new check; the handoff says that no API new to the repository was written.
 2. `pong_core` never imports shell, render, window, audio, or UI crates.
 3. No new dependency without a treadmill justification: Bevy breaks every ~4 months and crates lag.
 4. Never run mutative git: no add, commit, branch, switch, push, pull, merge, rebase, reset, tag, or PR. Read-only git and `git stash` only. The user owns history.
