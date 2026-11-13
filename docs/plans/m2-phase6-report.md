@@ -5,7 +5,8 @@ Deviations from [m2-chaos-pong.md](../specs/m2-chaos-pong.md) and [m2-plan.md](m
 
 Built 2026-11-13: steps 1 to 4 of the proposal the user approved that day (plan 6.1; E.1 to E.4, E.7).
 Recorded 2026-11-13: step 5 (P.6, E.5). CI has not run on this build: the push is the user's.
-Open: step 6, the user's hand check and the session (E.6, plan 6.2).
+Hand check 2026-11-13, the user's: done, and followed by a tryout retune of Spin (below).
+Open: the rest of step 6, the session (E.6, plan 6.2).
 
 ## The proposal's steps
 
@@ -13,10 +14,10 @@ Open: step 6, the user's hand check and the session (E.6, plan 6.2).
 |---|---|---|
 | 1 | The sandbox holds a hit motion | Built. |
 | 2 | Spin's core half (E.2) | Built. |
-| 3 | Spin's shell half (E.1, E.3) | Built and tested headless. Not yet seen in `just run`: step 6. |
-| 4 | Into the bag, and the harness (E.4, E.7) | Built. No tuning number moved from its starting value. |
+| 3 | Spin's shell half (E.1, E.3) | Built, tested headless, and seen by the user in `just run`. |
+| 4 | Into the bag, and the harness (E.4, E.7) | Built. Measured at the starting numbers, and again at the tryout's. |
 | 5 | Record (P.6, E.5) | Done. |
-| 6 | Hand check, session, ruling (E.6, plan 6.2) | Open; the user's. |
+| 6 | Hand check, session, ruling (E.6, plan 6.2) | Hand check done. The session, its ruling, and the hypothesis are open; the user's. |
 
 ## Deviations
 
@@ -30,14 +31,19 @@ All three were proposed before implementation and approved by the user on 2026-1
 
 ## Rulings by the user
 
+2026-11-13, after the hand check:
+
+- **More spin, for a tryout.** "I've played a little with the bots, and the spin was barely noticeable in the smaller and mid-length rallies. Then I've played a two-star in the sandbox with just Spin turned on, at level 20, and it feels like there should be more spin throughout." The numbers are in "The hand check and the tryout".
+- **The computer as a spinner is a MAY** in Spin's section of the spec, "to be revisited when every effect is implemented and playtested, before the milestone close". Spec 2.6.4 has the sub-item and plan 11.3 carries it. This settles ruling 4 below.
+
 2026-11-13: "Approved as proposed. You drive." The proposal's six rulings, each as recommended:
 
 1. **Roles.** Claude drives; the user reviews.
 2. **The flaw.** The believed share alone.
 3. **The harness.** The sandbox holds a hit motion (step 1).
-4. **The computer as a spinner.** Not in this phase. Open; decided after the session.
+4. **The computer as a spinner.** Not in this phase. Open then; since the hand check, a MAY (above).
 5. **The view's attachment.** The arrowhead is a child entity of the ball, through `bevy-api-check` first (step 3).
-6. **Starting numbers.** Dial from return 0, full at 12, `max_drift` 16, shares 0.3, 0.6, 0.85. The bound of the third deviation.
+6. **Starting numbers.** Dial from return 0, full at 12, `max_drift` 16, shares 0.3, 0.6, 0.85. The bound of the third deviation. Replaced for a tryout after the hand check (above).
 
 ## Why the proposal took this shape
 
@@ -99,6 +105,8 @@ Two facts, each first by arithmetic from the tuning numbers. The first is now me
 | R2: skill decides | `the_same_misreading_ai_returns_every_ball_that_is_not_spun`: the same 40 balls come back off a still paddle and, at dial zero, off a moving one. |
 | The flaw per star | `each_star_believes_its_share_of_the_true_spin_and_is_charged_nothing_else`; `of_a_flight_that_is_not_spun_every_star_believes_in_no_spin`. |
 
+The amounts in this table are the starting numbers'. The same tests pin the tryout's now: 16 to 19.5 units over the units flown, and 30 over a crossing.
+
 ### Red first, and where it was not
 
 - **Tuning:** red by compile failure, then green: five tests.
@@ -135,7 +143,7 @@ Two facts, each first by arithmetic from the tuning numbers. The first is now me
 | R11: nothing flashes | `the_mark_holds_for_the_whole_flight_and_goes_with_the_rally`: it shows, pointing one way, in every frame of the flight. It changes only where a flight starts or a rally ends: at most once per crossing, and the fastest crossing takes 0.58 s. The review item at milestone close stays. |
 | Spec 2.3.3, 2.7.1: icon and cue | `spin_states_an_icon_a_join_cue_and_a_view`; the generic cue and glyph tests now cover Spin. |
 | The mark lives with its ball | `leaving_the_match_takes_the_mark_with_the_ball`. |
-| E.3: visible in `just run` | **Not seen.** The user's hand check, step 6. |
+| E.3: visible in `just run` | Seen by the user on 2026-11-13: "Hand check done. Everything seems to be working." |
 
 ### Red first, and where it was not
 
@@ -144,7 +152,7 @@ Two facts, each first by arithmetic from the tuning numbers. The first is now me
 
 ## Step 4: into the bag, and the harness (E.4, E.7)
 
-`tuning.ron`: Chaos's bag is `[shrink, wind, spin]`. No tuning number moved: every condition below held at the starting numbers.
+`tuning.ron`: Chaos's bag is `[shrink, wind, spin]`. Every condition below held at the starting numbers, and every number in this step is measured at them. The tryout's are in "The hand check and the tryout".
 
 ### What the bag of three moved
 
@@ -246,6 +254,64 @@ The phase's diff against `main`: 20 files outside `docs/`, one of them new and u
 - **What the next effect will also touch outside the list:** the two tests that spell out the overlay's key line. Nothing else that this phase's fixtures touched: they ask the tuning or the core now.
 - **What it will not pay again:** the held hit motion, the harness's field, the shared share type.
 
+## The hand check and the tryout (step 6, begun)
+
+The user's hand check on 2026-11-13: "Everything seems to be working." What was looked at beyond that was not reported.
+
+### The tryout's numbers
+
+The user asked for more spin, with no numbers. These are Claude's, to be judged by play:
+
+| Number | Starting | Tryout |
+|---|---|---|
+| Dial starts, full at return | 0, 12 | 0, 6 |
+| `max_drift` | 16 | 30 |
+| Drift after 1, 3, 6, 12 returns | 1.3, 4, 8, 16 | 5, 15, 30, 30 |
+| Believed share, one / two / three stars | 0.3 / 0.6 / 0.85 | 0.63 / 0.79 / 0.92 |
+| Misread at full dial, in units | 11.2 / 6.4 / 2.4 | 11.1 / 6.3 / 2.4 |
+
+- **Both halves of the report are answered:** the dial is full twice as early, for the short and middle rallies, and the full drift is nearly twice as far, past Wind's 24.
+- **The shares were raised with the drift, which the user did not ask for.** Ruling 6 sized the flaw by its misreading in units, and that is kept. At the old shares the tryout's drift would leave two stars 12 units off, past the paddle's reach of 8 with no error at all, so a spun ball would beat them nearly every time. Putting the old shares back is one line of `tuning.ron`.
+- **This is not the retune of spec 2.10.2,** as Claude reads it: that one follows the session. This one precedes it, from the developer's play.
+- **No playtest log entry was written** for the developer's play.
+
+### Tests that pinned the embedded numbers
+
+Changed to the tryout's numbers before the tuning was, and red against the old tuning:
+
+- Spin's drift tests: 15 after three returns, 30 at full dial and over a crossing.
+- The systems test of spec 2.6.4: 16 to 19.5 units over the units flown.
+- The AI's crafted flaw reads three stars' share as 0.92.
+- **R10's ball moved,** from 27 off the centre to 13. At the tryout's drift a ball from 27 strikes the wall and comes back inside the paddle's reach; from 13 it curves out to the wall and scores, as the test's name says.
+- The paddle's cramped arena lowers the new `max_drift`.
+- Shell: the mark's size is compared after one return, since the dial is at a third after two.
+
+### Measured again (`just ai-report`)
+
+Classic's lines are unchanged. More stars won 8 to 0 in every pairing and mode, and every rally ended.
+
+| Pairing | Chaos, cap 3, at the tryout's numbers |
+|---|---|
+| 1 v 1 | 27 rallies, mean 2.3, longest 14 |
+| 1 v 2 | 20 rallies, mean 3.8, longest 12 |
+| 1 v 3 | 20 rallies, mean 4.2, longest 15 |
+| 2 v 2 | 27 rallies, mean 17.6, longest 89 |
+| 2 v 3 | 20 rallies, mean 17.5, longest 75 |
+| 3 v 3 | 29 rallies, mean 58.5, longest 115 |
+
+Spin alone, a hit motion held:
+
+| Held count | Drift | 1 v 1, 8 seeds | 2 v 2, 2 seeds |
+|---|---|---|---|
+| 0 | 0 | 63 rallies, mean 2.7 | none ended (2 of 2) |
+| 5 | 25 | 60 rallies, mean 2.4 | 16 rallies, mean 8.4 |
+| 10 and up | 30 | 55 rallies, mean 1.4 | 15 rallies, mean 7.0 |
+
+The stack's fourth rung, with Spin at 45 returns: 55 one-star rallies of mean 0.7, 15 two-star of mean 1.1, 14 three-star of mean 32.5 with the longest 108. The third rung's three-star mean is 50.4, so R3 holds for the stack.
+At the starting numbers that fourth three-star mean was 18.4. The misreading in units is the same in both, so the difference is not explained by the flaw's size; it was not looked into.
+
+These pairings are between computers, which seldom spin. They say little about how the tryout plays for a person who spins at every hit: that is for the hand and the session.
+
 ## Test changes
 
 466 core tests and 192 shell tests pass, 658 in all; 622 existed before this phase. 36 were added: 26 in the core, 10 in the shell.
@@ -272,20 +338,20 @@ Step 3 wrote one area new to the repository: a world-space parent and child. `be
 - A child with `Visibility::Inherited` is hidden by a hidden parent; one with `Visibility::Visible` is not. A parent with no visibility at all leaves the child visible.
 - `Children` is declared `linked_spawn`: despawning the parent despawns its children, so the mark needs no `DespawnOnExit`. The agent did not find the derive code that wires it; `leaving_the_match_takes_the_mark_with_the_ball` shows the behaviour at the pinned version.
 - `MinimalPlugins` has neither `TransformPlugin` nor the visibility plugin: headless, nothing propagates. The tests read the mark's parent, its local `Transform`, and its own `Visibility`.
-- The validity check at this version is `ValidateParentHasComponentPlugin<C>`: it warns `B0004` in `Last` when a child has a global transform or an inherited visibility and its parent still has none. The mark is spawned in `Update`, after the ball was dressed in the fixed loop's attach set. **Not checked:** that `just run` logs no such warning.
+- The validity check at this version is `ValidateParentHasComponentPlugin<C>`: it warns `B0004` in `Last` when a child has a global transform or an inherited visibility and its parent still has none. The mark is spawned in `Update`, after the ball was dressed in the fixed loop's attach set. **Not reported:** whether `just run` logged such a warning; the hand check found everything working and said nothing of the log.
 
 ## Gate
 
-`just dev-check` green on 2026-11-13 with all of steps 1 to 5: 658 tests.
+`just dev-check` green on 2026-11-13 with all of steps 1 to 5: 658 tests. Green again after the tryout retune, at the same 658.
 After step 2 alone it was green at 646. On that run, the first after a rebuild, two tests ran past 30 s and passed; no name was captured. The crash tests are the known case (`.config/nextest.toml`).
 
 ## Open at phase close
 
-- **Step 6, the user's:** the hand check and the session.
-  - The mark, the icon, and the cue in `just run` (E.3), and the log free of `B0004`.
+- **Step 6, the user's:** the session.
+  - The tryout's numbers judged by play: kept, changed, or put back.
   - The session, with the ruling: keep, retune once, or drop (E.6).
   - The Wind-versus-Spin hypothesis observed and logged (plan 6.2).
-- **The computer as a deliberate spinner:** ruling 4; decided after the session. Against the computer, Spin is mostly the player's to use.
+- **The computer as a deliberate spinner:** a MAY (spec 2.6.4, plan 11.3), decided before milestone close with every effect built and playtested. Against the computer, Spin is mostly the player's to use.
 - **R11 for the mark:** the review item at milestone close (spec 2.7.4).
 - **Not shown by test:** that Spin alone shortens three-star rallies; how much of the stack's fourth rung is Spin's.
 - **Not measured:** that added delay is inert at low speed.

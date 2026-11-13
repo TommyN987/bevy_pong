@@ -219,11 +219,11 @@ fn the_mark_is_larger_at_full_dial_than_early_in_the_rally() {
         assert!(placed.shows, "at {returns} returns");
         placed.tip_y
     };
-    let (early, full, past_full) = (size_at(2), size_at(12), size_at(40));
+    let (early, full, past_full) = (size_at(1), size_at(12), size_at(40));
     assert!(early > 0.0 && full > 1.5 * early, "{early} then {full}");
     assert!(
         (past_full - full).abs() < 1e-5,
-        "the dial is full at 12: {full} then {past_full}"
+        "the dial is full by 12: {full} then {past_full}"
     );
 }
 

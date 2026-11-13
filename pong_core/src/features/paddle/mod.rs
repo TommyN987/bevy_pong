@@ -410,7 +410,7 @@ mod tests {
             // Wind's drift and Spin's must each stay under half the playable
             // height, now 5.
             .replace("max_drift: 24.0", "max_drift: 4.0")
-            .replace("max_drift: 16.0", "max_drift: 4.0");
+            .replace("max_drift: 30.0", "max_drift: 4.0");
         app.insert_resource(Tuning::from_ron(&cramped).expect("a cramped arena is valid"));
         report_intent(&mut app, Seat::Left, PaddleIntent::Up);
         frame(&mut app);

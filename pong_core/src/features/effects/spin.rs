@@ -210,15 +210,11 @@ mod tests {
     #[test]
     fn the_drift_of_a_flight_is_the_dials_amount_signed_the_way_the_paddle_moved() {
         for (paddle_motion, sign) in MOVING {
-            assert_near(spin().drift(&returned(6, paddle_motion)), sign * 8.0, 1e-5);
-            assert_near(
-                spin().drift(&returned(12, paddle_motion)),
-                sign * 16.0,
-                1e-5,
-            );
+            assert_near(spin().drift(&returned(3, paddle_motion)), sign * 15.0, 1e-5);
+            assert_near(spin().drift(&returned(6, paddle_motion)), sign * 30.0, 1e-5);
             assert_near(
                 spin().drift(&returned(99, paddle_motion)),
-                sign * 16.0,
+                sign * 30.0,
                 1e-5,
             );
         }
@@ -235,8 +231,8 @@ mod tests {
         for pair in pulls.windows(2) {
             assert!(pair[1] >= pair[0], "the spin eased: {pair:?}");
         }
-        assert!(pulls[12] > pulls[6] && pulls[6] > pulls[1]);
-        assert_near(pulls[29], pulls[12], 1e-4);
+        assert!(pulls[6] > pulls[3] && pulls[3] > pulls[1]);
+        assert_near(pulls[29], pulls[6], 1e-4);
     }
 
     #[test]
@@ -269,7 +265,7 @@ mod tests {
     }
 
     /// M2 spec 2.6.4: the dial is the drift over one crossing. At full dial
-    /// the embedded spin carries a ball 16 units over one crossing, at the
+    /// the embedded spin carries a ball 30 units over one crossing, at the
     /// serve speed as at the cap, apart from the integrator's budget of one
     /// step's share of the drift.
     #[test]
@@ -278,15 +274,15 @@ mod tests {
         for (paddle_motion, sign) in MOVING {
             let flight = flight_of(spin().contribute(&returned(12, paddle_motion)));
             for speed in [tuning.ball().serve_speed(), tuning.ball().speed_cap()] {
-                // From 8 short of the middle, clear of both walls.
-                let start_y = -8.0 * sign;
+                // From 15 short of the middle, clear of both walls.
+                let start_y = -15.0 * sign;
                 let drift = sign * (crossing_from(start_y, speed, &flight) - start_y);
                 let steps = tuning.crossing_width() / (speed * DT);
-                let budget = 16.0 / steps;
+                let budget = 30.0 / steps;
                 assert!(
-                    (16.0 - 0.01..=16.0 + budget + 0.01).contains(&drift),
-                    "at {speed} the ball curved {drift}, not 16 to {}",
-                    16.0 + budget
+                    (30.0 - 0.01..=30.0 + budget + 0.01).contains(&drift),
+                    "at {speed} the ball curved {drift}, not 30 to {}",
+                    30.0 + budget
                 );
             }
         }

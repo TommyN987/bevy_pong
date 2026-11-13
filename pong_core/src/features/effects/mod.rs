@@ -1420,7 +1420,7 @@ mod tests {
 
     /// M2 spec 2.6.4's done-condition, through the systems: a moving-paddle
     /// hit curves the ball the way the paddle moved and a still one does
-    /// not. At full dial the embedded spin carries a ball 16 units a
+    /// not. At full dial the embedded spin carries a ball 30 units a
     /// crossing: over the 110 or so of the 146 flown here, a little under
     /// three fifths of that.
     #[test]
@@ -1428,8 +1428,8 @@ mod tests {
         let up = bend_of_a_return(12, PaddleIntent::Up);
         let down = bend_of_a_return(12, PaddleIntent::Down);
         let still = bend_of_a_return(12, PaddleIntent::Still);
-        assert!((8.0..=10.5).contains(&up), "up: {up}");
-        assert!((-10.5..=-8.0).contains(&down), "down: {down}");
+        assert!((16.0..=19.5).contains(&up), "up: {up}");
+        assert!((-19.5..=-16.0).contains(&down), "down: {down}");
         assert_near(still, 0.0, 1e-3);
     }
 
