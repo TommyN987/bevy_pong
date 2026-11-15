@@ -93,12 +93,12 @@ Realizes spec 2.6.4. Depends on 5. Effect protocol.
 ### 7. Fog
 Realizes spec 2.2.5, 2.2.9, 2.6.3. Depends on 4. Effect protocol.
 
-- **7.1 MUST** Fog per E.1 through E.7; fog hides the ball only. Done: spec 2.6.3 and 2.2.9.
+- **7.1 MUST** Fog per E.1 through E.7; fog hides the ball only. Done: spec 2.6.3 and 2.2.9. Amended 2026-11-15 ([phase 7 report](m2-phase7-report.md)): built with no base capability added. The lens's half of spec 2.2.9's done-condition moves to 8.1 (spec 2.2.9, amended).
 
 ### 8. Lens
 Realizes spec 2.6.5, 2.3.8. Depends on 5. Effect protocol.
 
-- **8.1 SHOULD** Lens per E.1 through E.7, with mirrored items and belief lag. Done: spec 2.6.5. Amended 2026-11-11 ([phase 2 report](m2-phase2-report.md)): the curve's whole-count form and the item rule (spec 2.3.9) are built here, with the first item effect.
+- **8.1 SHOULD** Lens per E.1 through E.7, with mirrored items and belief lag. Done: spec 2.6.5. Amended 2026-11-11 ([phase 2 report](m2-phase2-report.md)): the curve's whole-count form and the item rule (spec 2.3.9) are built here, with the first item effect. Amended 2026-11-15 ([phase 7 report](m2-phase7-report.md)): also shows the lens's half of spec 2.2.9: a lens inside the fog band stays visible, by shell test (moved from 7.1).
 - **8.2 SHOULD** Touch list measured on this PR. Done: the result is in the report.
 
 ### 9. Blocks

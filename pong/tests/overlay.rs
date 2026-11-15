@@ -90,7 +90,7 @@ fn in_a_match_the_overlay_reads_the_ball_and_the_computers_aim() {
             "effects Speed",
             "returns 0",
             "AI right: centre",
-            "sandbox keys: 1 Speed, 2 Shrink, 3 Wind, 4 Spin, [ ] returns, 0 release",
+            "sandbox keys: 1 Speed, 2 Shrink, 3 Wind, 4 Spin, 5 Fog, [ ] returns, 0 release",
             "InMatch / Countdown"
         ]
     );

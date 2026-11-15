@@ -237,6 +237,7 @@ pub struct EffectsTuning {
     shrink: ShrinkTuning,
     wind: WindTuning,
     spin: SpinTuning,
+    fog: FogTuning,
 }
 
 /// Shrink's dial (M2 spec 2.6.1), as the factor on paddle height: one until
@@ -255,7 +256,7 @@ pub struct ShrinkTuning {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct WindTuning {
     drift: Ramp,
-    believed: BelievedShare,
+    believed: PerStar,
 }
 
 /// Spin's dial (M2 spec 2.6.4), as the drift over one full crossing from a
@@ -267,17 +268,28 @@ pub struct WindTuning {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SpinTuning {
     drift: Ramp,
-    believed: BelievedShare,
+    believed: PerStar,
 }
 
-/// The share of an effect's true strength an AI of each star expects (M2
-/// spec 2.3.12, the flaw's second form): 1 is the truth, less under-leads
-/// the ball, more over-leads it.
+/// Fog's dial (M2 spec 2.6.3), as the width of its band in arena units, and
+/// its AI flaw (M2 spec 2.3.12): the error added to each star's aim at full
+/// dial.
 ///
-/// Invariant: no share is negative. One entry per [`Difficulty`], so adding
-/// a level makes the compiler ask for its share.
+/// Invariant: the width is never negative and stays under half the
+/// crossing width.
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct BelievedShare {
+pub struct FogTuning {
+    width: Ramp,
+    added_error: PerStar,
+}
+
+/// One number of an effect's AI flaw for each star (M2 spec 2.3.12); what
+/// the number means is its owner's to say.
+///
+/// Invariant: no number is negative. One entry per [`Difficulty`], so adding
+/// a level makes the compiler ask for its number.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct PerStar {
     one_star: f32,
     two_stars: f32,
     three_stars: f32,
@@ -433,6 +445,20 @@ pub enum TuningError {
         max_drift: f32,
         /// Half of `arena.height` less the ball's diameter.
         half_playable_height: f32,
+    },
+    /// Fog's dial would be full before it starts to move.
+    #[error("tuning effects.fog: {0}")]
+    FogRamp(#[source] FullBeforeStart),
+    /// At full dial the fog would leave the two paddles less visible run
+    /// between them than it hides (M2 spec 2.6.3).
+    #[error(
+        "tuning effects.fog.max_width {max_width} is not under half the crossing width {half_crossing_width}"
+    )]
+    FogNotUnderHalfTheCrossingWidth {
+        /// The width given.
+        max_width: f32,
+        /// Half the distance between the two paddles' contact lines.
+        half_crossing_width: f32,
     },
     /// No points-to-win choices offered.
     #[error("tuning match_flow.points_to_win_options is empty")]
@@ -591,6 +617,14 @@ impl Tuning {
             return Err(TuningError::SpinDriftNotUnderHalfThePlayableHeight {
                 max_drift,
                 half_playable_height: playable_height / 2.0,
+            });
+        }
+        let max_width = self.effects.fog.max_width();
+        let half_crossing_width = self.crossing_width() / 2.0;
+        if max_width >= half_crossing_width {
+            return Err(TuningError::FogNotUnderHalfTheCrossingWidth {
+                max_width,
+                half_crossing_width,
             });
         }
         Ok(())
@@ -892,6 +926,7 @@ impl EffectsTuning {
             },
             wind: WindTuning::validate(&file.wind)?,
             spin: SpinTuning::validate(&file.spin)?,
+            fog: FogTuning::validate(&file.fog)?,
         })
     }
 
@@ -911,6 +946,12 @@ impl EffectsTuning {
     #[must_use]
     pub const fn spin(self) -> SpinTuning {
         self.spin
+    }
+
+    /// Fog's numbers.
+    #[must_use]
+    pub const fn fog(self) -> FogTuning {
+        self.fog
     }
 }
 
@@ -932,7 +973,7 @@ impl WindTuning {
         Ok(Self {
             drift: Ramp::new(file.starts_at_return, file.full_at_return, 0.0, max_drift)
                 .map_err(TuningError::WindRamp)?,
-            believed: BelievedShare::validate(
+            believed: PerStar::validate(
                 &file.believed_share,
                 [
                     "effects.wind.believed_share.one_star",
@@ -964,23 +1005,20 @@ impl WindTuning {
     }
 }
 
-impl BelievedShare {
-    /// The shares in `file`, each blamed on its entry of `paths` if
+impl PerStar {
+    /// The numbers in `file`, each blamed on its entry of `paths` if
     /// refused: one star's first, then two stars', then three stars'.
-    fn validate(
-        file: &file::BelievedShareFile,
-        paths: [&'static str; 3],
-    ) -> Result<Self, TuningError> {
+    fn validate(file: &file::PerStarFile, paths: [&'static str; 3]) -> Result<Self, TuningError> {
         let [one_star, two_stars, three_stars] = paths;
-        let share = |path, share| checked(path, Range::NonNegativeFinite, share);
+        let number = |path, number| checked(path, Range::NonNegativeFinite, number);
         Ok(Self {
-            one_star: share(one_star, file.one_star)?,
-            two_stars: share(two_stars, file.two_stars)?,
-            three_stars: share(three_stars, file.three_stars)?,
+            one_star: number(one_star, file.one_star)?,
+            two_stars: number(two_stars, file.two_stars)?,
+            three_stars: number(three_stars, file.three_stars)?,
         })
     }
 
-    /// The share an AI of `difficulty` expects.
+    /// The number for an AI of `difficulty`.
     const fn by(self, difficulty: Difficulty) -> f32 {
         match difficulty {
             Difficulty::OneStar => self.one_star,
@@ -1000,7 +1038,7 @@ impl SpinTuning {
         Ok(Self {
             drift: Ramp::new(file.starts_at_return, file.full_at_return, 0.0, max_drift)
                 .map_err(TuningError::SpinRamp)?,
-            believed: BelievedShare::validate(
+            believed: PerStar::validate(
                 &file.believed_share,
                 [
                     "effects.spin.believed_share.one_star",
@@ -1029,6 +1067,47 @@ impl SpinTuning {
     #[must_use]
     pub const fn believed_share(self, difficulty: Difficulty) -> f32 {
         self.believed.by(difficulty)
+    }
+}
+
+impl FogTuning {
+    fn validate(file: &file::FogFile) -> Result<Self, TuningError> {
+        let max_width = checked(
+            "effects.fog.max_width",
+            Range::NonNegativeFinite,
+            file.max_width,
+        )?;
+        Ok(Self {
+            width: Ramp::new(file.starts_at_return, file.full_at_return, 0.0, max_width)
+                .map_err(TuningError::FogRamp)?,
+            added_error: PerStar::validate(
+                &file.added_error,
+                [
+                    "effects.fog.added_error.one_star",
+                    "effects.fog.added_error.two_stars",
+                    "effects.fog.added_error.three_stars",
+                ],
+            )?,
+        })
+    }
+
+    /// The band's width, in arena units, over the rally's returns.
+    #[must_use]
+    pub const fn width(self) -> Ramp {
+        self.width
+    }
+
+    /// The band's width at full dial.
+    #[must_use]
+    pub fn max_width(self) -> f32 {
+        self.width.at(u16::MAX)
+    }
+
+    /// The error added to the aim of an AI of `difficulty` at full dial, in
+    /// arena units.
+    #[must_use]
+    pub const fn added_error(self, difficulty: Difficulty) -> f32 {
+        self.added_error.by(difficulty)
     }
 }
 
@@ -1290,6 +1369,7 @@ mod tests {
             shrink: (starts_at_return: 3, full_at_return: 15),
             wind: (starts_at_return: 0, full_at_return: 12, max_drift: 24.0, believed_share: (one_star: 0.4, two_stars: 0.7, three_stars: 0.9)),
             spin: (starts_at_return: 0, full_at_return: 12, max_drift: 16.0, believed_share: (one_star: 0.3, two_stars: 0.6, three_stars: 0.85)),
+            fog: (starts_at_return: 0, full_at_return: 8, max_width: 64.0, added_error: (one_star: 12.0, two_stars: 6.0, three_stars: 2.5)),
         ),
         match_flow: (countdown_seconds: 3.0, point_pause_seconds: 0.8, points_to_win_options: [5, 10, 15, 21], points_to_win_default: 10),
         ai: (
@@ -2034,6 +2114,107 @@ mod tests {
         assert_eq!(
             drift.to_string(),
             "tuning effects.spin.max_drift 50 is not under half the playable height 44"
+        );
+    }
+
+    /// `VALID` with one piece of Fog's section replaced: the first `old`
+    /// after the section's name, so the like-named numbers before it stay.
+    fn with_fog(old: &str, new: &str) -> String {
+        let (before, section) = VALID.split_once("fog: (").expect("VALID has a fog section");
+        let replaced = section.replacen(old, new, 1);
+        assert_ne!(replaced, section, "{old} is not in VALID's fog section");
+        format!("{before}fog: ({replaced}")
+    }
+
+    /// M2 spec 2.6.3: Fog's dial is the width of its band, from nothing to
+    /// the tuned maximum, and its flaw is an added error tuned per star.
+    #[test]
+    fn fogs_section_becomes_a_width_dial_and_an_added_error_per_star() {
+        let fog = valid().effects().fog();
+        assert_near(fog.width().at(0), 0.0, 1e-6);
+        assert_near(fog.width().at(4), 32.0, 1e-6);
+        assert_near(fog.width().at(8), 64.0, 1e-6);
+        assert_near(fog.width().at(400), 64.0, 1e-6);
+        assert_near(fog.max_width(), 64.0, 1e-6);
+        assert_near(fog.added_error(Difficulty::OneStar), 12.0, 1e-6);
+        assert_near(fog.added_error(Difficulty::TwoStars), 6.0, 1e-6);
+        assert_near(fog.added_error(Difficulty::ThreeStars), 2.5, 1e-6);
+    }
+
+    #[test]
+    fn a_fog_dial_full_before_it_starts_is_rejected() {
+        assert_eq!(
+            Tuning::from_ron(&with_fog("starts_at_return: 0", "starts_at_return: 9")),
+            Err(TuningError::FogRamp(FullBeforeStart {
+                starts_at: 9,
+                full_at: 8,
+            }))
+        );
+    }
+
+    /// M2 spec 2.6.3: the maximum leaves a visible run before each paddle.
+    /// The band stays under half the crossing, 73 of the 146 here, so the
+    /// two runs together are longer than the fog.
+    #[test]
+    fn a_fog_as_wide_as_half_the_crossing_or_wider_is_rejected() {
+        assert_eq!(
+            Tuning::from_ron(&with_fog("max_width: 64.0", "max_width: 73.0")),
+            Err(TuningError::FogNotUnderHalfTheCrossingWidth {
+                max_width: 73.0,
+                half_crossing_width: 73.0,
+            })
+        );
+        assert!(Tuning::from_ron(&with_fog("max_width: 64.0", "max_width: 72.5")).is_ok());
+        assert!(Tuning::from_ron(&with_fog("max_width: 64.0", "max_width: 0.0")).is_ok());
+    }
+
+    #[test]
+    fn a_negative_fog_number_is_rejected_by_its_path() {
+        for (old, new, path) in [
+            (
+                "max_width: 64.0",
+                "max_width: -1.0",
+                "effects.fog.max_width",
+            ),
+            (
+                "one_star: 12.0",
+                "one_star: -0.1",
+                "effects.fog.added_error.one_star",
+            ),
+            (
+                "two_stars: 6.0",
+                "two_stars: -0.1",
+                "effects.fog.added_error.two_stars",
+            ),
+            (
+                "three_stars: 2.5",
+                "three_stars: -0.1",
+                "effects.fog.added_error.three_stars",
+            ),
+        ] {
+            assert!(
+                matches!(
+                    Tuning::from_ron(&with_fog(old, new)),
+                    Err(TuningError::Field { path: refused, .. }) if refused == path
+                ),
+                "{new}"
+            );
+        }
+    }
+
+    #[test]
+    fn fogs_refusals_read_as_one_sentence_naming_the_value() {
+        let ramp = Tuning::from_ron(&with_fog("starts_at_return: 0", "starts_at_return: 9"))
+            .expect_err("full first");
+        assert_eq!(
+            ramp.to_string(),
+            "tuning effects.fog: a dial full at return 8 cannot start to move at return 9"
+        );
+        let width = Tuning::from_ron(&with_fog("max_width: 64.0", "max_width: 80.0"))
+            .expect_err("too wide");
+        assert_eq!(
+            width.to_string(),
+            "tuning effects.fog.max_width 80 is not under half the crossing width 73"
         );
     }
 

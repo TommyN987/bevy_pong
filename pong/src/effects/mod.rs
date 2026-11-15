@@ -13,6 +13,7 @@ use pong_core::domain::EffectId;
 
 use crate::audio::sound::Sound;
 
+pub mod fog;
 pub mod shrink;
 pub mod speed;
 pub mod spin;
@@ -51,6 +52,7 @@ pub fn shell_half(id: EffectId) -> ShellHalf {
         EffectId::Shrink => shrink::shell_half(),
         EffectId::Wind => wind::shell_half(),
         EffectId::Spin => spin::shell_half(),
+        EffectId::Fog => fog::shell_half(),
     }
 }
 
@@ -107,6 +109,15 @@ mod tests {
     #[test]
     fn spin_states_an_icon_a_join_cue_and_a_view() {
         let half = shell_half(EffectId::Spin);
+        assert!(half.icon.is_some() && half.join_cue.is_some() && half.view.is_some());
+    }
+
+    /// M2 spec 2.6.3 and R1: Fog states all three. Where the ball is hidden
+    /// is the one thing the base views cannot show, so it has a view of its
+    /// own.
+    #[test]
+    fn fog_states_an_icon_a_join_cue_and_a_view() {
+        let half = shell_half(EffectId::Fog);
         assert!(half.icon.is_some() && half.join_cue.is_some() && half.view.is_some());
     }
 

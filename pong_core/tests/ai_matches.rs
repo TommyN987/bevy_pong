@@ -236,6 +236,22 @@ fn seeds_per_rung(stars_each: Difficulty) -> std::ops::Range<u64> {
     if stars_each == ONE { 0..8 } else { 0..2 }
 }
 
+/// Seeds for the mirror match of `stars_each` at `level` of the stack.
+///
+/// Two stars' rallies above the bottom level end within a hit or two: they
+/// cost little, and two seeds' fifteen rallies leave their mean wobbling by
+/// more than [`NOISE`] whenever a new bag effect reshuffles the seeded
+/// draws (M2 phase 7 report). Twelve seeds steady it. The bottom level
+/// never ends, costs its hit limit per rally, and is compared by its
+/// unended rallies, so it keeps two.
+fn seeds_per_stack_rung(stars_each: Difficulty, level: usize) -> std::ops::Range<u64> {
+    if stars_each == TWO && level > 0 {
+        0..12
+    } else {
+        seeds_per_rung(stars_each)
+    }
+}
+
 /// Return counts held per level of breadth: each step up adds one scheduled
 /// effect and this many returns, so breadth and intensity rise together.
 const RETURNS_PER_LEVEL: u16 = 15;
@@ -275,7 +291,8 @@ fn chaos_rallies_shorten_as_breadth_and_return_count_rise_together() {
                     rally_hit_limit: SLOW_RALLY_HIT_LIMIT,
                     ..chaos_match(stars_each, stars_each)
                 };
-                let lengths = lengths(&play_seeds(&setup, seeds_per_rung(stars_each)));
+                let seeds = seeds_per_stack_rung(stars_each, level);
+                let lengths = lengths(&play_seeds(&setup, seeds));
                 println!(
                     "stack, {}, {effects:?} at {returns} returns: {lengths}",
                     stars(&setup)

@@ -57,7 +57,7 @@ and whether more stars win (2.5.5). Every effect phase reports through it (M2 pl
 |---|---|
 | Do rallies end? (M2 spec 2.5.1) | Every pairing of stars, Chaos and Classic, nothing forced: no rally reaches the hit limit. The control: with the empty set forced, so that no effect is in play, two-star and three-star mirrors score no point. |
 | Do more stars win? (2.5.5) | Each pairing from both sides, in both modes. |
-| Does the stack shorten rallies? (2.5.2) | Levels of breadth and held count rising together. |
+| Does the stack shorten rallies? (2.5.2) | Levels of breadth and held count rising together. Two stars' rungs above the bottom play twelve seeds, not two: their rallies last a hit or two and cost little, and fifteen of them leave a mean that wobbles past the noise allowance whenever a new bag effect reshuffles the seeded draws (M2 phase 7 report). |
 | Does each effect shorten rallies as its dial rises? (R3, plan E.4) | Each effect of the bag alone, no speed ramp beside it, up a ladder of held counts. One test per place in the bag, seven places, so the cost of one effect never adds to another's; a place the bag does not fill passes with nothing to measure. |
 
 "Shorten" is judged with unended rallies in mind (`no_longer`, `shorter` in the test file):
@@ -91,4 +91,4 @@ The soak asserts that `SanityPlugin` is present, so it cannot go quiet.
 The subsets come from the mode's data, so an effect added to the bag is soaked with no edit.
 A size the bag cannot fill yet has no subset: its test says so and passes.
 Dividing one budget among the subsets keeps each test's running time the same however many effects ship:
-with Shrink, Wind, and Spin in the bag, 7 to 11 s for each soak inside the full parallel run on the development machine (M2 phase 6 report).
+with Shrink, Wind, Spin, and Fog in the bag, 7 to 10 s for each soak inside the full parallel run on the development machine (M2 phase 7 report).

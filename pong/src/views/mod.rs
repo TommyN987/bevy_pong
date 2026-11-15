@@ -25,6 +25,9 @@ pub mod trail;
 /// place among the bodies here.
 pub(crate) mod layer {
     pub const ARENA: f32 = 0.0;
+    /// Fog's band: on the floor, under the centre line and everything else,
+    /// so the arena's furniture is drawn above it (M2 spec 2.2.9).
+    pub const FOG: f32 = 0.25;
     pub const CENTRE_LINE: f32 = 0.5;
     /// Wind's arrows: on the floor, under everything that plays.
     pub const WIND: f32 = 0.75;

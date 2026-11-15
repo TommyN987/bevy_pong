@@ -92,11 +92,15 @@ pub enum EffectId {
     /// spec 2.6.4).
     #[serde(rename = "spin")]
     Spin,
+    /// A band centred on midfield hides the ball; the ball flies as in
+    /// clear air (M2 spec 2.6.3).
+    #[serde(rename = "fog")]
+    Fog,
 }
 
 impl EffectId {
     /// Every effect, in declaration order.
-    pub const ALL: [Self; 4] = [Self::Speed, Self::Shrink, Self::Wind, Self::Spin];
+    pub const ALL: [Self; 5] = [Self::Speed, Self::Shrink, Self::Wind, Self::Spin, Self::Fog];
 }
 
 /// Which game a match plays (M2 spec 2.1.1). A mode is data: tuning holds
@@ -567,6 +571,10 @@ mod tests {
             ron::to_string(&EffectId::Spin).expect("an effect id serializes"),
             "spin"
         );
+        assert_eq!(
+            ron::to_string(&EffectId::Fog).expect("an effect id serializes"),
+            "fog"
+        );
     }
 
     /// `ALL` is written by hand; this match stops compiling when a variant is
@@ -579,6 +587,7 @@ mod tests {
                 EffectId::Shrink => 1,
                 EffectId::Wind => 2,
                 EffectId::Spin => 3,
+                EffectId::Fog => 4,
             };
             assert_eq!(index, declared);
         }
