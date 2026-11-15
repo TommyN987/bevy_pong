@@ -1140,6 +1140,16 @@ mod tests {
     /// [`ai_on_the_right_playing`], with `prepare` run on the booted app
     /// before the match starts.
     fn ai_on_the_right_playing_after(tuning: Tuning, prepare: impl FnOnce(&mut App)) -> App {
+        ai_of_on_the_right_playing_after(Difficulty::ThreeStars, tuning, prepare)
+    }
+
+    /// [`ai_on_the_right_playing_after`], the computer on the right being
+    /// one of `difficulty`.
+    fn ai_of_on_the_right_playing_after(
+        difficulty: Difficulty,
+        tuning: Tuning,
+        prepare: impl FnOnce(&mut App),
+    ) -> App {
         let mut app = headless_app(5);
         record::<BallHitPaddle>(&mut app);
         record::<PointScored>(&mut app);
@@ -1148,10 +1158,7 @@ mod tests {
         prepare(&mut app);
         start_match(
             &mut app,
-            match_of(
-                Controller::Human(Seat::Left),
-                Controller::Ai(Difficulty::ThreeStars),
-            ),
+            match_of(Controller::Human(Seat::Left), Controller::Ai(difficulty)),
         );
         // The first serve is spent before the launches take over the ball.
         frame(&mut app);
@@ -1617,6 +1624,122 @@ mod tests {
             launch_at_ai(&mut windy, level_from(with_the_wind)),
             Outcome::Missed,
             "with the wind, from {with_the_wind}"
+        );
+    }
+    // M2 spec 2.3.12 for Fog, whose flaw is the first form (M2 spec 2.6.3):
+    // the fog adds to the spread of each star's aim, by the band's width.
+    // R5: Fog changes nothing of the flight, so the shared math predicts
+    // through it as it is, and the added error is the dial of its flaw.
+
+    /// Three stars with no handicap of their own, whose aim full fog
+    /// spreads by `error`.
+    fn no_handicap_spread_by_full_fog(error: f32) -> Tuning {
+        let old = "three_stars: 2.5";
+        let ron = EMBEDDED_RON
+            .replace(
+                "three_stars: (reaction_delay_seconds: 0.24, prediction_error: 3.0)",
+                "three_stars: (reaction_delay_seconds: 0.0, prediction_error: 0.0)",
+            )
+            .replace(old, &format!("three_stars: {error:?}"));
+        assert!(EMBEDDED_RON.contains(old), "three stars' error not found");
+        Tuning::from_ron(&ron).expect("the crafted flaw is valid")
+    }
+
+    /// [`ai_on_the_right_playing`] in Fog, beside Speed, with every flight
+    /// starting at `returns`: 8 is the embedded fog's full dial, a band 64
+    /// units wide.
+    fn ai_on_the_right_playing_in_fog(tuning: Tuning, returns: u16) -> App {
+        ai_on_the_right_playing_after(tuning, |app| {
+            let mut sandbox = app.world_mut().resource_mut::<Sandbox>();
+            sandbox.toggle(EffectId::Fog, &[EffectId::Speed]);
+            sandbox.hold_returns(Some(returns));
+        })
+    }
+
+    #[test]
+    fn through_full_fog_an_ai_with_no_handicap_whose_aim_it_does_not_spread_returns_every_ball() {
+        let tuning = no_handicap_spread_by_full_fog(0.0);
+        let balls = launches(200, &tuning);
+        let mut app = ai_on_the_right_playing_in_fog(tuning, 8);
+        for (i, launch) in balls.into_iter().enumerate() {
+            assert_eq!(
+                launch_at_ai(&mut app, launch),
+                Outcome::Returned,
+                "launch {i}: {launch:?}"
+            );
+        }
+    }
+
+    /// Fourteen units of spread: past the paddle's reach of eight on three
+    /// draws in seven.
+    #[test]
+    fn through_full_fog_an_ai_whose_aim_it_spreads_misses_some_balls() {
+        let tuning = no_handicap_spread_by_full_fog(14.0);
+        let balls = launches(40, &tuning);
+        let mut app = ai_on_the_right_playing_in_fog(tuning, 8);
+        let missed = balls
+            .into_iter()
+            .any(|launch| launch_at_ai(&mut app, launch) == Outcome::Missed);
+        assert!(
+            missed,
+            "fourteen units of spread never missed in forty launches"
+        );
+    }
+
+    /// M2 spec 2.6.3: the error scales with the width. The same AI misses
+    /// nothing while the dial is at zero: there is no band to lose the
+    /// ball in.
+    #[test]
+    fn with_the_band_at_no_width_the_same_ai_returns_every_ball() {
+        let tuning = no_handicap_spread_by_full_fog(14.0);
+        let balls = launches(40, &tuning);
+        let mut app = ai_on_the_right_playing_in_fog(tuning, 0);
+        for (i, launch) in balls.into_iter().enumerate() {
+            assert_eq!(
+                launch_at_ai(&mut app, launch),
+                Outcome::Returned,
+                "launch {i}: {launch:?}"
+            );
+        }
+    }
+
+    /// R10 (M2 plan E.7), by the letter: a hit scores because of the fog.
+    /// Two stars as tuned return a level ball at the serve speed every
+    /// time in clear air: their aim is off by seven at most, inside the
+    /// paddle's reach of eight. Through full fog, from the same seed, the
+    /// same ball gets past them: the fog spreads their aim to thirteen.
+    ///
+    /// Which of the balls gets past is the fog's draw to say, not the
+    /// hitter's aim: against a computer Fog gives the hitter nothing to aim
+    /// for (M2 phase 7 report). What it gives against a person, a curve or
+    /// a bounce out of sight, no seeded test can show.
+    #[test]
+    fn a_ball_two_stars_always_return_in_clear_air_gets_past_them_through_full_fog() {
+        let tuning = Tuning::from_ron(EMBEDDED_RON).expect("the embedded tuning is valid");
+        let from_x = Paddle::new(Side::Left, tuning.paddle()).contact_x(&tuning) + 1.0;
+        let level = ball(Vec2::new(from_x, 10.0), Vec2::new(80.0, 0.0));
+        let two_stars_in_fog = |returns: u16| {
+            ai_of_on_the_right_playing_after(Difficulty::TwoStars, tuning.clone(), |app| {
+                let mut sandbox = app.world_mut().resource_mut::<Sandbox>();
+                sandbox.toggle(EffectId::Fog, &[EffectId::Speed]);
+                sandbox.hold_returns(Some(returns));
+            })
+        };
+
+        let mut clear = two_stars_in_fog(0);
+        for launch in 0..20 {
+            assert_eq!(
+                launch_at_ai(&mut clear, level),
+                Outcome::Returned,
+                "with the band at no width, launch {launch}"
+            );
+        }
+
+        let mut foggy = two_stars_in_fog(8);
+        let got_past = (0..20).any(|_| launch_at_ai(&mut foggy, level) == Outcome::Missed);
+        assert!(
+            got_past,
+            "through full fog two stars returned the ball twenty times"
         );
     }
 }

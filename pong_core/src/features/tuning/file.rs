@@ -83,6 +83,7 @@ pub(super) struct EffectsFile {
     pub(super) shrink: ShrinkFile,
     pub(super) wind: WindFile,
     pub(super) spin: SpinFile,
+    pub(super) fog: FogFile,
 }
 
 #[derive(Debug, Deserialize)]
@@ -99,7 +100,7 @@ pub(super) struct WindFile {
     pub(super) full_at_return: u16,
     /// Drift over one full crossing at full dial, in arena units.
     pub(super) max_drift: f32,
-    pub(super) believed_share: BelievedShareFile,
+    pub(super) believed_share: PerStarFile,
 }
 
 #[derive(Debug, Deserialize)]
@@ -110,13 +111,24 @@ pub(super) struct SpinFile {
     /// Drift over one full crossing from a moving-paddle hit at full dial,
     /// in arena units.
     pub(super) max_drift: f32,
-    pub(super) believed_share: BelievedShareFile,
+    pub(super) believed_share: PerStarFile,
 }
 
-/// The share of an effect's true strength an AI of each star expects.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct BelievedShareFile {
+pub(super) struct FogFile {
+    pub(super) starts_at_return: u16,
+    pub(super) full_at_return: u16,
+    /// Width of the band at full dial, in arena units.
+    pub(super) max_width: f32,
+    /// Added to each star's aim error at full dial, in arena units.
+    pub(super) added_error: PerStarFile,
+}
+
+/// One number of an effect's AI flaw for each star.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct PerStarFile {
     pub(super) one_star: f32,
     pub(super) two_stars: f32,
     pub(super) three_stars: f32,

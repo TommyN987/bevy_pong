@@ -25,10 +25,10 @@ One embedded RON file of every number, validated once, so no system re-checks a 
 |---|---|---|
 | Raw shape | `file.rs` | Plain numbers. `#[serde(deny_unknown_fields)]`: a misspelt key is an error, not a silent default. |
 | Field checks | `Tuning::from_ron` | Each section through kernel constructors; a refusal names its path, e.g. `ball.radius`. |
-| Cross-field checks | `check_everything_fits_the_arena` | Paddle not taller than the arena; ball fits; paddles short of the centre line; speed cap under one playable height per step; Wind's `max_drift` and Spin's each under half the playable height. Bindings reject duplicates and `Escape`. |
+| Cross-field checks | `check_everything_fits_the_arena` | Paddle not taller than the arena; ball fits; paddles short of the centre line; speed cap under one playable height per step; Wind's `max_drift` and Spin's each under half the playable height; Fog's `max_width` under half the crossing width. Bindings reject duplicates and `Escape`. |
 
 `Tuning` has private fields and one constructor: holding one means it passed.
-`crossing_width()` is the distance between the two contact lines, the one formula `Paddle::contact_x`, Wind's drift, and Spin's all read.
+`crossing_width()` is the distance between the two contact lines, the one formula `Paddle::contact_x`, Wind's drift, Spin's, and Fog's bound all read.
 
 Loading goes through Bevy's asset system:
 `embedded_asset!` compiles `tuning.ron` into the binary under the `embedded://` source;
@@ -131,6 +131,7 @@ The AI predicts under the flight composed from the beliefs, and the ball flies u
 An effect whose flaw is inherent, Speed's faster ball or Shrink's shorter paddle, adds nothing and is believed as it is.
 Wind's is the second form alone: the AI under-leads by the share of the drift it does not believe in.
 Spin's is the same form: the AI commits its aim at the turn, having read only its star's share of the spin.
+Fog's is the first form alone, and synthetic: an AI sees through fog, so the fog widens the spread of its aim by a tuned error per star, scaled with the band's width.
 
 A rally has one seed (`RallySeed`, kernel), drawn from `Random`'s own stream of rally seeds before the rally's countdown.
 An effect that chooses something once per rally derives it from the seed and draws nothing itself:
@@ -152,6 +153,7 @@ The seed is drawn on entering a match and on the transition from play to a point
 | `shrink.rs` | Shrink: a factor on both paddles' height, riding a `Ramp` over the rally's returns from one to `height_min / height_default`. |
 | `wind.rs` | Wind: a `Drift` field (kernel) whose drift over one crossing rides a `Ramp` from nothing to `max_drift`, up or down as `WindDirection::of` reads the rally's seed. Its flaw is the second form: each star believes its tuned share of the true drift. In Chaos's bag since M2 plan phase 5. |
 | `spin.rs` | Spin: the same `Drift` field, begun at a return whose paddle moved in the step of the hit, toward the paddle's motion; a still paddle's return and a serve get none. `Spin::drift(start)` is the signed drift of a flight, for the field and for the shell alike. Its flaw is the second form: each star has read its tuned share of the true spin. In Chaos's bag since M2 plan phase 6. |
+| `fog.rs` | Fog: view-only (M2 spec 2.2.5). It contributes nothing on any channel, so the ball flies as in clear air. `Fog::width(start)` is the width of the band for a flight, riding a `Ramp` from nothing to `max_width`, for the shell's view and for the flaw alike. Its flaw is the first form: each star's tuned added error, scaled by the width. In Chaos's bag since M2 plan phase 7. |
 
 Channels, each composing so that effects cannot see each other:
 

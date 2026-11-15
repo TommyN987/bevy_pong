@@ -31,6 +31,7 @@ use crate::flow::states::{AppState, MatchState};
 use crate::kernel::flight::{Contribution, Flight, FlightStart, Hit, StepMotion};
 use crate::kernel::random::RallySeed;
 
+pub mod fog;
 pub mod shrink;
 pub mod speed;
 pub mod spin;
@@ -106,6 +107,7 @@ fn build(id: EffectId, tuning: &Tuning, mode: Mode, rally: RallySeed) -> Box<dyn
         EffectId::Shrink => Box::new(shrink::Shrink::new(tuning)),
         EffectId::Wind => Box::new(wind::Wind::new(tuning, rally)),
         EffectId::Spin => Box::new(spin::Spin::new(tuning)),
+        EffectId::Fog => Box::new(fog::Fog::new(tuning)),
     }
 }
 

@@ -41,7 +41,7 @@
         chaos: (
             per_hit_increase: 3.0,
             always: [speed],
-            bag: [shrink, wind, spin],
+            bag: [shrink, wind, spin, fog],
             thresholds_percent: [30, 70],
             rotate_every_points: 1,
         ),
@@ -74,6 +74,18 @@
             full_at_return: 6,
             max_drift: 30.0,
             believed_share: (one_star: 0.63, two_stars: 0.79, three_stars: 0.92),
+        ),
+        // A band of fog centred on midfield hides the ball, its trail, and
+        // its glow, and nothing else. The dial is the band's width, in arena
+        // units, from nothing to max_width, which must stay under half the
+        // crossing width: the distance between the paddles' contact lines.
+        // added_error is the AI's flaw: what full fog adds to each star's
+        // prediction_error, scaled down with the width.
+        fog: (
+            starts_at_return: 0,
+            full_at_return: 8,
+            max_width: 64.0,
+            added_error: (one_star: 12.0, two_stars: 6.0, three_stars: 2.5),
         ),
     ),
 
