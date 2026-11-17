@@ -83,7 +83,7 @@
         // prediction_error, scaled down with the width.
         fog: (
             starts_at_return: 0,
-            full_at_return: 8,
+            full_at_return: 16,
             max_width: 64.0,
             added_error: (one_star: 12.0, two_stars: 6.0, three_stars: 2.5),
         ),

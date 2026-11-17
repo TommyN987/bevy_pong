@@ -5,17 +5,18 @@ Deviations from [m2-chaos-pong.md](../specs/m2-chaos-pong.md) and [m2-plan.md](m
 
 Built 2026-11-15: steps 1 to 3 of the proposal the user approved that day (plan 7.1; E.1 to E.4, E.7).
 Recorded 2026-11-15: step 4 (P.6, E.5).
-Owed, the user's: the hand check in `just run` (E.3), then the session and the ruling (E.6).
+Played: several sessions with the children, reported 2026-11-17, with a retune of Fog by the user (E.3, E.6).
+Closed 2026-11-17 by the user's word. `docs/specs/CURRENT` names phase 8, Lens, on branch `feat/lens`.
 
 ## The proposal's steps
 
 | Step | What | State |
 |---|---|---|
 | 1 | Fog's core half (E.2) | Built. |
-| 2 | Fog's shell half (E.1, E.3) | Built and tested headless. The look was seen by Claude in screenshots of the running game; the user's hand check is owed. |
+| 2 | Fog's shell half (E.1, E.3) | Built and tested headless. The look was seen by Claude in screenshots of the running game, and by the user in play. |
 | 3 | Into the bag, and the harness (E.4, E.7) | Built and measured. |
 | 4 | Record (P.6, E.5) | Done. |
-| 5 | Hand check, session, ruling (E.6) | Owed. |
+| 5 | Hand check, session, ruling (E.6) | Done. The ruling: keep, at the user's retuned number. |
 
 ## Deviations
 
@@ -29,6 +30,10 @@ The first three were proposed before implementation and approved by the user on 
 | spec 2.5.2, the stack's test | Two stars' rungs above the bottom play twelve seeds, not two. The allowance for noise and the assertion are unchanged. See "The stack's test". | Spec 2.5.2 and 2.3.8 amended 2026-11-15; `.claude/rules/tests.md`. |
 
 ## Rulings by the user
+
+2026-11-17, after the sessions: "I changed the tuning - fog was at top width too soon. Playsessions have been several by now, in all permutations (against each other, against me, against all bots), and the kids love all four chaos effects. They haven't voluntarily turned on Classic mode since. [...] we can wrap up this phase." Fog is kept at the user's number, the dial full at return 16; neither a further retune nor a drop (E.6, spec 2.10.2). The phase is closed.
+
+Not ruled in words: the fourth deviation and the windows Claude opened, both put to the user on 2026-11-15. The user committed the build with the stack's twelve seeds in it (`2fb7bfb`) and said nothing of either.
 
 2026-11-15: "Approved as proposed. You drive. Implement the phase." The proposal's six rulings:
 
@@ -69,6 +74,8 @@ The first three were proposed before implementation and approved by the user on 
 | R2: skill decides | The frame-for-frame test: under the same hands the ball is where it would be in clear air. `with_the_band_at_no_width_the_same_ai_returns_every_ball`. |
 | The flaw per star | `the_embedded_errors_fall_as_the_stars_rise_and_none_is_nothing`. |
 | The tuning's refusals | Five tests of the section in `tuning/mod.rs`. |
+
+The amounts in this table are the starting numbers'. The same tests pin the retuned ones now: 4 units after one return, 32 after eight, 64 from sixteen on.
 
 ### Red first, and where it was not
 
@@ -119,7 +126,7 @@ The first three were proposed before implementation and approved by the user on 
 | Spin's mark goes with the ball | `in_the_band_a_spun_balls_mark_is_left_to_inherit_the_balls_hiding`. |
 | Spec 2.3.3, 2.7.1: icon and cue | `fog_states_an_icon_a_join_cue_and_a_view`; the generic cue and glyph tests now cover Fog. |
 | The band lives with its match | `leaving_the_match_takes_the_band_with_it`; `without_fog_in_play_no_band_shows_and_nothing_is_hidden`. |
-| E.3: visible in `just run` | Owed: the user's hand check. Claude saw it in a throwaway binary's screenshots (below). |
+| E.3: visible in `just run` | Seen by the user in the sessions of step 5; what was looked at was not reported. Claude saw it in a throwaway binary's screenshots (below). |
 
 ### Red first, and where it was not
 
@@ -139,7 +146,7 @@ A throwaway example binary booted the shell as `main.rs` does, without sound, sa
 
 ## Step 3: into the bag, and the harness (E.4, E.7)
 
-`tuning.ron`: Chaos's bag is `[shrink, wind, spin, fog]`.
+`tuning.ron`: Chaos's bag is `[shrink, wind, spin, fog]`. Every number in this step is measured at the starting numbers. The retuned ones are in "The sessions, the retune, and the close".
 
 ### What the bag of four moved
 
@@ -244,6 +251,49 @@ The phase's diff against `main`: 20 files, 4 of them new and untracked when coun
 - **What the next effect will also touch outside the list:** the two tests that spell out the overlay's key line, and its own draw layer if it has a view on the floor.
 - **What it will not pay again:** the per-star type; the stack's seeds, unless its own reshuffle finds another short mean.
 
+## The sessions, the retune, and the close (step 5)
+
+Reported by the user on 2026-11-17 and logged in the [playtest log](../playtest.md) that day.
+
+- **Who played:** the children against each other, against the parent, and against the computers, over several sessions. Their dates and lengths were not reported.
+- **Reported:** the children "love all four chaos effects" and have not chosen Classic of their own accord since.
+- **The retune is the user's own:** `effects.fog.full_at_return` from 8 to 16, since the fog "was at top width too soon". The band widens by 4 units a return now, where it widened by 8, and is full after sixteen. `max_width` and the errors are as they were.
+- **Ruling (E.6, spec 2.10.2):** keep, at the retuned number.
+- **Recorded:** spec 2.10.1 amended 2026-11-17.
+
+### Tests that pinned the embedded numbers
+
+Nine tests failed on the retune, each on a number it had pinned and none on behaviour.
+
+- **Core, re-pinned to the new numbers:** Fog's three tests of the band's width and the flaw's scaling: 4, 16, 32, and 64 units after one, four, eight, and sixteen returns.
+- **Core, the AI:** the three tests of full fog and R10's hold sixteen returns, where they held eight. Two of them still passed at eight, on half a fog; they are held to their names again.
+- **Shell, no longer pinned:** the tests of `pong/tests/fog.rs` hold `u16::MAX` returns where they mean a full dial, as the soaks do, and read the widths they expect from the embedded tuning. A retune of Fog's ramp leaves them alone now.
+
+### Measured again (`just ai-report`)
+
+Classic's lines and the stack's ladder are unchanged, figure for figure. More stars won 8 to 0 in every pairing and mode, and every rally ended.
+
+| Pairing | Chaos, cap 3, at the retuned number |
+|---|---|
+| 1 v 1 | 31 rallies, mean 1.8, longest 7 |
+| 1 v 2 | 21 rallies, mean 2.7, longest 13 |
+| 1 v 3 | 20 rallies, mean 4.4, longest 10 |
+| 2 v 2 | 28 rallies, mean 9.5, longest 18 |
+| 2 v 3 | 20 rallies, mean 14.2, longest 46 |
+| 3 v 3 | 30 rallies, mean 57.8, longest 93 |
+
+Fog alone:
+
+| Held count | Width | 1 v 1, 8 seeds | 2 v 2, 2 seeds |
+|---|---|---|---|
+| 0 | 0 | 60 rallies, mean 2.6 | none ended (2 of 2) |
+| 5 | 20 | 53 rallies, mean 1.2 | 12 rallies, mean 10.8 |
+| 10 | 40 | 55 rallies, mean 1.0 | 16 rallies, mean 3.6 |
+| 15 | 60 | 50 rallies, mean 0.7 | 14 rallies, mean 1.8 |
+| 20 and up | 64 | 50 rallies, mean 0.7 | 11 rallies, mean 1.4 |
+
+R3 holds for Fog against one and two stars, as before. The dial is graded over more of the ladder now: two-star rallies fall from 10.8 hits to 3.6 to 1.8 to 1.4.
+
 ## Test changes
 
 483 core tests and 203 shell tests pass, 686 in all; 658 existed before this phase. 28 were added: 17 in the core (5 of the tuning, 8 of Fog, 4 of the AI) and 11 in the shell (10 in `pong/tests/fog.rs`, 1 of the shell half).
@@ -255,6 +305,7 @@ No assertion of an earlier test changed for behaviour. Changed for the roster's 
 - `VALID` in the tuning tests gained Fog's section.
 - `chaos_rallies_shorten_as_breadth_and_return_count_rise_together` (harness): twelve seeds for two stars' rungs above the bottom.
 - `ai_on_the_right_playing_after` (AI) now calls `ai_of_on_the_right_playing_after` with three stars; every test that uses it is the same.
+- After the retune: the nine tests of "Tests that pinned the embedded numbers". The count is still 686.
 
 ## Bevy API
 
@@ -288,14 +339,14 @@ Each is a departure from `CLAUDE.md` or the test rules, stated here as they ask.
 ## Gate
 
 `just dev-check` green on 2026-11-15 with steps 1 to 3: format, layering, lint, 686 tests, doctests. The record step, after it, changed documents only.
-CI: not run. The user's, with the commits.
+CI: not run by Claude. The user's, with the commits.
+`just dev-check` green again on 2026-11-17, after the retune and its test changes: 686 tests.
 
 ## Open at phase close
 
-- **The hand check (E.3):** the user's, in `just run`. Worth a look there: a narrow band early in a rally; the ball at the band's edge, where it goes out at once while the mist is still thin; the join cue; the wisps in motion and in a pause.
-- **The session and the ruling (E.6):** owed. Fog's numbers are Claude's starting numbers.
-- **Whether Fog is too hard:** between computers it is the hardest effect alone. Not known for a person.
-- **Rotation at full breadth:** new with this build; plan 11.1 chooses the interval from play.
+- **Rotation at full breadth:** played in these sessions, and nothing was reported of it. Plan 11.1 chooses the interval from play.
+- **Fog's errors:** Claude's starting numbers, kept. Between computers Fog is still the hardest effect alone at full dial.
+- **Not reported:** which sessions were played at which number; what the hand check looked at; a word on the fourth deviation or on the windows.
 - **R10 in spirit:** no seeded test shows a hitter using the fog. Against a person, the session's to show.
 - **R11 for the band and the hidden ball:** the review item at milestone close (spec 2.7.4).
 - **Not shown by test:** that Fog alone shortens three-star rallies; the lens's half of spec 2.2.9 (plan 8.1).

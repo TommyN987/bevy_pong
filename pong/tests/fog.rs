@@ -23,6 +23,7 @@ use pong_core::domain::{Controller, EffectId, MatchConfig, Mode, Seat, SeatPlaye
 use pong_core::features::ball::{Ball, Snap};
 use pong_core::features::effects::Sandbox;
 use pong_core::features::seats::PaddleIntent;
+use pong_core::features::tuning::{EMBEDDED_RON, Tuning};
 use pong_core::flow::states::MatchState;
 use pong_core::testing::{
     ball_state, boot, enter_match, frame, headless_app, leave_match, match_state, place_ball,
@@ -31,6 +32,22 @@ use pong_core::testing::{
 
 /// The embedded arena's height.
 const ARENA_HEIGHT: f32 = 90.0;
+
+/// A held return count at which every dial is full, whatever return the
+/// tuning has it full at.
+const FULL_DIAL: u16 = u16::MAX;
+
+/// How wide the embedded tuning makes the fog after `returns` returns. The
+/// dial's numbers are the tuning's to change; these tests hold the band to
+/// whatever it says.
+fn fog_width_after(returns: u16) -> f32 {
+    Tuning::from_ron(EMBEDDED_RON)
+        .expect("the embedded tuning is valid")
+        .effects()
+        .fog()
+        .width()
+        .at(returns)
+}
 
 fn two_humans() -> MatchConfig {
     MatchConfig {
@@ -72,9 +89,8 @@ fn app_with(forced: Option<(&[EffectId], u16)>, more: impl FnOnce(&mut App)) -> 
     app
 }
 
-/// Fog alone in play, every flight starting at `returns`: at 8 the embedded
-/// fog's dial is full, a band 64 units wide. With no Speed beside it the
-/// ball flies at the serve speed.
+/// Fog alone in play, every flight starting at `returns`. With no Speed
+/// beside it the ball flies at the serve speed.
 fn foggy_app(returns: u16) -> App {
     app_with(Some((&[EffectId::Fog], returns)), |_| {})
 }
@@ -190,7 +206,7 @@ const AT_THE_EDGE: f32 = 1e-3;
 /// a countdown has no flight.
 #[test]
 fn the_match_has_one_band_at_midfield_hidden_in_the_countdown() {
-    let mut app = foggy_app(8);
+    let mut app = foggy_app(FULL_DIAL);
     let band = band(&mut app);
     assert_eq!(band.at, Vec2::ZERO);
     assert!(!band.shows, "{band:?}");
@@ -201,7 +217,14 @@ fn the_match_has_one_band_at_midfield_hidden_in_the_countdown() {
 /// arena.
 #[test]
 fn the_band_is_as_wide_as_the_flights_fog_and_as_tall_as_the_arena() {
-    for (returns, width) in [(1, 8.0), (4, 32.0), (8, 64.0), (40, 64.0)] {
+    let widths = [1, 4, 12, FULL_DIAL].map(|returns| (returns, fog_width_after(returns)));
+    assert!(
+        widths
+            .windows(2)
+            .all(|pair| pair[0].1 > 0.0 && pair[1].1 > pair[0].1),
+        "the embedded dial does not grow over these counts: {widths:?}"
+    );
+    for (returns, width) in widths {
         let mut app = foggy_app(returns);
         send_the_ball_across(&mut app, 10.0);
         let band = band(&mut app);
@@ -227,7 +250,7 @@ fn the_band_is_as_wide_as_the_flights_fog_and_as_tall_as_the_arena() {
 /// R11: over one crossing the ball changes twice, in and out.
 #[test]
 fn inside_the_band_the_ball_and_its_trail_are_hidden_and_outside_it_they_show() {
-    let mut app = foggy_app(8);
+    let mut app = foggy_app(FULL_DIAL);
     send_the_ball_across(&mut app, 10.0);
     let half_width = band(&mut app).width / 2.0;
     let bodies = usize::from(GHOSTS) + 1;
@@ -268,7 +291,7 @@ fn inside_the_band_the_ball_and_its_trail_are_hidden_and_outside_it_they_show() 
 /// its trail.
 #[test]
 fn inside_the_band_winds_arrows_and_whatever_else_is_not_the_ball_stay_visible() {
-    let mut app = app_with(Some((&[EffectId::Wind, EffectId::Fog], 8)), |app| {
+    let mut app = app_with(Some((&[EffectId::Wind, EffectId::Fog], FULL_DIAL)), |app| {
         app.add_plugins(WindArrowsPlugin);
     });
     let furniture = app
@@ -316,7 +339,7 @@ fn inside_the_band_winds_arrows_and_whatever_else_is_not_the_ball_stay_visible()
 /// asking only whether the flight is spun.
 #[test]
 fn in_the_band_a_spun_balls_mark_is_left_to_inherit_the_balls_hiding() {
-    let mut app = app_with(Some((&[EffectId::Spin, EffectId::Fog], 8)), |app| {
+    let mut app = app_with(Some((&[EffectId::Spin, EffectId::Fog], FULL_DIAL)), |app| {
         app.add_plugins(SpinMarkPlugin);
     });
     until(&mut app, MatchState::Playing);
@@ -389,8 +412,13 @@ fn the_band_comes_with_the_first_return_before_the_ball_reaches_it() {
         "the right paddle returned the ball"
     );
     let band = band(&mut app);
+    let after_one_return = fog_width_after(1);
+    assert!(
+        after_one_return > 0.0,
+        "the embedded dial has not moved by then"
+    );
     assert!(band.shows, "{band:?}");
-    assert!((band.width - 8.0).abs() < 1e-4, "{band:?}");
+    assert!((band.width - after_one_return).abs() < 1e-4, "{band:?}");
     let ball = drawn_ball(&mut app);
     assert!(!ball.hidden && ball.x > 60.0, "{ball:?}");
 }
@@ -401,13 +429,14 @@ fn the_band_comes_with_the_first_return_before_the_ball_reaches_it() {
 /// sight.
 #[test]
 fn the_band_holds_for_the_whole_flight_and_goes_with_the_rally() {
-    let mut app = foggy_app(8);
+    let mut app = foggy_app(FULL_DIAL);
+    let full_width = fog_width_after(FULL_DIAL);
     send_the_ball_across(&mut app, 30.0);
     let mut frames = 0;
     fly_until_right_of(&mut app, 60.0, |app| {
         let band = band(app);
         assert!(
-            band.shows && (band.width - 64.0).abs() < 1e-4,
+            band.shows && (band.width - full_width).abs() < 1e-4,
             "frame {frames} of the flight: {band:?}"
         );
         frames += 1;
@@ -430,7 +459,7 @@ fn the_band_holds_for_the_whole_flight_and_goes_with_the_rally() {
 /// has one again.
 #[test]
 fn leaving_the_match_takes_the_band_with_it() {
-    let mut app = foggy_app(8);
+    let mut app = foggy_app(FULL_DIAL);
     let bands = |app: &mut App| {
         app.world_mut()
             .query_filtered::<Entity, With<FogBand>>()

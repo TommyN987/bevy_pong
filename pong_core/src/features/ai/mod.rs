@@ -1646,7 +1646,7 @@ mod tests {
     }
 
     /// [`ai_on_the_right_playing`] in Fog, beside Speed, with every flight
-    /// starting at `returns`: 8 is the embedded fog's full dial, a band 64
+    /// starting at `returns`: 16 is the embedded fog's full dial, a band 64
     /// units wide.
     fn ai_on_the_right_playing_in_fog(tuning: Tuning, returns: u16) -> App {
         ai_on_the_right_playing_after(tuning, |app| {
@@ -1660,7 +1660,7 @@ mod tests {
     fn through_full_fog_an_ai_with_no_handicap_whose_aim_it_does_not_spread_returns_every_ball() {
         let tuning = no_handicap_spread_by_full_fog(0.0);
         let balls = launches(200, &tuning);
-        let mut app = ai_on_the_right_playing_in_fog(tuning, 8);
+        let mut app = ai_on_the_right_playing_in_fog(tuning, 16);
         for (i, launch) in balls.into_iter().enumerate() {
             assert_eq!(
                 launch_at_ai(&mut app, launch),
@@ -1676,7 +1676,7 @@ mod tests {
     fn through_full_fog_an_ai_whose_aim_it_spreads_misses_some_balls() {
         let tuning = no_handicap_spread_by_full_fog(14.0);
         let balls = launches(40, &tuning);
-        let mut app = ai_on_the_right_playing_in_fog(tuning, 8);
+        let mut app = ai_on_the_right_playing_in_fog(tuning, 16);
         let missed = balls
             .into_iter()
             .any(|launch| launch_at_ai(&mut app, launch) == Outcome::Missed);
@@ -1735,7 +1735,7 @@ mod tests {
             );
         }
 
-        let mut foggy = two_stars_in_fog(8);
+        let mut foggy = two_stars_in_fog(16);
         let got_past = (0..20).any(|_| launch_at_ai(&mut foggy, level) == Outcome::Missed);
         assert!(
             got_past,
