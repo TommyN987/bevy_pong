@@ -122,3 +122,22 @@ Interpretation (may be empty):
 - Claude's reading: liking the two effects together treats them as two. That is not the same as a child telling which one bent a ball, which nobody reported watching for. The hypothesis is marked so.
 Proposed change (at most one):
 - None. The parent ruled to keep Spin as it is: "Let's leave it like this." Neither a retune nor a drop (spec 2.10.2); Spin ships at the tryout's numbers.
+
+### 2026-11-17 · M2 phase 7 (plan E.6, spec 2.10.1; Fog) · the 9-year-old, the 11-year-old, and the parent · build feat/fog at 2fb7bfb, then with the parent's retune of Fog, uncommitted when reported
+Duration: several sessions; their dates and lengths were not recorded.
+Reported by the parent on 2026-11-17, after the sessions; no notes were taken during them.
+Observations (what happened, in order):
+- Several sessions were played since Fog was built, in every pairing: the children against each other, against the parent, and against the computers.
+- Chaos was played with Shrink, Wind, Spin, and Fog, the four effects in its bag.
+- The parent found the fog at its full width too soon in a rally and changed the tuning: `effects.fog.full_at_return` from 8 to 16. The band now widens by 4 units a return, where it widened by 8.
+- Which sessions were played at which number was not reported.
+- Since then the children have not chosen Classic of their own accord.
+Quotes (verbatim, by role):
+- the parent: "fog was at top width too soon."
+- the parent: "Playsessions have been several by now, in all permutations (against each other, against me, against all bots), and the kids love all four chaos effects. They haven't voluntarily turned on Classic mode since."
+Interpretation (may be empty):
+- The parent's reading: the children love all four Chaos effects.
+- Claude's reading: these are the first sessions in which Chaos ●●● rotates at full breadth, one effect swapping at every point. Nothing was reported about the rotation, for or against; the interval (spec 2.10.3) is still to be chosen from play.
+- Nothing was reported about one child beating the other too often, or about telling Wind from Spin: the two open hypotheses stay as they are.
+Proposed change (at most one):
+- None beyond the retune the parent already made. The parent ruled to keep Fog at the retuned number: "we can wrap up this phase." Neither a further retune nor a drop (spec 2.10.2).

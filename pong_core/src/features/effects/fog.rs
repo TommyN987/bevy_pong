@@ -128,7 +128,7 @@ mod tests {
 
     /// M2 spec 2.6.3's dial, R9's grades, and R3's shape: the band never
     /// narrows as the rally grows, and is as wide from the return the dial
-    /// is full at. The embedded fog is 64 units wide from eight returns on.
+    /// is full at. The embedded fog is 64 units wide from sixteen returns on.
     #[test]
     fn the_band_never_narrows_as_the_rally_grows() {
         let fog = fog();
@@ -136,9 +136,10 @@ mod tests {
         for pair in widths.windows(2) {
             assert!(pair[1] >= pair[0], "the fog narrowed: {pair:?}");
         }
-        assert_near(widths[1], 8.0, 1e-4);
-        assert_near(widths[4], 32.0, 1e-4);
-        assert_near(widths[8], 64.0, 1e-4);
+        assert_near(widths[1], 4.0, 1e-4);
+        assert_near(widths[4], 16.0, 1e-4);
+        assert_near(widths[8], 32.0, 1e-4);
+        assert_near(widths[16], 64.0, 1e-4);
         assert_near(widths[29], 64.0, 1e-4);
     }
 
@@ -156,7 +157,7 @@ mod tests {
                         paddle_motion,
                     }),
                 };
-                assert_near(fog.width(&returned), 32.0, 1e-4);
+                assert_near(fog.width(&returned), 16.0, 1e-4);
             }
         }
     }
@@ -183,7 +184,7 @@ mod tests {
         let fog = fog();
         for difficulty in STARS {
             let full = tuning.effects().fog().added_error(difficulty);
-            for (returns, share) in [(0, 0.0), (2, 0.25), (4, 0.5), (8, 1.0), (40, 1.0)] {
+            for (returns, share) in [(0, 0.0), (4, 0.25), (8, 0.5), (16, 1.0), (40, 1.0)] {
                 let flaw = fog.flaw(&after(returns), difficulty);
                 assert_near(flaw.added_error, share * full, 1e-4);
                 assert_eq!(flaw.added_delay, Duration::ZERO);
