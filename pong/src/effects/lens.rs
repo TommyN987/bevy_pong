@@ -149,9 +149,12 @@ impl Plugin for FloorLensesPlugin {
 /// spawns each lens the floor lacks, newborn, and takes off each the flight
 /// no longer has.
 ///
-/// The lenses are read from the start the flight began at and the rally's
-/// seed, through the same [`Lens::placed`] the core's pull is built from,
-/// so what is drawn is what pulls. A flight's start does not change while
+/// The lenses are read from the start the flight began at and the seed of
+/// the flight's own rally, through the same [`Lens::placed`] the core's
+/// pull is built from, so what is drawn is what pulls. Through a point
+/// pause the last flight is still on the ball and the next rally's seed is
+/// already drawn: the lenses lie where their rally laid them until the
+/// countdown. A flight's start does not change while
 /// it lasts and a rally's lenses only grow in number, so within a rally a
 /// lens appears where a flight starts and none moves or leaves (M2 spec
 /// 2.4.3, R11). With Lens out of play, or no flight, as in a countdown,
@@ -173,7 +176,7 @@ fn lay_the_flights_lenses(
         .and_then(BallFlight::in_flight)
         .filter(|_| active.ids().contains(&EffectId::Lens))
         .map_or_else(Vec::new, |flight| {
-            Lens::new(&tuning, active.rally_seed()).placed(&flight.began_at())
+            Lens::new(&tuning, flight.rally()).placed(&flight.began_at())
         });
     let mut lies = vec![false; placed.len()];
     for (entity, mut floor_lens) in &mut floor {

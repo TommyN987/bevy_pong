@@ -1,6 +1,6 @@
 # ADR 0011: Effect identity is a closed enum; behaviour sits behind a contract
 
-Date: 2026-11-10, amended 2026-11-11, 2026-11-13, and 2026-11-20
+Date: 2026-11-10, amended 2026-11-11, 2026-11-13, 2026-11-20, and 2026-11-22
 Status: accepted
 
 ## Context
@@ -47,6 +47,10 @@ Amended 2026-11-20 ([M2 phase 8 report](../plans/m2-phase8-report.md)), with Len
 - A field that one effect alone needs lives in that effect's module, on the kernel's `Field` trait: Lens's pull. The kernel holds the fields effects share.
 - An item effect lays its items where the rally's seed says, through a generator of its own seeded by it, and draws nothing from the shared stream. An item's place depends on the seed and on its own number, not on how many items the dial holds.
 - An item effect's dial is the curve's whole-count form, whose constructor keeps the field empty at a serve.
+
+Amended 2026-11-22 ([M2 phase 8 report](../plans/m2-phase8-report.md)), after the user's hand check:
+
+- A flight keeps the seed of the rally it began in. The base draws the next rally's seed at the point, so the shell can show a choice in the countdown, and the last flight of the rally just played stays on the ball until that countdown. What the shell shows of a flight, it derives from the flight's own seed.
 
 ## Alternatives considered
 

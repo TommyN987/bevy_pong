@@ -12,6 +12,7 @@ use bevy::math::Vec2;
 
 use super::geometry::Side;
 use super::integrate::Motion;
+use super::random::RallySeed;
 
 /// What a paddle did in the current fixed step: the displacement it actually
 /// made, not the key that was held. A paddle pressed against a wall is `Still`.
@@ -142,15 +143,20 @@ pub struct Contribution {
 
 /// The composed state of one flight.
 ///
-/// Invariant: nothing but [`tick`](Self::tick) changes a flight after
-/// [`start`](Self::start) built it. [`believed_as`](Self::believed_as)
-/// builds the one other kind: a belief about a flight, with that flight's
-/// start and clock, made to be predicted under and never to be flown.
+/// Invariant: nothing but [`tick`](Self::tick) changes a flight once
+/// [`start`](Self::start) and [`in_rally`](Self::in_rally) have built it.
+/// [`believed_as`](Self::believed_as) builds the one other kind: a belief
+/// about a flight, with that flight's start, rally, and clock, made to be
+/// predicted under and never to be flown.
+/// A flight is of one rally and keeps that rally's seed: the seed of the
+/// next rally is drawn while the last flight of this one is still on the
+/// ball, and whatever is derived from a flight is derived from its own.
 /// Returns and steps stop at `u16::MAX` rather than wrap; both are `u16`
 /// because every `u16` is exact in `f32`.
 #[derive(Debug)]
 pub struct Flight {
     began_at: FlightStart,
+    rally: RallySeed,
     steps: u16,
     speed_gain: f32,
     paddle_height_factor: f32,
@@ -163,6 +169,7 @@ impl Default for Flight {
     fn default() -> Self {
         Self {
             began_at: FlightStart::SERVE,
+            rally: RallySeed::default(),
             steps: 0,
             speed_gain: 0.0,
             paddle_height_factor: 1.0,
@@ -192,8 +199,15 @@ impl Flight {
         flight
     }
 
+    /// This flight as a flight of the rally of `rally`. Without it a flight
+    /// is of no rally and has the default seed, as the empty flight does.
+    #[must_use]
+    pub fn in_rally(self, rally: RallySeed) -> Self {
+        Self { rally, ..self }
+    }
+
     /// This flight as an observer believes it (M2 spec 2.3.12): the same
-    /// start and the same clock, composed from `believed` contributions in
+    /// start, rally, and clock, composed from `believed` contributions in
     /// place of the true ones. Prediction under the result is what an AI
     /// with that belief expects the ball to do.
     ///
@@ -204,8 +218,16 @@ impl Flight {
     pub fn believed_as(&self, believed: impl IntoIterator<Item = Contribution>) -> Self {
         Self {
             steps: self.steps,
+            rally: self.rally,
             ..Self::start(self.began_at, believed)
         }
+    }
+
+    /// The seed of the rally this flight began in: what its effects chose
+    /// from, whatever seed has been drawn since.
+    #[must_use]
+    pub const fn rally(&self) -> RallySeed {
+        self.rally
     }
 
     /// The moment this flight began: what every effect was told when asked
@@ -274,6 +296,7 @@ mod tests {
     use super::{Contribution, Drift, Field, Flight, FlightStart, Hit, StepMotion};
     use crate::kernel::geometry::Side;
     use crate::kernel::integrate::{Motion, integrate};
+    use crate::kernel::random::RallySeed;
     use crate::kernel::test_support::{assert_near, assert_vec_near};
 
     const DT: f32 = 1.0 / 60.0;
@@ -436,6 +459,30 @@ mod tests {
         };
         assert_eq!(Flight::start(start, []).began_at(), start);
         assert_eq!(Flight::default().began_at(), FlightStart::SERVE);
+    }
+
+    /// A flight belongs to one rally and keeps that rally's seed, whatever
+    /// seed is drawn after it began; one built for no rally has the seed of
+    /// none.
+    #[test]
+    fn a_flight_remembers_the_rally_it_began_in() {
+        let rally = RallySeed::new(41);
+        let mut flight = Flight::start(FlightStart::SERVE, []).in_rally(rally);
+        flight.tick();
+        assert_eq!(flight.rally(), rally);
+        assert_eq!(
+            Flight::start(FlightStart::SERVE, []).rally(),
+            RallySeed::default()
+        );
+        assert_eq!(Flight::default().rally(), RallySeed::default());
+    }
+
+    /// A belief about a flight is about that flight: the same rally.
+    #[test]
+    fn a_believed_flight_is_of_the_same_rally() {
+        let rally = RallySeed::new(41);
+        let flown = Flight::start(FlightStart::SERVE, [pushing(0.0, Steady(2.0))]).in_rally(rally);
+        assert_eq!(flown.believed_as([]).rally(), rally);
     }
 
     /// M2 spec 2.3.12: an AI's degraded belief is the same flight composed
