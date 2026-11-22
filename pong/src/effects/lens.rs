@@ -1,9 +1,9 @@
-//! Lens's shell half (M2 spec 2.6.5): lenses on the floor that pull the
-//! ball toward their centre lines.
+//! Lens's shell half (M2 spec 2.6.5): lenses on the floor that turn the
+//! ball's path toward their centres.
 //!
 //! The base views cannot show where a lens lies, so Lens has a view of its
 //! own (R1): one disc on the floor for every lens of the flight, ringed,
-//! with the centre line it pulls toward drawn across it. A lens is there
+//! with the centre it pulls toward marked by a dot. A lens is there
 //! from the frame its flight starts, before the ball reaches it, and above
 //! the fog, which hides the ball only (M2 spec 2.2.9).
 //!
@@ -23,7 +23,7 @@ use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::{Commands, Query, Res, ResMut};
 use bevy::math::Vec3;
 use bevy::mesh::{Mesh, Mesh2d};
-use bevy::shape::{Annulus, Circle, Rectangle};
+use bevy::shape::{Annulus, Circle};
 use bevy::sprite_render::{ColorMaterial, MeshMaterial2d};
 use bevy::state::condition::in_state;
 use bevy::state::state_scoped::DespawnOnExit;
@@ -62,7 +62,7 @@ pub const fn shell_half() -> ShellHalf {
 }
 
 /// Three quick notes closing in on the last from above and below:
-/// something drawn toward a line.
+/// something drawn toward a middle.
 fn join_cue() -> Sound {
     phrase(
         &[
@@ -160,7 +160,7 @@ impl Plugin for FloorLensesPlugin {
 /// 2.4.3, R11). With Lens out of play, or no flight, as in a countdown,
 /// the floor is empty.
 ///
-/// Postcondition: a lens that leaves takes its ring and centre line with
+/// Postcondition: a lens that leaves takes its ring and centre dot with
 /// it, by the hierarchy; a lens left on the floor when the match ends goes
 /// with the match.
 fn lay_the_flights_lenses(
@@ -224,9 +224,10 @@ fn grow_the_new_lenses(time: Res<Time>, mut floor: Query<(&mut FloorLens, &mut T
 /// Where a lens's ring ends, from its centre, in radii: the ring is the
 /// outermost sixteenth of the disc.
 const INSIDE_THE_RING: f32 = 0.94;
-/// How thick the centre line is drawn, in radii.
-const LINE_THICKNESS: f32 = 0.07;
-/// How far above the disc its ring is drawn, and its centre line above
+/// How large the centre dot is drawn, in radii: plain at a glance, and
+/// far smaller than the ball beside it.
+const DOT_RADIUS: f32 = 0.11;
+/// How far above the disc its ring is drawn, and its centre dot above
 /// that. A child's draw order is its parent's plus its own, and all three
 /// are opaque, which the depth decides: each needs a height of its own.
 const ABOVE: f32 = 0.02;
@@ -237,8 +238,8 @@ const ABOVE: f32 = 0.02;
 const DISC: Color = Color::linear_rgb(0.020, 0.050, 0.045);
 /// The ring: where the lens ends.
 const RING: Color = Color::linear_rgb(0.10, 0.30, 0.24);
-/// The centre line: what the ball is pulled toward, and the brightest part.
-const CENTRE_LINE: Color = Color::linear_rgb(0.26, 0.70, 0.56);
+/// The centre dot: what the ball is pulled toward, and the brightest part.
+const CENTRE: Color = Color::linear_rgb(0.26, 0.70, 0.56);
 
 /// The shapes and colours of a lens, made once. Each shape is for a lens of
 /// radius one, scaled per lens by its `Transform`.
@@ -246,7 +247,7 @@ const CENTRE_LINE: Color = Color::linear_rgb(0.26, 0.70, 0.56);
 struct LensLook {
     disc: (Handle<Mesh>, Handle<ColorMaterial>),
     ring: (Handle<Mesh>, Handle<ColorMaterial>),
-    centre_line: (Handle<Mesh>, Handle<ColorMaterial>),
+    centre: (Handle<Mesh>, Handle<ColorMaterial>),
 }
 
 fn create_the_lens_look(
@@ -260,14 +261,11 @@ fn create_the_lens_look(
             meshes.add(Annulus::new(INSIDE_THE_RING, 1.0)),
             materials.add(RING),
         ),
-        centre_line: (
-            meshes.add(Rectangle::new(2.0 * INSIDE_THE_RING, LINE_THICKNESS)),
-            materials.add(CENTRE_LINE),
-        ),
+        centre: (meshes.add(Circle::new(DOT_RADIUS)), materials.add(CENTRE)),
     });
 }
 
-/// Gives each new lens its disc, and its ring and centre line as children,
+/// Gives each new lens its disc, and its ring and centre dot as children,
 /// so they lie, grow, and leave with it.
 fn attach_the_lens_look(
     mut commands: Commands,
@@ -279,7 +277,7 @@ fn attach_the_lens_look(
             Mesh2d(look.disc.0.clone()),
             MeshMaterial2d(look.disc.1.clone()),
         ));
-        for (above, (mesh, material)) in [(ABOVE, &look.ring), (2.0 * ABOVE, &look.centre_line)] {
+        for (above, (mesh, material)) in [(ABOVE, &look.ring), (2.0 * ABOVE, &look.centre)] {
             commands.spawn((
                 ChildOf(lens),
                 Transform::from_xyz(0.0, 0.0, above),

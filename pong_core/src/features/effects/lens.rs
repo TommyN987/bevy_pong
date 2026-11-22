@@ -1,12 +1,11 @@
-//! Lens (M2 spec 2.6.5): lenses on the floor that pull the ball toward
-//! their centre lines. They appear at a paddle return, more of them as the
+//! Lens (M2 spec 2.6.5): lenses on the floor that turn the ball's path
+//! toward their centres. They appear at a paddle return, more of them as the
 //! rally grows, and stay until the point. Each is drawn on the left half and
 //! copied mirrored on the right, so both players face the same floor.
 //!
 //! Where a rally's lenses lie is chosen once, from the rally's seed, so the
 //! shell draws the lenses the ball is pulled by.
 
-use std::f32::consts::PI;
 use std::time::Duration;
 
 use bevy::math::Vec2;
@@ -19,11 +18,10 @@ use crate::kernel::flight::{Contribution, Field, FlightStart};
 use crate::kernel::integrate::Motion;
 use crate::kernel::random::{Pcg32, RallySeed};
 
-/// One lens on the floor: a disc, pulling toward the horizontal line
-/// through its centre.
+/// One lens on the floor: a disc, turning a ball's path toward its centre.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PlacedLens {
-    /// The middle of the disc; its centre line is `y = centre.y`.
+    /// The middle of the disc, which it pulls toward.
     pub centre: Vec2,
     /// How far the disc reaches from its centre, in arena units.
     pub radius: f32,
@@ -38,18 +36,39 @@ impl PlacedLens {
         }
     }
 
-    /// How a path at `position` curves under this lens, per unit of
-    /// `focus`: its second derivative `d²y/dx²`. Toward the centre line, by
-    /// more the farther from it, fading to nothing at the rim, so the pull
-    /// has no edge to step over; nothing outside the disc or on the line.
-    fn curving(self, position: Vec2) -> f32 {
-        let offset = position - self.centre;
+    /// How the path of a ball in `motion` curves under this lens, per unit
+    /// of `focus`: its second derivative `d²y/dx²`.
+    ///
+    /// Toward the centre: the path, carried straight on, would pass the
+    /// centre at some distance on one side, and it curves to that side, by
+    /// more the wider it would pass. So a ball is turned one way from rim
+    /// to rim, whatever its course, and a ball headed straight at the
+    /// centre is left alone. The pull fades to nothing at the rim, so it
+    /// has no edge to step over. Nothing outside the disc, and nothing for
+    /// a ball at rest.
+    ///
+    /// For a level ball this is a pull toward the centre's height, by the
+    /// ball's distance from it. Mirrored across midfield with the ball's
+    /// motion mirrored too, the answer is the same.
+    fn curving(self, motion: Motion) -> f32 {
+        let to_the_centre = self.centre - motion.position;
         let rim = self.radius * self.radius;
-        let inside = 1.0 - offset.length_squared() / rim;
-        if inside <= 0.0 {
+        let inside = 1.0 - to_the_centre.length_squared() / rim;
+        let speed = motion.velocity.length();
+        if inside <= 0.0 || speed == 0.0 {
             return 0.0;
         }
-        -offset.y * inside
+        let heading = motion.velocity / speed;
+        // How far to the left of the ball's course the centre lies.
+        let centre_to_the_left = heading.x * to_the_centre.y - heading.y * to_the_centre.x;
+        // A pull along +y turns a ball flying toward +x to its left, and a
+        // ball flying toward -x to its right.
+        let toward_the_centre = if heading.x < 0.0 {
+            -centre_to_the_left
+        } else {
+            centre_to_the_left
+        };
+        toward_the_centre * inside
     }
 }
 
@@ -67,35 +86,43 @@ struct Pull {
 
 impl Field for Pull {
     fn lateral(&self, motion: Motion, _seconds_in_flight: f32) -> f32 {
-        let curving: f32 = self
-            .lenses
-            .iter()
-            .map(|lens| lens.curving(motion.position))
-            .sum();
+        let curving: f32 = self.lenses.iter().map(|lens| lens.curving(motion)).sum();
         self.focus * curving * motion.velocity.x * motion.velocity.x
     }
 }
 
+/// The share of `focus · R²` by which the slope of a path changes, at
+/// most, in crossing one lens of radius `R`.
+///
+/// Measured, not derived. A level ball that would pass the centre at half
+/// the radius flies all but straight through a weak lens, and its slope
+/// changes by `√3 / 4` of `focus · R²`: about 0.433. A stronger lens curves
+/// the path while it is inside, and a ball that enters turned a little away
+/// from the centre is level halfway and gains more: by 5 parts in 100 at a
+/// bend of 5 degrees and 18 in 100 at 30, over radii from 6 to 12, at the
+/// game's step and speeds (M2 phase 8 report). The share is sized for the
+/// largest bend validation lets through, [`LensTuning::LARGEST_BEND_DEGREES`],
+/// so at a smaller one the largest bend falls a little short of the tuned
+/// angle and never passes it.
+const LARGEST_SLOPE_CHANGE: f32 = 0.511;
+
 /// The focus at which one lens of `radius` bends no crossing by more than
 /// `max_bend` radians.
 ///
-/// A flight's horizontal speed is constant, so a ball passes each x of the
-/// disc once, and its slope changes by at most the integral over x of the
-/// strongest curving at that x. At `u` from the centre along x the curving
-/// peaks at `2 ρ³ / (3 √3 R²)`, with `ρ² = R² - u²`; over the disc that
-/// integrates to `π R² / (4 √3)`. A change of slope `s` turns a path by at
-/// most `2 atan(s / 2)`, when the path is level halfway. So the slope may
-/// change by `2 tan(max_bend / 2)`.
+/// A change of slope `s` turns a path by at most `2 atan(s / 2)`, when the
+/// path is level halfway. So the slope may change by `2 tan(max_bend / 2)`,
+/// and it changes by at most [`LARGEST_SLOPE_CHANGE`] of `focus · R²`.
 ///
 /// Precondition (validated tuning's): `radius` is positive and `max_bend`
-/// is in `0..π/2`.
+/// is from nothing to [`LensTuning::LARGEST_BEND_DEGREES`]. Past that bend
+/// the measure does not reach, and the bound is not promised.
 fn focus(max_bend: f32, radius: f32) -> f32 {
     let slope_change = 2.0 * (max_bend / 2.0).tan();
-    slope_change * 4.0 * 3.0_f32.sqrt() / (PI * radius * radius)
+    slope_change / (LARGEST_SLOPE_CHANGE * radius * radius)
 }
 
-/// Puts lenses on the floor as the rally grows, each pulling the ball toward
-/// its centre line.
+/// Puts lenses on the floor as the rally grows, each turning the ball's path
+/// toward its centre.
 ///
 /// The dial is a count (R9): none at a serve, then one more drawn lens, and
 /// its copy, at the returns the tuned count names. The pull is lateral
@@ -241,6 +268,17 @@ mod tests {
         Tuning::from_ron(EMBEDDED_RON).expect("the embedded tuning is valid")
     }
 
+    /// The embedded tuning with the lens's largest bend replaced.
+    fn tuning_bending(degrees: f32) -> Tuning {
+        let old = format!(
+            "max_bend_degrees: {:?}",
+            numbers().max_bend().to_degrees().round()
+        );
+        assert!(EMBEDDED_RON.contains(&old), "{old} is not in the tuning");
+        let ron = EMBEDDED_RON.replace(&old, &format!("max_bend_degrees: {degrees:?}"));
+        Tuning::from_ron(&ron).expect("the bend is one the tuning allows")
+    }
+
     fn numbers() -> LensTuning {
         tuning().effects().lens()
     }
@@ -277,8 +315,13 @@ mod tests {
     /// The first rally whose drawn lenses at full dial lie clear of each
     /// other, so that a ball inside one is pulled by that one alone.
     fn a_rally_of_lenses_apart() -> Lens {
+        lenses_apart_under(&tuning())
+    }
+
+    /// [`a_rally_of_lenses_apart`], its lenses as `tuning` has them.
+    fn lenses_apart_under(tuning: &Tuning) -> Lens {
         (0..1_000)
-            .map(lens)
+            .map(|rally| Lens::new(tuning, RallySeed::new(rally)))
             .find(|lens| {
                 let drawn = drawn(&lens.placed(&after(FULL_DIAL)));
                 drawn.iter().enumerate().all(|(index, one)| {
@@ -300,10 +343,20 @@ mod tests {
 
     /// The pull `contribution` gives a level ball at `position`.
     fn pull_at(contribution: Contribution, position: Vec2) -> f32 {
-        flight_of(contribution).force(level_at(position), DT).y
+        pull_on(contribution, level_at(position))
     }
 
-    /// Halfway from a lens's centre line to its rim, above the centre.
+    /// The pull `contribution` gives a ball in `motion`.
+    fn pull_on(contribution: Contribution, motion: Motion) -> f32 {
+        flight_of(contribution).force(motion, DT).y
+    }
+
+    /// The steepest angle a paddle sends a ball at, above level, in radians.
+    fn steepest() -> f32 {
+        tuning().ball().max_deflection().radians()
+    }
+
+    /// Halfway from a lens's centre to its rim, straight above the centre.
     fn above(lens: PlacedLens) -> Vec2 {
         lens.centre + Vec2::new(0.0, lens.radius / 2.0)
     }
@@ -433,17 +486,18 @@ mod tests {
         assert!(firsts.iter().any(|at| at.y < -highest / 2.0));
     }
 
-    /// M2 spec 2.6.5: a lens pulls toward its centre line. Down above the
-    /// line and up below it, by the same amount; not at all on the line, at
-    /// the rim, or outside the disc.
+    /// M2 spec 2.6.5: a lens pulls toward its centre. A level ball is
+    /// pulled down above the centre and up below it, by the same amount. A
+    /// ball headed straight at the centre is not pulled at all, level or
+    /// steep; nor is any ball at the rim or outside the disc.
     #[test]
-    fn a_lens_pulls_the_ball_toward_its_centre_line_and_nowhere_outside_itself() {
+    fn a_lens_pulls_the_ball_toward_its_centre_and_nowhere_outside_itself() {
         let lens = a_rally_of_lenses_apart();
         let one = lens.placed(&after(FULL_DIAL))[0];
         let pull = |offset: Vec2| pull_at(lens.contribute(&after(FULL_DIAL)), one.centre + offset);
         let half = one.radius / 2.0;
         let above = pull(Vec2::new(0.0, half));
-        assert!(above < 0.0, "above the line the pull was {above}");
+        assert!(above < 0.0, "above the centre the pull was {above}");
         assert_near(pull(Vec2::new(0.0, -half)), -above, 1e-3);
         assert_near(
             pull(Vec2::new(half, half)),
@@ -455,6 +509,66 @@ mod tests {
         assert_near(pull(Vec2::new(0.0, one.radius)), 0.0, 1e-6);
         assert_near(pull(Vec2::new(0.0, one.radius + 0.5)), 0.0, 1e-6);
         assert_near(pull(Vec2::new(one.radius + 0.5, half)), 0.0, 1e-6);
+        for angle in [steepest(), -steepest(), 0.5, -0.5] {
+            let heading = Vec2::from_angle(angle);
+            for short_of_the_centre in [half, -half] {
+                let at_the_centre = Motion {
+                    position: one.centre - heading * short_of_the_centre,
+                    velocity: heading * 250.0,
+                };
+                assert_near(
+                    pull_on(lens.contribute(&after(FULL_DIAL)), at_the_centre),
+                    0.0,
+                    1e-3,
+                );
+            }
+        }
+    }
+
+    /// A ball on a straight course at `angle` that passes `one`'s centre at
+    /// `beside` from it, the centre on its left, `along` the course from
+    /// where it is nearest the centre.
+    fn passing(one: PlacedLens, angle: f32, beside: f32, along: f32) -> Motion {
+        let heading = Vec2::from_angle(angle);
+        let to_the_left = heading.perp();
+        Motion {
+            position: one.centre - to_the_left * beside + heading * along,
+            velocity: heading * 250.0,
+        }
+    }
+
+    /// The hand check's finding (M2 phase 8 report): a steep ball crosses
+    /// the height of the centre inside the disc. Pulled toward that height,
+    /// it was pulled one way and then back, and came out as it went in. It
+    /// is turned toward the centre instead: one way from rim to rim, up
+    /// with the centre on its left and down with the centre on its right.
+    #[test]
+    fn a_steep_ball_is_turned_one_way_from_rim_to_rim() {
+        let lens = a_rally_of_lenses_apart();
+        let one = lens.placed(&after(FULL_DIAL))[0];
+        let beside = one.radius / 2.0;
+        let half_chord = (one.radius * one.radius - beside * beside).sqrt();
+        for angle in [steepest(), -steepest(), 0.8, -0.8] {
+            for step in -8..=8_i8 {
+                let along = 0.9 * half_chord * f32::from(step) / 8.0;
+                let on_its_left = pull_on(
+                    lens.contribute(&after(FULL_DIAL)),
+                    passing(one, angle, beside, along),
+                );
+                let on_its_right = pull_on(
+                    lens.contribute(&after(FULL_DIAL)),
+                    passing(one, angle, -beside, along),
+                );
+                assert!(
+                    on_its_left > 0.0,
+                    "at {angle}, {along} along, the centre on the left: {on_its_left}"
+                );
+                assert!(
+                    on_its_right < 0.0,
+                    "at {angle}, {along} along, the centre on the right: {on_its_right}"
+                );
+            }
+        }
     }
 
     /// The copy pulls as the drawn lens does, mirrored: both players face
@@ -468,6 +582,18 @@ mod tests {
             let here = pull_at(lens.contribute(&after(FULL_DIAL)), spot);
             let there = pull_at(lens.contribute(&after(FULL_DIAL)), mirrored);
             assert!(here < 0.0);
+            assert_near(there, here, 1e-3);
+            // A steep ball too, flying the mirrored way.
+            let steep = Vec2::from_angle(steepest()) * 250.0;
+            let flying = |position: Vec2, velocity: Vec2| {
+                pull_on(
+                    lens.contribute(&after(FULL_DIAL)),
+                    Motion { position, velocity },
+                )
+            };
+            let here = flying(spot, steep);
+            let there = flying(mirrored, Vec2::new(-steep.x, steep.y));
+            assert!(here.abs() > 1.0, "the steep ball is pulled: {here}");
             assert_near(there, here, 1e-3);
         }
     }
@@ -496,50 +622,96 @@ mod tests {
         motion.velocity.to_angle() - before
     }
 
-    /// Entries into a lens of `radius`: every offset from the centre line
-    /// to either rim, at every slope a paddle can send a ball along and
-    /// beyond.
+    /// Entries into a lens of `radius`: every slope a paddle can send a ball
+    /// along and beyond, and at each every course that meets the disc, from
+    /// one that grazes it below to one that grazes it above.
     fn entries(radius: f32) -> impl Iterator<Item = (f32, f32)> {
-        (-16..=16_i16).flat_map(move |offset| {
-            (-18..=18_i16)
-                .map(move |slope| (radius * f32::from(offset) / 16.0, f32::from(slope) / 10.0))
+        (-18..=18_i16).flat_map(move |tenths| {
+            let slope = f32::from(tenths) / 10.0;
+            let grazing = radius * slope.hypot(1.0);
+            (-16..=16_i16).map(move |offset| (grazing * f32::from(offset) / 16.0, slope))
         })
     }
 
     /// M2 spec 2.6.5's done-condition: one lens bends no crossing more than
     /// the tuned angle. Over every entry, at the serve speed and at the
-    /// cap, wherever in a step the ball meets the disc.
+    /// cap, wherever in a step the ball meets the disc; at the embedded
+    /// angle, at a small one, and at the largest the tuning allows.
     ///
-    /// The bound is the path's; the fixed step adds its own budget, since a
-    /// ball at the cap crosses a lens in a handful of steps. A fiftieth of
-    /// the angle covers it at the embedded radius. The dial also means what
-    /// it says: some crossing bends by nine tenths of the angle.
+    /// The pull is sized by measure, not derived, and this test is the
+    /// measure's guard. The fixed step adds its own budget, since a ball at
+    /// the cap crosses a lens in a handful of steps: a fiftieth of the
+    /// angle covers it at the embedded radius. The dial also means what it
+    /// says: at the embedded angle some crossing bends by more than four
+    /// fifths of it.
     #[test]
     fn one_lens_bends_no_crossing_more_than_the_tuned_angle() {
-        let tuning = tuning();
-        let max_bend = numbers().max_bend();
-        let lens = a_rally_of_lenses_apart();
-        let one = lens.placed(&after(FULL_DIAL))[0];
-        let mut largest = 0.0_f32;
-        for entry in entries(one.radius) {
-            for speed in [tuning.ball().serve_speed(), tuning.ball().speed_cap()] {
-                for phase in [0.0, 0.25, 0.5, 0.75] {
-                    let bend = bend_through(&lens, one, entry, (speed, phase)).abs();
-                    assert!(
-                        bend <= max_bend * 1.02,
-                        "entering at {entry:?} at {speed} the path bent {} degrees, over {}",
-                        bend.to_degrees(),
-                        max_bend.to_degrees()
-                    );
-                    largest = largest.max(bend);
+        let embedded = numbers().max_bend().to_degrees().round();
+        for degrees in [5.0, embedded, LensTuning::LARGEST_BEND_DEGREES] {
+            let tuning = tuning_bending(degrees);
+            let max_bend = tuning.effects().lens().max_bend();
+            let lens = lenses_apart_under(&tuning);
+            let one = lens.placed(&after(FULL_DIAL))[0];
+            let mut largest = 0.0_f32;
+            for entry in entries(one.radius) {
+                for speed in [tuning.ball().serve_speed(), tuning.ball().speed_cap()] {
+                    for phase in [0.0, 0.25, 0.5, 0.75] {
+                        let bend = bend_through(&lens, one, entry, (speed, phase)).abs();
+                        assert!(
+                            bend <= max_bend * 1.02,
+                            "entering at {entry:?} at {speed} the path bent {} degrees, over {}",
+                            bend.to_degrees(),
+                            max_bend.to_degrees()
+                        );
+                        largest = largest.max(bend);
+                    }
                 }
             }
+            assert!(
+                largest >= max_bend * 0.8,
+                "no crossing bent more than {} of {} degrees",
+                largest.to_degrees(),
+                max_bend.to_degrees()
+            );
         }
+    }
+
+    /// How far the slope of a ball's path changes, at most, in crossing
+    /// `one` lens of `lens`'s full floor along `slope`, over every course
+    /// that meets the disc. A change of slope is what moves the ball's
+    /// crossing at the paddle.
+    fn largest_slope_change(lens: &Lens, one: PlacedLens, slope: f32) -> f32 {
+        entries(one.radius)
+            .filter(|&(_, entered_along)| (entered_along - slope).abs() < 1e-6)
+            .map(|entry| {
+                let turned = bend_through(lens, one, entry, (150.0, 0.5));
+                ((slope.atan() + turned).tan() - slope).abs()
+            })
+            .fold(0.0, f32::max)
+    }
+
+    /// The hand check's finding (M2 phase 8 report): the steeper the ball,
+    /// the less a lens did to it. A pull across the ball's path cannot turn
+    /// a steep ball as far as a level one, but it still moves where the
+    /// ball crosses: along a slope of 1.7, about the steepest a paddle
+    /// sends a ball at, the slope changes by two fifths of what it changes
+    /// by for a level ball.
+    #[test]
+    fn a_steep_ball_is_bent_two_fifths_as_far_as_a_level_one() {
+        let lens = a_rally_of_lenses_apart();
+        let one = lens.placed(&after(FULL_DIAL))[0];
         assert!(
-            largest >= max_bend * 0.9,
-            "no crossing bent more than {} of {} degrees",
-            largest.to_degrees(),
-            max_bend.to_degrees()
+            1.7 < steepest().tan() + 0.05,
+            "a paddle sends no ball so steep"
+        );
+        let level = largest_slope_change(&lens, one, 0.0);
+        let steep = largest_slope_change(&lens, one, 1.7);
+        let steep_down = largest_slope_change(&lens, one, -1.7);
+        assert!(level > 0.1, "a level ball is bent: {level}");
+        assert!(steep >= 0.4 * level, "steep {steep}, level {level}");
+        assert!(
+            steep_down >= 0.4 * level,
+            "steep {steep_down}, level {level}"
         );
     }
 
