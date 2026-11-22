@@ -291,6 +291,29 @@ The phase's diff against `main`: 22 code files, 3 of them new and untracked when
 - **What the next effect will also touch outside the list:** the two tests that spell out the overlay's key line; its own draw layer if it has a view on the floor; the cramped-arena fixture if it has a size.
 - **What it will not pay again:** the count form, the per-star whole number, the held count's flag. Blocks' lag reads the same flag.
 
+## After the hand check (2026-11-22)
+
+The user committed the build (`f68fc58`) and reported two things from play.
+
+### The lenses jumped through the point pause
+
+**Reported:** "when a point is scored, the lenses visually teleport for a few frames (until the countdown starts)."
+
+- **Cause.** The base draws the next rally's seed on the transition from play to a point, and the last flight stays on the ball until the countdown clears it. The view laid the old flight's lenses from `ActiveEffects::rally_seed()`, by then the next rally's.
+- **Why no test saw it.** `the_lenses_hold_through_the_rally_and_go_at_the_countdown` ran from the point straight to the countdown and looked at no frame between.
+- **Fix, in the base, where the fact lives.** A `Flight` keeps the seed of the rally it began in: `Flight::in_rally`, set by `ActiveEffects::start_flight`, read through `Flight::rally()`. The view reads the flight's own seed. Physics is untouched.
+- **Simulation unaffected.** No ball moves in a point pause, and the flight's pull was built when it started.
+- **Tests, red first:** `through_the_point_pause_the_lenses_stay_where_the_rally_laid_them` (shell; red by assertion against the old read, the lenses elsewhere in the first frame of the pause); `the_balls_flight_keeps_its_rallys_seed_through_the_point_pause` (base) and `a_flight_remembers_the_rally_it_began_in`, `a_believed_flight_is_of_the_same_rally` (kernel), red by compile failure.
+- **Recorded:** spec 2.2.4 and 2.6.5, ADR 0011, the kernel's and the features' READMEs, amended 2026-11-22.
+- **Outside the touch list, paid once:** `kernel/flight.rs` and `effects/mod.rs`. Blocks' view will read the same seed.
+- **Gate:** `just dev-check` green on 2026-11-22: 740 tests, 4 more.
+
+### A lens does less to a steep ball
+
+**Reported:** "When a ball's trajectory is relatively horizontal, the lens works pretty well, but the more vertical it is, the less effect it produces."
+
+Not changed. Put to the user as a proposal on 2026-11-22; the ruling is open.
+
 ## Test changes
 
 522 core tests and 214 shell tests pass, 736 in all; 686 existed before this phase. 50 were added: 39 in the core (6 of the count form, 7 of the tuning, 18 of Lens, 6 of the AI, 1 of the effects base, 1 of the kernel's flight) and 11 in the shell (8 in `pong/tests/lens.rs`, 1 of the shell half, 2 of the grow-in).
@@ -332,7 +355,8 @@ CI: not run by Claude. The user's, with the commits.
 
 ## Open at phase close
 
-- **Step 6:** the hand check in `just run` (sandbox key 6), the session with the children, and the ruling: keep, retune once, or drop (E.6, spec 2.10.1, 2.10.2).
+- **Step 6:** the hand check in `just run` is begun (2026-11-22, two findings above); the session with the children and the ruling are open: keep, retune once, or drop (E.6, spec 2.10.1, 2.10.2).
+- **A lens does less to a steep ball:** proposal put to the user on 2026-11-22.
 - **Every number of Lens's section is Claude's starting number,** untried by a hand: the arrivals at 3, 5, 7, the radius, the bend of 15 degrees, the run, the lags, the shares.
 - **Lens is gentle between computers.** Whether a person finds it so is the session's to say; `max_bend_degrees` and the shares are one line each.
 - **Not shown by test:** that Lens alone shortens three-star rallies.

@@ -243,7 +243,10 @@ impl ActiveEffects {
     }
 
     /// The seed of the rally in play, or of the one about to begin: what an
-    /// effect that chooses once per rally chose from.
+    /// effect that chooses once per rally chose from. From a point until
+    /// the countdown it is already the next rally's, while the ball is
+    /// still in the last flight of the rally just played: what is shown of
+    /// that flight is read from [`Flight::rally`] instead.
     #[must_use]
     pub const fn rally_seed(&self) -> RallySeed {
         self.rally_seed
@@ -255,6 +258,10 @@ impl ActiveEffects {
     /// says that its count is held; while it holds a hit motion, a return
     /// starts as if its paddle had moved that way. A serve has no hit, held
     /// motion or not.
+    ///
+    /// Postcondition: the flight is of the rally these effects are built
+    /// for, and keeps that rally's seed ([`Flight::rally`]) after
+    /// [`rally_seed`](Self::rally_seed) has moved on to the next.
     #[must_use]
     pub fn start_flight(&self, start: FlightStart) -> Flight {
         let start = FlightStart {
@@ -269,6 +276,7 @@ impl ActiveEffects {
             start,
             self.effects.iter().map(|effect| effect.contribute(&start)),
         )
+        .in_rally(self.rally_seed)
     }
 
     /// What an AI of `difficulty` makes of `flight`: every effect in play
@@ -692,6 +700,43 @@ mod tests {
         leave_match(&mut app);
         enter_match(&mut app, two_humans());
         assert_eq!(rally_seed(&app), third);
+    }
+
+    /// The seed of the rally the ball's flight began in.
+    fn the_flights_rally(app: &mut App) -> RallySeed {
+        app.world_mut()
+            .query_filtered::<&BallFlight, With<Ball>>()
+            .single(app.world())
+            .expect("exactly one ball")
+            .flight()
+            .rally()
+    }
+
+    /// A flight is started for the rally in play and keeps that rally's
+    /// seed. The next rally's seed is drawn at the point, while the last
+    /// flight is still on the ball: through the point pause the flight says
+    /// which rally it was of, and what is drawn from it does not move.
+    #[test]
+    fn the_balls_flight_keeps_its_rallys_seed_through_the_point_pause() {
+        let [first, second, _] = seeds_of_app_seed_one();
+        let mut app = headless_app(1);
+        boot(&mut app);
+        enter_match(&mut app, two_humans());
+        until(&mut app, MatchState::Playing);
+        for _ in 0..3 {
+            frame(&mut app);
+        }
+        assert_eq!(the_flights_rally(&mut app), first, "the serve's flight");
+
+        left_scores(&mut app);
+        assert_eq!(rally_seed(&app), second, "the next rally's seed is drawn");
+        assert_eq!(the_flights_rally(&mut app), first, "in the point pause");
+
+        until(&mut app, MatchState::Playing);
+        for _ in 0..3 {
+            frame(&mut app);
+        }
+        assert_eq!(the_flights_rally(&mut app), second, "the next serve's");
     }
 
     fn pause_and_resume(app: &mut App, paused_in: MatchState) {

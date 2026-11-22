@@ -327,6 +327,34 @@ fn the_lenses_hold_through_the_rally_and_go_at_the_countdown() {
     assert!(drawn_lenses(&mut app).is_empty(), "in the next countdown");
 }
 
+/// The point pause shows the rally that was just played: its flight is
+/// still on the ball, and its lenses lie where they lay, in every frame
+/// until the countdown. The next rally's seed is drawn at the point, and
+/// its lenses are not this floor's.
+#[test]
+fn through_the_point_pause_the_lenses_stay_where_the_rally_laid_them() {
+    let mut app = app_among_lenses(FULL_DIAL);
+    until_the_lenses_have_grown(&mut app);
+    let floor = drawn_lenses(&mut app);
+    let rally = app.world().resource::<ActiveEffects>().rally_seed();
+    // Past the left paddle, which waits at the centre: a point.
+    teleport_the_ball(&mut app, Vec2::new(-60.0, 40.0), Vec2::new(-200.0, 0.0));
+    until(&mut app, MatchState::PointScored);
+    assert_ne!(
+        app.world().resource::<ActiveEffects>().rally_seed(),
+        rally,
+        "the point draws the next rally's seed"
+    );
+    let mut frames = 0;
+    while match_state(&app) == MatchState::PointScored {
+        assert_eq!(drawn_lenses(&mut app), floor, "frame {frames} of the pause");
+        frame(&mut app);
+        frames += 1;
+        assert!(frames < 300, "the point pause never ended");
+    }
+    assert!(frames > 10, "the point pause lasted only {frames} frames");
+}
+
 /// A match from the first seed whose rally lays a lens wholly inside the
 /// widest fog, with Fog and Lens in play at full dial.
 fn app_with_a_lens_in_the_fog() -> (App, f32) {
