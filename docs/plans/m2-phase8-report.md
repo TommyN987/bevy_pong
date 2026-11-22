@@ -312,7 +312,66 @@ The user committed the build (`f68fc58`) and reported two things from play.
 
 **Reported:** "When a ball's trajectory is relatively horizontal, the lens works pretty well, but the more vertical it is, the less effect it produces."
 
-Not changed. Put to the user as a proposal on 2026-11-22; the ruling is open.
+Put to the user as a proposal on 2026-11-22. The ruling, that day: "Implement Option B."
+
+- **Cause.** Two things, both from the spec's lateral-only forces. A steep ball crossed the centre line inside the disc, so it was pulled one way and then back. And a lateral pull changes a path's slope: a steep path needs far more of it for the same turn, and spends less width in the disc.
+- **Option B, built.** The pull is toward the centre, still lateral: to the side on which the ball's course, carried straight on, would pass the centre, by the distance at which it would pass. A level ball is pulled as before.
+- **Not built:** option C, a true well with a pull along the arena too. It would change the force channel, prediction, and termination, and wants the horizontal floor of plan phase 9.
+- **The strength is sized by measure now.** `LARGEST_SLOPE_CHANGE` is 0.511 of `focus · R²`: a straight level path's `√3 / 4`, and 18 parts in 100 over it for the curved paths of a lens at 30 degrees. The derivation of step 2 no longer holds: a path turned toward the centre gains over a straight one, by 5 in 100 at 5 degrees and 18 in 100 at 30.
+- **So the bend has a cap.** Validation refuses `max_bend_degrees` above 30, where the measure ends (`TuningError::LensBendAboveTheLargest`). It took a bend up to a right angle before.
+- **The look:** a dot at the centre where the centre line was. Seen in one more screenshot run, the third of the two or three the user allowed.
+
+Measured in a throwaway simulation, at 150 units a second and the embedded numbers: how far the ball's crossing moves 60 units past the lens, for the best course and the average course at each approach angle. The paddle reaches 8.
+
+| Approach angle | Toward the line: best, average | Toward the centre: best, average |
+|---|---|---|
+| 0° | 15.1, 9.4 | 14.2, 8.9 |
+| 30° | 12.4, 7.2 | 12.7, 7.6 |
+| 45° | 8.1, 4.8 | 10.2, 6.1 |
+| 60° | 3.9, 2.4 | 7.0, 4.3 |
+
+- **The gain is smaller than the proposal's table said.** That table was of the pull before it was sized: a quarter more at 45 degrees and four fifths more at 60, where the proposal showed a half more and twice. The proposal named a tenth less strength; sizing for the cap of 30 degrees cost 15 parts in 100.
+- **A level ball is bent a little less than before:** 13.7 degrees at most where the tuned angle is 15, against 14.1.
+- **It still falls with steepness.** That is the lateral pull's own limit, and option C's to lift.
+
+Tests, red first against the pull toward the line:
+
+- `a_steep_ball_is_turned_one_way_from_rim_to_rim`;
+- `a_steep_ball_is_bent_two_fifths_as_far_as_a_level_one`;
+- `a_lens_pulls_the_ball_toward_its_centre_and_nowhere_outside_itself`, which replaces the test of the centre line and adds that a ball headed at the centre is not pulled.
+
+Tests, red by compile failure: `a_lens_bend_above_the_largest_its_pull_is_sized_for_is_rejected` (tuning).
+
+Changed with them:
+
+- `one_lens_bends_no_crossing_more_than_the_tuned_angle` runs at 5 degrees, the embedded angle, and 30; its entries cover every course that meets the disc at each slope; its lower mark is four fifths of the angle, where it was nine tenths.
+- `the_copy_pulls_as_the_drawn_lens_does_mirrored` also flies a steep ball the mirrored way.
+- The tuning's range test lost its row for a bend of 90 degrees, now the cap's to refuse.
+- **Checked against a deliberate break, since removed:** with the share at 0.47 the bound's test fails at 30 degrees, at 30.9.
+
+Measured again (`just ai-report`); Classic's lines and the stack's ladder are unchanged:
+
+| Pairing | Chaos, cap 3 |
+|---|---|
+| 1 v 1 | 34 rallies, mean 2.1, longest 11 |
+| 1 v 2 | 25 rallies, mean 4.2, longest 13 |
+| 1 v 3 | 23 rallies, mean 3.4, longest 11 |
+| 2 v 2 | 31 rallies, mean 14.1, longest 94 |
+| 2 v 3 | 23 rallies, mean 14.9, longest 60 |
+| 3 v 3 | 29 rallies, mean 59.6, longest 159 |
+
+| Held count | Lenses drawn | 1 v 1, 8 seeds | 2 v 2, 2 seeds |
+|---|---|---|---|
+| 0 | 0 | 60 rallies, mean 2.7 | none ended (2 of 2) |
+| 5 | 2 | 59 rallies, mean 1.9 | 17 rallies, mean 7.5 |
+| 10 and up | 3 | 58 rallies, mean 1.3 | 16 rallies, mean 7.4 |
+
+More stars won 8 matches to 0 in every pairing, and every rally ended. Between computers Lens bites harder than it did: two-star rallies at full dial last 7.4 hits, where they lasted 10.1.
+
+- **Inside the touch list:** Lens's two modules, its tuning section, the variant's comment. One line of `views/mod.rs`, a comment.
+- **Bevy API:** none new to the repository; the dot is a `Circle`, as the disc is.
+- **Recorded:** spec 2.6.5 and 2.5.2 amended 2026-11-22; the features' README.
+- **Gate:** `just dev-check` green on 2026-11-22: 743 tests, 3 more.
 
 ## Test changes
 
@@ -356,7 +415,8 @@ CI: not run by Claude. The user's, with the commits.
 ## Open at phase close
 
 - **Step 6:** the hand check in `just run` is begun (2026-11-22, two findings above); the session with the children and the ruling are open: keep, retune once, or drop (E.6, spec 2.10.1, 2.10.2).
-- **A lens does less to a steep ball:** proposal put to the user on 2026-11-22.
+- **A lens still does less to a steep ball,** though more than it did. Whether the centre's pull is enough is the session's to say; a true well is the cure not taken.
+- **`max_bend_degrees` is still 15,** and a level ball is bent a little less at it than before the change.
 - **Every number of Lens's section is Claude's starting number,** untried by a hand: the arrivals at 3, 5, 7, the radius, the bend of 15 degrees, the run, the lags, the shares.
 - **Lens is gentle between computers.** Whether a person finds it so is the session's to say; `max_bend_degrees` and the shares are one line each.
 - **Not shown by test:** that Lens alone shortens three-star rallies.

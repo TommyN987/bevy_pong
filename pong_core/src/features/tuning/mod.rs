@@ -291,7 +291,8 @@ pub struct FogTuning {
 ///
 /// Invariants: the radius is positive and at most half the playable height;
 /// a lens across and the clear run fit between midfield and a paddle's
-/// contact line; the largest bend is under a right angle.
+/// contact line; the largest bend is from nothing to
+/// [`LARGEST_BEND_DEGREES`](Self::LARGEST_BEND_DEGREES).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LensTuning {
     count: ItemCount,
@@ -483,6 +484,17 @@ pub enum TuningError {
     /// to move at the serve (M2 spec 2.3.9).
     #[error("tuning effects.lens: {0}")]
     LensCount(#[source] InvalidItemCount),
+    /// A lens's pull is sized by measure, and the measure reaches this bend
+    /// and no farther (M2 spec 2.6.5).
+    #[error(
+        "tuning effects.lens.max_bend_degrees {max_bend_degrees} is above {largest_degrees}, the largest bend a lens's pull is sized for"
+    )]
+    LensBendAboveTheLargest {
+        /// The bend given.
+        max_bend_degrees: f32,
+        /// [`LensTuning::LARGEST_BEND_DEGREES`].
+        largest_degrees: f32,
+    },
     /// A lens across and the clear run before the paddle do not fit between
     /// midfield and the paddle's contact line (M2 spec 2.6.5).
     #[error(
@@ -1193,16 +1205,28 @@ impl FogTuning {
 }
 
 impl LensTuning {
+    /// The largest bend a lens may be tuned to. The strength of a lens's
+    /// pull is sized by measure so that no crossing bends by more than the
+    /// tuned angle, and the measure was taken up to here (M2 spec 2.6.5).
+    pub const LARGEST_BEND_DEGREES: f32 = 30.0;
+
     fn validate(file: &file::LensFile) -> Result<Self, TuningError> {
+        let max_bend_degrees = checked(
+            "effects.lens.max_bend_degrees",
+            Range::NonNegativeFinite,
+            file.max_bend_degrees,
+        )?;
+        if max_bend_degrees > Self::LARGEST_BEND_DEGREES {
+            return Err(TuningError::LensBendAboveTheLargest {
+                max_bend_degrees,
+                largest_degrees: Self::LARGEST_BEND_DEGREES,
+            });
+        }
         Ok(Self {
             count: ItemCount::new(file.starts_at_return, file.full_at_return, file.max_count)
                 .map_err(TuningError::LensCount)?,
             radius: checked("effects.lens.radius", Range::PositiveFinite, file.radius)?,
-            max_bend: checked(
-                "effects.lens.max_bend_degrees",
-                Range::BelowRightAngle,
-                file.max_bend_degrees.to_radians(),
-            )?,
+            max_bend: max_bend_degrees.to_radians(),
             clear_run: checked(
                 "effects.lens.clear_run",
                 Range::NonNegativeFinite,
@@ -2440,11 +2464,6 @@ mod tests {
             ("radius: 8.0", "radius: 0.0", "effects.lens.radius"),
             (
                 "max_bend_degrees: 15.0",
-                "max_bend_degrees: 90.0",
-                "effects.lens.max_bend_degrees",
-            ),
-            (
-                "max_bend_degrees: 15.0",
                 "max_bend_degrees: -1.0",
                 "effects.lens.max_bend_degrees",
             ),
@@ -2477,6 +2496,37 @@ mod tests {
                 "{new}"
             );
         }
+    }
+
+    /// M2 spec 2.6.5: one lens bends no crossing more than the tuned angle.
+    /// The pull is sized by measure, and the measure reaches thirty degrees:
+    /// a larger bend is refused, since the bound would not hold for it.
+    #[test]
+    fn a_lens_bend_above_the_largest_its_pull_is_sized_for_is_rejected() {
+        assert_eq!(
+            Tuning::from_ron(&with_lens(
+                "max_bend_degrees: 15.0",
+                "max_bend_degrees: 30.5"
+            )),
+            Err(TuningError::LensBendAboveTheLargest {
+                max_bend_degrees: 30.5,
+                largest_degrees: 30.0,
+            })
+        );
+        assert!(
+            Tuning::from_ron(&with_lens(
+                "max_bend_degrees: 15.0",
+                "max_bend_degrees: 30.0"
+            ))
+            .is_ok()
+        );
+        assert!(
+            Tuning::from_ron(&with_lens(
+                "max_bend_degrees: 15.0",
+                "max_bend_degrees: 0.0"
+            ))
+            .is_ok()
+        );
     }
 
     /// A lens and its copy sit on their own halves, clear of the paddle by
@@ -2526,6 +2576,15 @@ mod tests {
         assert_eq!(
             room.to_string(),
             "tuning effects.lens.radius 8 and effects.lens.clear_run 60 leave a lens no room on its half of the crossing, 73 wide"
+        );
+        let bend = Tuning::from_ron(&with_lens(
+            "max_bend_degrees: 15.0",
+            "max_bend_degrees: 45.0",
+        ))
+        .expect_err("too large a bend");
+        assert_eq!(
+            bend.to_string(),
+            "tuning effects.lens.max_bend_degrees 45 is above 30, the largest bend a lens's pull is sized for"
         );
         let tall = TuningError::LensTallerThanThePlayableHeight {
             radius: 30.0,

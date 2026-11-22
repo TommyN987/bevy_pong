@@ -31,7 +31,7 @@ pub(crate) mod layer {
     pub const CENTRE_LINE: f32 = 0.5;
     /// Lens's lenses: on the floor, above the fog, which hides the ball
     /// only (M2 spec 2.2.9), and under Wind's arrows. A lens's ring and
-    /// centre line are drawn a little above its disc, still under the
+    /// centre dot are drawn a little above its disc, still under the
     /// arrows.
     pub const LENS: f32 = 0.6;
     /// Wind's arrows: on the floor, under everything that plays.

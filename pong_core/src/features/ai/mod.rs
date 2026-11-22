@@ -1928,7 +1928,7 @@ mod tests {
     /// appears, two stars as tuned do not see it yet. A level ball at the serve speed
     /// sent beside the lens comes back every time, as the same ball does
     /// over an empty floor; sent through the lens, halfway from its centre
-    /// line to its rim, it is turned across the paddle's reach and scores.
+    /// to its rim, it is turned across the paddle's reach and scores.
     /// Which ball scores is the hitter's aim to say, and no draw's.
     #[test]
     fn a_ball_two_stars_return_beside_a_new_lens_scores_when_sent_through_it() {
@@ -1954,7 +1954,7 @@ mod tests {
         let floor = lenses_on_the_floor(&new_lens, &tuning, first_arrival);
         assert_eq!(floor.len(), 2, "one lens and its copy");
         let lens = floor[0];
-        // Toward the middle of the arena from the centre line, so the lens
+        // Toward the middle of the arena from the lens's centre, so the lens
         // turns the ball toward the nearer wall.
         let toward_the_middle = -lens.centre.y.signum();
         let through = level_at(lens.centre.y + toward_the_middle * lens.radius / 2.0);

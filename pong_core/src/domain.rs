@@ -96,7 +96,7 @@ pub enum EffectId {
     /// clear air (M2 spec 2.6.3).
     #[serde(rename = "fog")]
     Fog,
-    /// Lenses on the floor pull the ball toward their centre lines; more
+    /// Lenses on the floor turn the ball's path toward their centres; more
     /// appear as the rally grows (M2 spec 2.6.5).
     #[serde(rename = "lens")]
     Lens,
