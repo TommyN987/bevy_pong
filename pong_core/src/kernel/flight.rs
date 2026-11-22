@@ -106,6 +106,11 @@ pub struct FlightStart {
     pub returns: u16,
     /// The return that starts the flight; `None` at a serve.
     pub hit: Option<Hit>,
+    /// Whether `returns` is a held count (M2 spec 2.9.1) and not the
+    /// rally's own: then every flight of the rally starts at it, the
+    /// flights before this one too. An effect whose answer looks back over
+    /// earlier flights finds them all at this count.
+    pub returns_held: bool,
 }
 
 impl FlightStart {
@@ -113,6 +118,7 @@ impl FlightStart {
     pub const SERVE: Self = Self {
         returns: 0,
         hit: None,
+        returns_held: false,
     };
 }
 
@@ -391,6 +397,19 @@ mod tests {
         assert_eq!(flight.steps(), 2);
     }
 
+    /// A serve belongs to a rally that counts: no count is held at it.
+    #[test]
+    fn the_serve_holds_no_count() {
+        assert_eq!(
+            FlightStart::SERVE,
+            FlightStart {
+                returns: 0,
+                hit: None,
+                returns_held: false,
+            }
+        );
+    }
+
     #[test]
     fn a_flight_keeps_the_return_count_it_started_with() {
         let start = FlightStart {
@@ -399,6 +418,7 @@ mod tests {
                 side: Side::Left,
                 paddle_motion: StepMotion::Up,
             }),
+            returns_held: false,
         };
         assert_eq!(Flight::start(start, []).returns(), 4);
         assert_eq!(Flight::start(FlightStart::SERVE, []).returns(), 0);
@@ -412,6 +432,7 @@ mod tests {
                 side: Side::Left,
                 paddle_motion: StepMotion::Up,
             }),
+            returns_held: false,
         };
         assert_eq!(Flight::start(start, []).began_at(), start);
         assert_eq!(Flight::default().began_at(), FlightStart::SERVE);
@@ -424,6 +445,7 @@ mod tests {
         let start = FlightStart {
             returns: 4,
             hit: None,
+            returns_held: false,
         };
         let mut flown = Flight::start(start, [pushing(7.0, Steady(2.0)), pushing(0.0, Growing)]);
         for _ in 0..30 {

@@ -336,6 +336,7 @@ mod tests {
         Seat, SeatPlayers,
     };
     use crate::features::ball::Ball;
+    use crate::features::effects::lens::{Lens, PlacedLens};
     use crate::features::effects::probe::Misjudged;
     use crate::features::effects::wind::WindDirection;
     use crate::features::effects::{ActiveEffects, BallFlight, Sandbox};
@@ -1440,21 +1441,24 @@ mod tests {
         })
     }
 
-    /// [`launch_at_ai`], the launch flying as the left paddle's return, the
-    /// paddle having moved as `paddle_motion` in the step of the hit: the
-    /// flight the effects in play begin at such a return.
-    fn launch_at_ai_off_a_paddle_moving(
+    /// [`launch_at_ai`], the launch flying as the left paddle's
+    /// `returns`-th return of a rally that counts, the paddle having moved
+    /// as `paddle_motion` in the step of the hit: the flight the effects in
+    /// play begin at such a return.
+    fn launch_at_ai_as_the_return(
         app: &mut App,
         launch: Motion,
+        returns: u16,
         paddle_motion: StepMotion,
     ) -> Outcome {
         launch_at_ai_in_the_flight(app, launch, |app| {
             let returned = FlightStart {
-                returns: 1,
+                returns,
                 hit: Some(Hit {
                     side: Side::Left,
                     paddle_motion,
                 }),
+                returns_held: false,
             };
             let flight = app
                 .world()
@@ -1466,6 +1470,15 @@ mod tests {
                 .expect("exactly one ball")
                 .begin(flight);
         })
+    }
+
+    /// [`launch_at_ai_as_the_return`], the rally's first.
+    fn launch_at_ai_off_a_paddle_moving(
+        app: &mut App,
+        launch: Motion,
+        paddle_motion: StepMotion,
+    ) -> Outcome {
+        launch_at_ai_as_the_return(app, launch, 1, paddle_motion)
     }
 
     /// Up for every other launch, down for the rest.
@@ -1740,6 +1753,236 @@ mod tests {
         assert!(
             got_past,
             "through full fog two stars returned the ball twenty times"
+        );
+    }
+
+    // M2 spec 2.3.12 for Lens, whose flaw is the second form in two parts
+    // (M2 spec 2.6.5, M2 phase 8 report): a star does not see a lens until
+    // it has lain for some flights, and of a lens it sees it expects a share
+    // of the pull. R5: the AI predicts the lenses through the shared math,
+    // and the lag and the share are the dials of its flaw. R2: the same
+    // balls are returned or missed by where the hitter sent them.
+
+    /// The dial at its full count, whatever return the tuning puts that at:
+    /// by then every lens has lain longer than any lag.
+    const EVERY_LENS_LONG_THERE: u16 = u16::MAX;
+
+    /// Three stars with no handicap of their own, who do not see a lens
+    /// for `unseen_flights` flights and then expect `share` of its pull.
+    fn no_handicap_reading_lenses(unseen_flights: u16, share: f32) -> Tuning {
+        let (before, lens) = EMBEDDED_RON
+            .split_once("lens: (")
+            .expect("the embedded tuning has a lens section");
+        let (old_lag, old_share) = ("three_stars: 1)", "three_stars: 0.9)");
+        assert!(lens.contains(old_lag), "three stars' lag not found");
+        assert!(lens.contains(old_share), "three stars' share not found");
+        let lens = lens
+            .replacen(old_lag, &format!("three_stars: {unseen_flights})"), 1)
+            .replacen(old_share, &format!("three_stars: {share:?})"), 1)
+            .replace(
+                "three_stars: (reaction_delay_seconds: 0.24, prediction_error: 3.0)",
+                "three_stars: (reaction_delay_seconds: 0.0, prediction_error: 0.0)",
+            );
+        Tuning::from_ron(&format!("{before}lens: ({lens}")).expect("the crafted flaw is valid")
+    }
+
+    /// Forces Lens beside Speed, in rallies that count their returns.
+    fn force_lens(app: &mut App) {
+        app.world_mut()
+            .resource_mut::<Sandbox>()
+            .toggle(EffectId::Lens, &[EffectId::Speed]);
+    }
+
+    /// [`force_lens`], every flight starting at a held count of `returns`:
+    /// a steady floor, on which no lens is new.
+    fn force_lens_at(app: &mut App, returns: u16) {
+        force_lens(app);
+        app.world_mut()
+            .resource_mut::<Sandbox>()
+            .hold_returns(Some(returns));
+    }
+
+    /// [`ai_on_the_right_playing`] with Lens beside Speed, every flight
+    /// starting at `returns`.
+    fn ai_on_the_right_playing_among_lenses(tuning: Tuning, returns: u16) -> App {
+        ai_on_the_right_playing_after(tuning, |app| force_lens_at(app, returns))
+    }
+
+    /// The first return at which the embedded dial holds `count` drawn lenses.
+    fn the_return_that_brings(count: u16, tuning: &Tuning) -> u16 {
+        (0..=u16::MAX)
+            .find(|&returns| tuning.effects().lens().count().after(returns) >= count)
+            .expect("the embedded dial reaches that count")
+    }
+
+    #[test]
+    fn among_lenses_an_ai_that_sees_them_as_they_are_and_has_no_handicap_returns_every_ball() {
+        let tuning = no_handicap_reading_lenses(0, 1.0);
+        let balls = launches(200, &tuning);
+        let mut app = ai_on_the_right_playing_among_lenses(tuning, EVERY_LENS_LONG_THERE);
+        for (i, launch) in balls.into_iter().enumerate() {
+            assert_eq!(
+                launch_at_ai(&mut app, launch),
+                Outcome::Returned,
+                "launch {i}: {launch:?}"
+            );
+        }
+    }
+
+    /// Expecting a fifth of a pull that turns a path by up to fifteen
+    /// degrees leaves the aim a paddle's reach off some eighty units on.
+    #[test]
+    fn among_lenses_an_ai_that_believes_too_little_of_their_pull_misses_some_balls() {
+        let tuning = no_handicap_reading_lenses(0, 0.2);
+        let balls = launches(40, &tuning);
+        let mut app = ai_on_the_right_playing_among_lenses(tuning, EVERY_LENS_LONG_THERE);
+        let missed = balls
+            .into_iter()
+            .any(|launch| launch_at_ai(&mut app, launch) == Outcome::Missed);
+        assert!(
+            missed,
+            "believing a fifth of the lenses' pull never missed in forty launches"
+        );
+    }
+
+    /// M2 spec 2.6.5: the belief lags. In a rally that counts, on the
+    /// flight the last lens appears, an AI that believes the whole pull of
+    /// a lens it sees sees no lens yet if its lag is long enough: it aims
+    /// straight across a full floor.
+    #[test]
+    fn among_lenses_too_new_for_it_to_see_an_ai_that_would_read_them_truly_misses_some_balls() {
+        let tuning = no_handicap_reading_lenses(50, 1.0);
+        let balls = launches(40, &tuning);
+        let last_arrival = the_return_that_brings(tuning.effects().lens().count().full(), &tuning);
+        let mut app = ai_on_the_right_playing_after(tuning, force_lens);
+        let missed = balls.into_iter().any(|launch| {
+            launch_at_ai_as_the_return(&mut app, launch, last_arrival, StepMotion::Still)
+                == Outcome::Missed
+        });
+        assert!(
+            missed,
+            "a floor of unseen lenses never missed in forty launches"
+        );
+    }
+
+    /// The lag's own dial: the same AI returns every one of the same balls
+    /// once the lenses have lain longer than its lag, in a rally that
+    /// counts; and under a held count, where no lens is new (M2 spec
+    /// 2.9.1), from the return that brings the last lens on.
+    #[test]
+    fn once_the_lenses_have_lain_long_enough_the_same_ai_returns_every_ball() {
+        let tuning = no_handicap_reading_lenses(50, 1.0);
+        let balls = launches(40, &tuning);
+        let last_arrival = the_return_that_brings(tuning.effects().lens().count().full(), &tuning);
+        let mut counting = ai_on_the_right_playing_after(tuning.clone(), force_lens);
+        let mut held = ai_on_the_right_playing_among_lenses(tuning, last_arrival);
+        for (i, launch) in balls.into_iter().enumerate() {
+            assert_eq!(
+                launch_at_ai_as_the_return(
+                    &mut counting,
+                    launch,
+                    last_arrival + 50,
+                    StepMotion::Still
+                ),
+                Outcome::Returned,
+                "fifty returns on, launch {i}: {launch:?}"
+            );
+            assert_eq!(
+                launch_at_ai(&mut held, launch),
+                Outcome::Returned,
+                "under a held count, launch {i}: {launch:?}"
+            );
+        }
+    }
+
+    /// R2, and the flaw's own dial: an AI slow to see lenses and wrong about
+    /// their pull returns every ball while the floor is empty. There is no
+    /// lens to misjudge.
+    #[test]
+    fn with_no_lens_on_the_floor_a_misjudging_ai_returns_every_ball() {
+        let tuning = no_handicap_reading_lenses(50, 0.2);
+        let balls = launches(40, &tuning);
+        let mut app = ai_on_the_right_playing_among_lenses(tuning, 0);
+        for (i, launch) in balls.into_iter().enumerate() {
+            assert_eq!(
+                launch_at_ai(&mut app, launch),
+                Outcome::Returned,
+                "launch {i}: {launch:?}"
+            );
+        }
+    }
+
+    /// The lenses on the floor of the rally `app` is in, during a flight
+    /// that began at `returns`.
+    fn lenses_on_the_floor(app: &App, tuning: &Tuning, returns: u16) -> Vec<PlacedLens> {
+        let rally = app.world().resource::<ActiveEffects>().rally_seed();
+        Lens::new(tuning, rally).placed(&FlightStart {
+            returns,
+            hit: None,
+            returns_held: false,
+        })
+    }
+
+    /// R10 (M2 plan E.7): a lens gives the hitter a use, not only the
+    /// defender a tax. In a rally that counts, on the flight its first lens
+    /// appears, two stars as tuned do not see it yet. A level ball at the serve speed
+    /// sent beside the lens comes back every time, as the same ball does
+    /// over an empty floor; sent through the lens, halfway from its centre
+    /// line to its rim, it is turned across the paddle's reach and scores.
+    /// Which ball scores is the hitter's aim to say, and no draw's.
+    #[test]
+    fn a_ball_two_stars_return_beside_a_new_lens_scores_when_sent_through_it() {
+        let tuning = Tuning::from_ron(EMBEDDED_RON).expect("the embedded tuning is valid");
+        let numbers = tuning.effects().lens();
+        let first_arrival = the_return_that_brings(1, &tuning);
+        let lag = numbers.unseen_flights(Difficulty::TwoStars);
+        assert_eq!(
+            numbers.count().after(first_arrival.saturating_sub(lag)),
+            0,
+            "two stars see the first lens the flight it appears"
+        );
+        let two_stars_after = |prepare: fn(&mut App)| {
+            ai_of_on_the_right_playing_after(Difficulty::TwoStars, tuning.clone(), prepare)
+        };
+        let as_the_return_that_brings_the_lens = |app: &mut App, launch: Motion| {
+            launch_at_ai_as_the_return(app, launch, first_arrival, StepMotion::Still)
+        };
+        let from_x = Paddle::new(Side::Left, tuning.paddle()).contact_x(&tuning) + 1.0;
+        let level_at = |y: f32| ball(Vec2::new(from_x, y), Vec2::new(80.0, 0.0));
+
+        let mut new_lens = two_stars_after(force_lens);
+        let floor = lenses_on_the_floor(&new_lens, &tuning, first_arrival);
+        assert_eq!(floor.len(), 2, "one lens and its copy");
+        let lens = floor[0];
+        // Toward the middle of the arena from the centre line, so the lens
+        // turns the ball toward the nearer wall.
+        let toward_the_middle = -lens.centre.y.signum();
+        let through = level_at(lens.centre.y + toward_the_middle * lens.radius / 2.0);
+        let beside = level_at(lens.centre.y + toward_the_middle * (lens.radius + 3.0));
+
+        let mut empty = two_stars_after(|app| force_lens_at(app, 0));
+        assert!(
+            lenses_on_the_floor(&empty, &tuning, 0).is_empty(),
+            "a held count of zero lays no lens"
+        );
+        for launch in 0..20 {
+            assert_eq!(
+                launch_at_ai(&mut empty, through),
+                Outcome::Returned,
+                "over an empty floor, launch {launch}"
+            );
+        }
+        for launch in 0..20 {
+            assert_eq!(
+                as_the_return_that_brings_the_lens(&mut new_lens, beside),
+                Outcome::Returned,
+                "beside the lens, launch {launch}"
+            );
+        }
+        assert_eq!(
+            as_the_return_that_brings_the_lens(&mut new_lens, through),
+            Outcome::Missed,
+            "through the lens at {lens:?}"
         );
     }
 }

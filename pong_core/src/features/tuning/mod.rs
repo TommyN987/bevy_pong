@@ -27,7 +27,7 @@ use bevy::reflect::TypePath;
 use crate::domain::{Difficulty, EffectId, Mode, Notice, Seat};
 use crate::flow::FIXED_HZ;
 use crate::kernel::geometry::{Arena, InvalidArena, InvalidLengthBounds, LengthBounds, Radius};
-use crate::kernel::ramp::{FullBeforeStart, Ramp};
+use crate::kernel::ramp::{FullBeforeStart, InvalidItemCount, ItemCount, Ramp};
 use crate::kernel::reflect::{InvalidSpeedRule, MaxDeflection, SpeedRule};
 use crate::kernel::{OutOfRange, Range};
 use file::TuningFile;
@@ -238,6 +238,7 @@ pub struct EffectsTuning {
     wind: WindTuning,
     spin: SpinTuning,
     fog: FogTuning,
+    lens: LensTuning,
 }
 
 /// Shrink's dial (M2 spec 2.6.1), as the factor on paddle height: one until
@@ -283,16 +284,34 @@ pub struct FogTuning {
     added_error: PerStar,
 }
 
+/// Lens's dial (M2 spec 2.6.5), as the count of lenses drawn, the shape
+/// every lens has, and its AI flaw (M2 spec 2.3.12): the flights for which
+/// an AI of each star does not see a new lens, and the share of a seen
+/// lens's pull it expects.
+///
+/// Invariants: the radius is positive and at most half the playable height;
+/// a lens across and the clear run fit between midfield and a paddle's
+/// contact line; the largest bend is under a right angle.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LensTuning {
+    count: ItemCount,
+    radius: f32,
+    max_bend: f32,
+    clear_run: f32,
+    unseen_flights: PerStar<u16>,
+    believed: PerStar,
+}
+
 /// One number of an effect's AI flaw for each star (M2 spec 2.3.12); what
 /// the number means is its owner's to say.
 ///
 /// Invariant: no number is negative. One entry per [`Difficulty`], so adding
 /// a level makes the compiler ask for its number.
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct PerStar {
-    one_star: f32,
-    two_stars: f32,
-    three_stars: f32,
+struct PerStar<T = f32> {
+    one_star: T,
+    two_stars: T,
+    three_stars: T,
 }
 
 /// Keys per seat. Invariant: no key is bound twice across both seats.
@@ -460,6 +479,34 @@ pub enum TuningError {
         /// Half the distance between the two paddles' contact lines.
         half_crossing_width: f32,
     },
+    /// Lens's count would be full before it starts to move, or would start
+    /// to move at the serve (M2 spec 2.3.9).
+    #[error("tuning effects.lens: {0}")]
+    LensCount(#[source] InvalidItemCount),
+    /// A lens across and the clear run before the paddle do not fit between
+    /// midfield and the paddle's contact line (M2 spec 2.6.5).
+    #[error(
+        "tuning effects.lens.radius {radius} and effects.lens.clear_run {clear_run} leave a lens no room on its half of the crossing, {half_crossing_width} wide"
+    )]
+    LensHasNoRoomOnItsHalf {
+        /// The radius given.
+        radius: f32,
+        /// The clear run given.
+        clear_run: f32,
+        /// Half the distance between the two paddles' contact lines.
+        half_crossing_width: f32,
+    },
+    /// A lens would reach past where the ball's centre can go, so a ball
+    /// could bounce off a wall inside it.
+    #[error(
+        "tuning effects.lens.radius {radius} is above half the playable height {half_playable_height}"
+    )]
+    LensTallerThanThePlayableHeight {
+        /// The radius given.
+        radius: f32,
+        /// Half of `arena.height` less the ball's diameter.
+        half_playable_height: f32,
+    },
     /// No points-to-win choices offered.
     #[error("tuning match_flow.points_to_win_options is empty")]
     PointsToWinOptionsEmpty,
@@ -625,6 +672,20 @@ impl Tuning {
             return Err(TuningError::FogNotUnderHalfTheCrossingWidth {
                 max_width,
                 half_crossing_width,
+            });
+        }
+        let lens = self.effects.lens;
+        if 2.0 * lens.radius + lens.clear_run > half_crossing_width {
+            return Err(TuningError::LensHasNoRoomOnItsHalf {
+                radius: lens.radius,
+                clear_run: lens.clear_run,
+                half_crossing_width,
+            });
+        }
+        if lens.radius > playable_height / 2.0 {
+            return Err(TuningError::LensTallerThanThePlayableHeight {
+                radius: lens.radius,
+                half_playable_height: playable_height / 2.0,
             });
         }
         Ok(())
@@ -927,6 +988,7 @@ impl EffectsTuning {
             wind: WindTuning::validate(&file.wind)?,
             spin: SpinTuning::validate(&file.spin)?,
             fog: FogTuning::validate(&file.fog)?,
+            lens: LensTuning::validate(&file.lens)?,
         })
     }
 
@@ -952,6 +1014,12 @@ impl EffectsTuning {
     #[must_use]
     pub const fn fog(self) -> FogTuning {
         self.fog
+    }
+
+    /// Lens's numbers.
+    #[must_use]
+    pub const fn lens(self) -> LensTuning {
+        self.lens
     }
 }
 
@@ -1017,9 +1085,22 @@ impl PerStar {
             three_stars: number(three_stars, file.three_stars)?,
         })
     }
+}
 
+impl PerStar<u16> {
+    /// The whole numbers in `file`, as they are: none can be negative.
+    const fn whole(file: &file::PerStarFile<u16>) -> Self {
+        Self {
+            one_star: file.one_star,
+            two_stars: file.two_stars,
+            three_stars: file.three_stars,
+        }
+    }
+}
+
+impl<T: Copy> PerStar<T> {
     /// The number for an AI of `difficulty`.
-    const fn by(self, difficulty: Difficulty) -> f32 {
+    const fn by(self, difficulty: Difficulty) -> T {
         match difficulty {
             Difficulty::OneStar => self.one_star,
             Difficulty::TwoStars => self.two_stars,
@@ -1108,6 +1189,74 @@ impl FogTuning {
     #[must_use]
     pub const fn added_error(self, difficulty: Difficulty) -> f32 {
         self.added_error.by(difficulty)
+    }
+}
+
+impl LensTuning {
+    fn validate(file: &file::LensFile) -> Result<Self, TuningError> {
+        Ok(Self {
+            count: ItemCount::new(file.starts_at_return, file.full_at_return, file.max_count)
+                .map_err(TuningError::LensCount)?,
+            radius: checked("effects.lens.radius", Range::PositiveFinite, file.radius)?,
+            max_bend: checked(
+                "effects.lens.max_bend_degrees",
+                Range::BelowRightAngle,
+                file.max_bend_degrees.to_radians(),
+            )?,
+            clear_run: checked(
+                "effects.lens.clear_run",
+                Range::NonNegativeFinite,
+                file.clear_run,
+            )?,
+            unseen_flights: PerStar::whole(&file.unseen_flights),
+            believed: PerStar::validate(
+                &file.believed_share,
+                [
+                    "effects.lens.believed_share.one_star",
+                    "effects.lens.believed_share.two_stars",
+                    "effects.lens.believed_share.three_stars",
+                ],
+            )?,
+        })
+    }
+
+    /// The lenses drawn, over the rally's returns. Each has a mirrored copy
+    /// besides.
+    #[must_use]
+    pub const fn count(self) -> ItemCount {
+        self.count
+    }
+
+    /// The radius of one lens, in arena units.
+    #[must_use]
+    pub const fn radius(self) -> f32 {
+        self.radius
+    }
+
+    /// The largest bend one lens gives any crossing, in radians.
+    #[must_use]
+    pub const fn max_bend(self) -> f32 {
+        self.max_bend
+    }
+
+    /// The stretch before each paddle's contact line that no lens reaches
+    /// into, in arena units.
+    #[must_use]
+    pub const fn clear_run(self) -> f32 {
+        self.clear_run
+    }
+
+    /// The flights for which an AI of `difficulty` does not see a new lens.
+    #[must_use]
+    pub const fn unseen_flights(self, difficulty: Difficulty) -> u16 {
+        self.unseen_flights.by(difficulty)
+    }
+
+    /// The share of a seen lens's pull an AI of `difficulty` expects: 1 is
+    /// the truth, less under-bends the ball's path, more over-bends it.
+    #[must_use]
+    pub const fn believed_share(self, difficulty: Difficulty) -> f32 {
+        self.believed.by(difficulty)
     }
 }
 
@@ -1345,7 +1494,7 @@ mod tests {
 
     use crate::domain::{Difficulty, EffectId, Mode, Notice, Seat};
     use crate::kernel::geometry::InvalidLengthBounds;
-    use crate::kernel::ramp::FullBeforeStart;
+    use crate::kernel::ramp::{FullBeforeStart, InvalidItemCount};
     use crate::kernel::test_support::assert_near;
     use crate::kernel::{OutOfRange, Range};
     use crate::testing::{boot, frame, headless_app, record, recorded, run_until, take_recorded};
@@ -1370,6 +1519,16 @@ mod tests {
             wind: (starts_at_return: 0, full_at_return: 12, max_drift: 24.0, believed_share: (one_star: 0.4, two_stars: 0.7, three_stars: 0.9)),
             spin: (starts_at_return: 0, full_at_return: 12, max_drift: 16.0, believed_share: (one_star: 0.3, two_stars: 0.6, three_stars: 0.85)),
             fog: (starts_at_return: 0, full_at_return: 8, max_width: 64.0, added_error: (one_star: 12.0, two_stars: 6.0, three_stars: 2.5)),
+            lens: (
+                starts_at_return: 1,
+                full_at_return: 7,
+                max_count: 3,
+                radius: 8.0,
+                max_bend_degrees: 15.0,
+                clear_run: 24.0,
+                unseen_flights: (one_star: 3, two_stars: 2, three_stars: 1),
+                believed_share: (one_star: 0.4, two_stars: 0.7, three_stars: 0.9),
+            ),
         ),
         match_flow: (countdown_seconds: 3.0, point_pause_seconds: 0.8, points_to_win_options: [5, 10, 15, 21], points_to_win_default: 10),
         ai: (
@@ -2215,6 +2374,166 @@ mod tests {
         assert_eq!(
             width.to_string(),
             "tuning effects.fog.max_width 80 is not under half the crossing width 73"
+        );
+    }
+
+    /// `VALID` with one piece of Lens's section replaced: the first `old`
+    /// after the section's name, so the like-named numbers before it stay.
+    fn with_lens(old: &str, new: &str) -> String {
+        in_lens_of(VALID, old, new)
+    }
+
+    /// `text` with the first `old` of its Lens section replaced by `new`.
+    fn in_lens_of(text: &str, old: &str, new: &str) -> String {
+        let (before, section) = text.split_once("lens: (").expect("a lens section");
+        let replaced = section.replacen(old, new, 1);
+        assert_ne!(replaced, section, "{old} is not in the lens section");
+        format!("{before}lens: ({replaced}")
+    }
+
+    /// M2 spec 2.6.5: Lens's dial is a count of lenses, each of one size
+    /// and one largest bend; its flaw is a lag in flights and a believed
+    /// share of the pull, each tuned per star.
+    #[test]
+    fn lens_section_becomes_a_count_dial_a_lens_shape_and_a_flaw_per_star() {
+        let lens = valid().effects().lens();
+        let counts: Vec<u16> = (0..=8).map(|returns| lens.count().after(returns)).collect();
+        assert_eq!(counts, [0, 0, 0, 1, 1, 2, 2, 3, 3]);
+        assert_eq!(lens.count().full(), 3);
+        assert_near(lens.radius(), 8.0, 1e-6);
+        assert_near(lens.max_bend(), 15.0_f32.to_radians(), 1e-6);
+        assert_near(lens.clear_run(), 24.0, 1e-6);
+        assert_eq!(lens.unseen_flights(Difficulty::OneStar), 3);
+        assert_eq!(lens.unseen_flights(Difficulty::TwoStars), 2);
+        assert_eq!(lens.unseen_flights(Difficulty::ThreeStars), 1);
+        assert_near(lens.believed_share(Difficulty::OneStar), 0.4, 1e-6);
+        assert_near(lens.believed_share(Difficulty::TwoStars), 0.7, 1e-6);
+        assert_near(lens.believed_share(Difficulty::ThreeStars), 0.9, 1e-6);
+    }
+
+    #[test]
+    fn a_lens_count_full_before_it_starts_is_rejected() {
+        assert_eq!(
+            Tuning::from_ron(&with_lens("starts_at_return: 1", "starts_at_return: 8")),
+            Err(TuningError::LensCount(InvalidItemCount::FullBeforeStart(
+                FullBeforeStart {
+                    starts_at: 8,
+                    full_at: 7,
+                }
+            )))
+        );
+    }
+
+    /// M2 spec 2.3.9's done-condition: validation rejects an item effect
+    /// that starts at hit zero.
+    #[test]
+    fn a_lens_count_that_starts_to_move_at_the_serve_is_rejected() {
+        assert_eq!(
+            Tuning::from_ron(&with_lens("starts_at_return: 1", "starts_at_return: 0")),
+            Err(TuningError::LensCount(InvalidItemCount::StartsAtTheServe))
+        );
+    }
+
+    #[test]
+    fn a_lens_number_out_of_its_range_is_rejected_by_its_path() {
+        for (old, new, path) in [
+            ("radius: 8.0", "radius: 0.0", "effects.lens.radius"),
+            (
+                "max_bend_degrees: 15.0",
+                "max_bend_degrees: 90.0",
+                "effects.lens.max_bend_degrees",
+            ),
+            (
+                "max_bend_degrees: 15.0",
+                "max_bend_degrees: -1.0",
+                "effects.lens.max_bend_degrees",
+            ),
+            (
+                "clear_run: 24.0",
+                "clear_run: -1.0",
+                "effects.lens.clear_run",
+            ),
+            (
+                "one_star: 0.4",
+                "one_star: -0.1",
+                "effects.lens.believed_share.one_star",
+            ),
+            (
+                "two_stars: 0.7",
+                "two_stars: -0.1",
+                "effects.lens.believed_share.two_stars",
+            ),
+            (
+                "three_stars: 0.9",
+                "three_stars: -0.1",
+                "effects.lens.believed_share.three_stars",
+            ),
+        ] {
+            assert!(
+                matches!(
+                    Tuning::from_ron(&with_lens(old, new)),
+                    Err(TuningError::Field { path: refused, .. }) if refused == path
+                ),
+                "{new}"
+            );
+        }
+    }
+
+    /// A lens and its copy sit on their own halves, clear of the paddle by
+    /// the tuned run: a lens across, then the run, must fit between midfield
+    /// and a paddle's contact line, 73 here.
+    #[test]
+    fn a_lens_with_no_room_on_its_half_of_the_crossing_is_rejected() {
+        assert_eq!(
+            Tuning::from_ron(&with_lens("clear_run: 24.0", "clear_run: 57.5")),
+            Err(TuningError::LensHasNoRoomOnItsHalf {
+                radius: 8.0,
+                clear_run: 57.5,
+                half_crossing_width: 73.0,
+            })
+        );
+        assert!(Tuning::from_ron(&with_lens("clear_run: 24.0", "clear_run: 57.0")).is_ok());
+        assert!(Tuning::from_ron(&with_lens("clear_run: 24.0", "clear_run: 0.0")).is_ok());
+    }
+
+    /// A lens lies inside the band the ball's centre travels, so no ball
+    /// bounces off a wall inside one. In an arena 60 high that band reaches
+    /// 29 either side of the middle.
+    #[test]
+    fn a_lens_taller_than_the_playable_height_is_rejected() {
+        let low = with("height", "60.0");
+        let fits = in_lens_of(&low, "clear_run: 24.0", "clear_run: 0.0");
+        assert_eq!(
+            Tuning::from_ron(&in_lens_of(&fits, "radius: 8.0", "radius: 30.0")),
+            Err(TuningError::LensTallerThanThePlayableHeight {
+                radius: 30.0,
+                half_playable_height: 29.0,
+            })
+        );
+        assert!(Tuning::from_ron(&in_lens_of(&fits, "radius: 8.0", "radius: 29.0")).is_ok());
+    }
+
+    #[test]
+    fn lens_refusals_read_as_one_sentence_naming_the_value() {
+        let serve = Tuning::from_ron(&with_lens("starts_at_return: 1", "starts_at_return: 0"))
+            .expect_err("starts at the serve");
+        assert_eq!(
+            serve.to_string(),
+            "tuning effects.lens: items appear at a paddle return, so their count cannot start to move at return 0"
+        );
+        let room = Tuning::from_ron(&with_lens("clear_run: 24.0", "clear_run: 60.0"))
+            .expect_err("no room");
+        assert_eq!(
+            room.to_string(),
+            "tuning effects.lens.radius 8 and effects.lens.clear_run 60 leave a lens no room on its half of the crossing, 73 wide"
+        );
+        let tall = TuningError::LensTallerThanThePlayableHeight {
+            radius: 30.0,
+            half_playable_height: 29.0,
+        };
+        assert_eq!(
+            tall.to_string(),
+            "tuning effects.lens.radius 30 is above half the playable height 29"
         );
     }
 

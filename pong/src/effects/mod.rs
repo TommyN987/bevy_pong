@@ -14,6 +14,7 @@ use pong_core::domain::EffectId;
 use crate::audio::sound::Sound;
 
 pub mod fog;
+pub mod lens;
 pub mod shrink;
 pub mod speed;
 pub mod spin;
@@ -53,6 +54,7 @@ pub fn shell_half(id: EffectId) -> ShellHalf {
         EffectId::Wind => wind::shell_half(),
         EffectId::Spin => spin::shell_half(),
         EffectId::Fog => fog::shell_half(),
+        EffectId::Lens => lens::shell_half(),
     }
 }
 
@@ -118,6 +120,15 @@ mod tests {
     #[test]
     fn fog_states_an_icon_a_join_cue_and_a_view() {
         let half = shell_half(EffectId::Fog);
+        assert!(half.icon.is_some() && half.join_cue.is_some() && half.view.is_some());
+    }
+
+    /// M2 spec 2.6.5 and R1: Lens states all three. Where a lens lies is
+    /// the one thing the base views cannot show, so it has a view of its
+    /// own.
+    #[test]
+    fn lens_states_an_icon_a_join_cue_and_a_view() {
+        let half = shell_half(EffectId::Lens);
         assert!(half.icon.is_some() && half.join_cue.is_some() && half.view.is_some());
     }
 

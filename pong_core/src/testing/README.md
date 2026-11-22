@@ -91,4 +91,4 @@ The soak asserts that `SanityPlugin` is present, so it cannot go quiet.
 The subsets come from the mode's data, so an effect added to the bag is soaked with no edit.
 A size the bag cannot fill yet has no subset: its test says so and passes.
 Dividing one budget among the subsets keeps each test's running time the same however many effects ship:
-with Shrink, Wind, Spin, and Fog in the bag, 7 to 10 s for each soak inside the full parallel run on the development machine (M2 phase 7 report).
+with Shrink, Wind, Spin, Fog, and Lens in the bag, 8 to 9 s for each soak inside the full parallel run on the development machine (M2 phase 8 report).

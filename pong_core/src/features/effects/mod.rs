@@ -32,6 +32,7 @@ use crate::kernel::flight::{Contribution, Flight, FlightStart, Hit, StepMotion};
 use crate::kernel::random::RallySeed;
 
 pub mod fog;
+pub mod lens;
 pub mod shrink;
 pub mod speed;
 pub mod spin;
@@ -108,6 +109,7 @@ fn build(id: EffectId, tuning: &Tuning, mode: Mode, rally: RallySeed) -> Box<dyn
         EffectId::Wind => Box::new(wind::Wind::new(tuning, rally)),
         EffectId::Spin => Box::new(spin::Spin::new(tuning)),
         EffectId::Fog => Box::new(fog::Fog::new(tuning)),
+        EffectId::Lens => Box::new(lens::Lens::new(tuning, rally)),
     }
 }
 
@@ -249,9 +251,10 @@ impl ActiveEffects {
 
     /// The flight that begins at `start`: every effect in play asked once
     /// for its contribution (M2 spec 2.2.4). While the [`Sandbox`] holds a
-    /// count, the flight starts at that count instead of `start`'s; while
-    /// it holds a hit motion, a return starts as if its paddle had moved
-    /// that way. A serve has no hit, held motion or not.
+    /// count, the flight starts at that count instead of `start`'s, and
+    /// says that its count is held; while it holds a hit motion, a return
+    /// starts as if its paddle had moved that way. A serve has no hit, held
+    /// motion or not.
     #[must_use]
     pub fn start_flight(&self, start: FlightStart) -> Flight {
         let start = FlightStart {
@@ -260,6 +263,7 @@ impl ActiveEffects {
                 paddle_motion: self.held_hit_motion.unwrap_or(hit.paddle_motion),
                 ..hit
             }),
+            returns_held: self.held_returns.is_some() || start.returns_held,
         };
         Flight::start(
             start,
@@ -309,6 +313,9 @@ impl ActiveEffects {
 /// Forcing keeps the simulation's invariants (M2 spec 2.4.3): a forced set
 /// takes hold at the next countdown, a held count or hit motion at the next
 /// flight start.
+/// A held count is a steady state: a flight started under one says so
+/// ([`FlightStart::returns_held`]), and an effect whose flaw looks back over
+/// earlier flights finds them all at that count.
 /// A match in which anything was forced is [touched](Self::touched_match)
 /// and records nothing, since the overlay ships in release builds.
 ///
@@ -809,6 +816,26 @@ mod tests {
         assert_eq!(returns(&mut app), 10);
     }
 
+    /// M2 spec 2.9.1: a held count is a steady state. A flight started
+    /// under one says so, the serve's too, so an effect whose flaw looks
+    /// back over earlier flights finds them all at this count; a flight of a
+    /// rally that counts does not.
+    #[test]
+    fn a_flight_says_whether_its_return_count_is_held() {
+        let mut app = playing();
+        assert!(!began_at(&mut app).returns_held, "the serve's rally counts");
+        app.world_mut()
+            .resource_mut::<Sandbox>()
+            .hold_returns(Some(9));
+        into_the_right_paddle(&mut app, Vec2::new(200.0, 0.0));
+        assert!(began_at(&mut app).returns_held, "a return under a hold");
+        app.world_mut().resource_mut::<Sandbox>().hold_returns(None);
+        into_the_right_paddle(&mut app, Vec2::new(200.0, 0.0));
+        let counting = began_at(&mut app);
+        assert_eq!(counting.returns, 10);
+        assert!(!counting.returns_held, "the rally counts again");
+    }
+
     /// The start the ball's flight began at.
     fn began_at(app: &mut App) -> FlightStart {
         app.world_mut()
@@ -1071,6 +1098,7 @@ mod tests {
                 side: Side::Right,
                 paddle_motion: StepMotion::Up,
             }),
+            returns_held: false,
         };
         assert_eq!(seen(&asked), [FlightStart::SERVE, first_return]);
 
@@ -1586,6 +1614,7 @@ mod tests {
         let start = FlightStart {
             returns: 4,
             hit: None,
+            returns_held: false,
         };
         let mut flight = active.start_flight(start);
         for _ in 0..7 {
@@ -1620,6 +1649,7 @@ mod tests {
                 side: Side::Left,
                 paddle_motion: StepMotion::Down,
             }),
+            returns_held: false,
         };
         let flight = active.start_flight(start);
         assert!(

@@ -73,7 +73,11 @@ mod tests {
 
     fn factor_after(returns: u16) -> f32 {
         shrink()
-            .contribute(&FlightStart { returns, hit: None })
+            .contribute(&FlightStart {
+                returns,
+                hit: None,
+                returns_held: false,
+            })
             .paddle_height_factor
     }
 
@@ -118,6 +122,7 @@ mod tests {
                 &FlightStart {
                     returns: 15,
                     hit: None,
+                    returns_held: false,
                 },
                 difficulty,
             );
@@ -134,6 +139,7 @@ mod tests {
         let contribution = shrink().contribute(&FlightStart {
             returns: 9,
             hit: None,
+            returns_held: false,
         });
         assert_near(contribution.speed_gain, 0.0, 1e-6);
         assert!(contribution.field.is_none());

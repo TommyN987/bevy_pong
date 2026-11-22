@@ -79,6 +79,7 @@ mod tests {
                 side: Side::Left,
                 paddle_motion: StepMotion::Still,
             }),
+            returns_held: false,
         }
     }
 
