@@ -1,6 +1,6 @@
 # ADR 0011: Effect identity is a closed enum; behaviour sits behind a contract
 
-Date: 2026-11-10, amended 2026-11-11 and 2026-11-13
+Date: 2026-11-10, amended 2026-11-11, 2026-11-13, and 2026-11-20
 Status: accepted
 
 ## Context
@@ -41,12 +41,21 @@ Amended 2026-11-13 ([M2 phase 5 report](../plans/m2-phase5-report.md)), with Win
 - A field more than one effect needs lives in the kernel, since effects do not depend on each other: `Drift`, Wind's now and Spin's to come.
 - The vertical speed bound is derived in the wall step from what its one fold undoes; it is not a tuned number.
 
+Amended 2026-11-20 ([M2 phase 8 report](../plans/m2-phase8-report.md)), with Lens, the first item effect and the first whose flaw looks back over earlier flights:
+
+- The flight start says whether its return count is held. An effect holds no history, so a flaw that lags by some flights reads the count those flights had from the start it is given: the rally's own count less the lag, or, under a held count, the same count. A held count is a steady state.
+- A field that one effect alone needs lives in that effect's module, on the kernel's `Field` trait: Lens's pull. The kernel holds the fields effects share.
+- An item effect lays its items where the rally's seed says, through a generator of its own seeded by it, and draws nothing from the shared stream. An item's place depends on the seed and on its own number, not on how many items the dial holds.
+- An item effect's dial is the curve's whole-count form, whose constructor keeps the field empty at a serve.
+
 ## Alternatives considered
 
 - Rule 6 unchanged, exhaustive matches at every site: rejected; dropping or adding an effect edits every spawn table, cue map, and AI branch, the system-wide friction the roster's expected churn cannot afford.
 - A bake-off phase of unpolished prototypes, survivors rebuilt at the quality bar: rejected by the user; a prototype invites sloppiness, and polish is part of the fun the bake-off would try to measure.
 - A trait with default methods: rejected; a new channel would leave existing effects silently without a stance.
 - Effects as systems adding to the `Force` component: rejected; the AI cannot predict a per-step accumulator.
+- The lag built to the letter, with no word on a held count (the first build of M2 plan phase 8): rejected by the user on the measure; at a held count just past a lens's arrival a computer never saw that lens, so a lower rung of the dial read harder than a higher one.
+- No lag, a believed share alone: rejected; the specification names the lag, and Blocks, seen or not seen, has no share to fall back on.
 - Speed kept as a per-mode rule outside the contract: rejected; it has the shape of an effect (a value rising on paddle hits, reset on a point), and reading the ball's current speed at each hit would let lateral forces leak into the ramp.
 
 ## Consequences
@@ -59,4 +68,5 @@ Amended 2026-11-13 ([M2 phase 5 report](../plans/m2-phase5-report.md)), with Win
 - An effect that needs a new base capability pays for it once, outside its touch list.
 - The paddle must expose its motion in the current step, for effects that read it at a hit.
 - An effect that needs a choice per rally takes it from the rally's seed and draws nothing itself (amended 2026-11-13).
+- An effect whose flaw looks back over earlier flights reads the flight start for it and keeps no history; every place a flight start is built states whether its count is held (amended 2026-11-20).
 - Amends `docs/architecture.md` rule 6 and its "Effects" section, and `.claude/rules/pong_core.md`.

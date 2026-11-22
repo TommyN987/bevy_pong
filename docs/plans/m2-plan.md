@@ -98,8 +98,8 @@ Realizes spec 2.2.5, 2.2.9, 2.6.3. Depends on 4. Effect protocol.
 ### 8. Lens
 Realizes spec 2.6.5, 2.3.8. Depends on 5. Effect protocol.
 
-- **8.1 SHOULD** Lens per E.1 through E.7, with mirrored items and belief lag. Done: spec 2.6.5. Amended 2026-11-11 ([phase 2 report](m2-phase2-report.md)): the curve's whole-count form and the item rule (spec 2.3.9) are built here, with the first item effect. Amended 2026-11-15 ([phase 7 report](m2-phase7-report.md)): also shows the lens's half of spec 2.2.9: a lens inside the fog band stays visible, by shell test (moved from 7.1).
-- **8.2 SHOULD** Touch list measured on this PR. Done: the result is in the report.
+- **8.1 SHOULD** Lens per E.1 through E.7, with mirrored items and belief lag. Done: spec 2.6.5. Amended 2026-11-11 ([phase 2 report](m2-phase2-report.md)): the curve's whole-count form and the item rule (spec 2.3.9) are built here, with the first item effect. Amended 2026-11-15 ([phase 7 report](m2-phase7-report.md)): also shows the lens's half of spec 2.2.9: a lens inside the fog band stays visible, by shell test (moved from 7.1). Amended 2026-11-20 ([phase 8 report](m2-phase8-report.md)): built with one base capability the measure asked for, by the user's ruling: the flight start says whether its return count is held (spec 2.2.4 and 2.9.1, amended). The flaw is the belief lag and, added on the proposal, a believed share (spec 2.6.5, amended).
+- **8.2 SHOULD** Touch list measured on this PR. Done: the result is in the report. Amended 2026-11-20 ([phase 8 report](m2-phase8-report.md)): measured; the result is in the report and in spec 2.3.8.
 
 ### 9. Blocks
 Realizes spec 2.2.6, 2.6.6. Depends on 4. Effect protocol.

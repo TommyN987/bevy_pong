@@ -133,6 +133,7 @@ mod tests {
                 side: Side::Left,
                 paddle_motion,
             }),
+            returns_held: false,
         }
     }
 
@@ -180,6 +181,7 @@ mod tests {
                     side: Side::Right,
                     paddle_motion: StepMotion::Up,
                 }),
+                returns_held: false,
             };
             assert_near(pull(by_the_right_paddle), up, 1e-6);
         }
@@ -189,7 +191,11 @@ mod tests {
     #[test]
     fn a_serve_is_not_spun() {
         for returns in [0, 12] {
-            let serve = FlightStart { returns, hit: None };
+            let serve = FlightStart {
+                returns,
+                hit: None,
+                returns_held: false,
+            };
             assert!(spin().contribute(&serve).field.is_none());
             assert_near(spin().drift(&serve), 0.0, 1e-6);
         }

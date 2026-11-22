@@ -145,6 +145,7 @@ fn collide_ball_with_paddles(
                         side: paddle.side(),
                         paddle_motion: paddle.step_motion(),
                     }),
+                    returns_held: false,
                 }));
                 let offset = HitOffset::new(contact.y, paddle.center_y(), paddle.height() / 2.0);
                 let speed = launch_speed(

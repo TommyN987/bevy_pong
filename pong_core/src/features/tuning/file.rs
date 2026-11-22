@@ -84,6 +84,7 @@ pub(super) struct EffectsFile {
     pub(super) wind: WindFile,
     pub(super) spin: SpinFile,
     pub(super) fog: FogFile,
+    pub(super) lens: LensFile,
 }
 
 #[derive(Debug, Deserialize)]
@@ -125,13 +126,32 @@ pub(super) struct FogFile {
     pub(super) added_error: PerStarFile,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct LensFile {
+    pub(super) starts_at_return: u16,
+    pub(super) full_at_return: u16,
+    /// Lenses drawn at full dial; each has a mirrored copy besides.
+    pub(super) max_count: u16,
+    /// Radius of one lens, in arena units.
+    pub(super) radius: f32,
+    /// The largest bend one lens gives any crossing.
+    pub(super) max_bend_degrees: f32,
+    /// The stretch before each paddle's contact line that no lens reaches
+    /// into, in arena units.
+    pub(super) clear_run: f32,
+    /// Flights for which each star does not see a new lens.
+    pub(super) unseen_flights: PerStarFile<u16>,
+    pub(super) believed_share: PerStarFile,
+}
+
 /// One number of an effect's AI flaw for each star.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct PerStarFile {
-    pub(super) one_star: f32,
-    pub(super) two_stars: f32,
-    pub(super) three_stars: f32,
+pub(super) struct PerStarFile<T = f32> {
+    pub(super) one_star: T,
+    pub(super) two_stars: T,
+    pub(super) three_stars: T,
 }
 
 #[derive(Debug, Deserialize)]

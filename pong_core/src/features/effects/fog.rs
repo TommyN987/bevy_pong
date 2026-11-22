@@ -111,7 +111,11 @@ mod tests {
     }
 
     fn after(returns: u16) -> FlightStart {
-        FlightStart { returns, hit: None }
+        FlightStart {
+            returns,
+            hit: None,
+            returns_held: false,
+        }
     }
 
     #[test]
@@ -156,6 +160,7 @@ mod tests {
                         side,
                         paddle_motion,
                     }),
+                    returns_held: false,
                 };
                 assert_near(fog.width(&returned), 16.0, 1e-4);
             }

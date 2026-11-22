@@ -142,7 +142,11 @@ mod tests {
     }
 
     fn after(returns: u16) -> FlightStart {
-        FlightStart { returns, hit: None }
+        FlightStart {
+            returns,
+            hit: None,
+            returns_held: false,
+        }
     }
 
     /// The flight one contribution makes, begun at the serve.

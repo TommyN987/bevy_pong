@@ -41,7 +41,7 @@
         chaos: (
             per_hit_increase: 3.0,
             always: [speed],
-            bag: [shrink, wind, spin, fog],
+            bag: [shrink, wind, spin, fog, lens],
             thresholds_percent: [30, 70],
             rotate_every_points: 1,
         ),
@@ -86,6 +86,28 @@
             full_at_return: 16,
             max_width: 64.0,
             added_error: (one_star: 12.0, two_stars: 6.0, three_stars: 2.5),
+        ),
+        // Lenses appear on the floor at a paddle return and stay until the
+        // point. Each pulls the ball toward its own centre line, by more the
+        // faster the ball, so a path bends the same at any speed. The dial
+        // is the count of lenses drawn, from none to max_count; each has a
+        // copy mirrored across midfield besides. It may not start to move at
+        // return 0: a serve flies over an empty floor. A lens has one radius
+        // and bends no crossing by more than max_bend_degrees. clear_run is
+        // the stretch before each paddle that no lens reaches into; a lens
+        // across plus that run must fit on half the crossing width.
+        // unseen_flights and believed_share are the AI's flaw: each star
+        // does not see a lens for that many flights after it appears, and
+        // from then on expects that share of its pull.
+        lens: (
+            starts_at_return: 1,
+            full_at_return: 7,
+            max_count: 3,
+            radius: 8.0,
+            max_bend_degrees: 15.0,
+            clear_run: 24.0,
+            unseen_flights: (one_star: 3, two_stars: 2, three_stars: 1),
+            believed_share: (one_star: 0.4, two_stars: 0.7, three_stars: 0.9),
         ),
     ),
 
