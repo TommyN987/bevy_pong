@@ -141,3 +141,26 @@ Interpretation (may be empty):
 - Nothing was reported about one child beating the other too often, or about telling Wind from Spin: the two open hypotheses stay as they are.
 Proposed change (at most one):
 - None beyond the retune the parent already made. The parent ruled to keep Fog at the retuned number: "we can wrap up this phase." Neither a further retune nor a drop (spec 2.10.2).
+
+### 2026-11-22 · M2 phase 8 (plan E.6, spec 2.10.1; Lens) · the parent, then the children · build feat/lens at f68fc58, then 4184656, then e0a3e21
+Duration: not recorded.
+Reported by the parent on 2026-11-22, in two reports that day; no notes were taken during play. Who played whom, how many sessions, and at which cap were not reported.
+Observations (what happened, in order):
+- The parent played the build at f68fc58 and reported two things.
+- At a point the lenses jumped to other places and stayed there until the countdown.
+- A lens bent a ball flying nearly level well, and a steeper ball less, the steeper the less.
+- Both were changed that day: the lenses stay where they lie through the point pause (4184656), and a lens pulls toward its centre, where it pulled toward its centre line (e0a3e21).
+- The children then played. Which of the three builds they played was not reported; the report came after the last was committed.
+- Chaos was played with Shrink, Wind, Spin, Fog, and Lens, the five effects in its bag.
+- The parent reports that the children like Lens alone, and like it more in a rally with other effects.
+- Every number of Lens's tuning is as it was first set; the parent changed none.
+Quotes (verbatim, by role):
+- the parent: "when a point is scored, the lenses visually teleport for a few frames (until the countdown starts)."
+- the parent: "When a ball's trajectory is relatively horizontal, the lens works pretty well, but the more vertical it is, the less effect it produces."
+- the parent: "Kids like the new effect both alone and especially when combined with others."
+Interpretation (may be empty):
+- The parent's reading: the children like Lens, most of all beside other effects.
+- Claude's reading: nothing was reported about a steep ball after the change, for or against. A lens still bends a steep ball less than a level one ([M2 phase 8 report](plans/m2-phase8-report.md)); whether that shows in play is not known.
+- Nothing was reported about the rotation at full breadth, which now has a bench of two, about one child beating the other too often, or about telling Wind from Spin: the interval (spec 2.10.3) and the two open hypotheses stay as they are.
+Proposed change (at most one):
+- None. The parent ruled to close the phase with Lens as it is: "Record the close of the phase". Neither a retune nor a drop (spec 2.10.2).
