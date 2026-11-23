@@ -5,7 +5,8 @@ Deviations from [m2-chaos-pong.md](../specs/m2-chaos-pong.md) and [m2-plan.md](m
 
 Built 2026-11-20: steps 1 to 4 of the proposal the user approved that day (plan 8.1; E.1 to E.4, E.7).
 Recorded 2026-11-20: step 5 (P.6, E.5, plan 8.2).
-Open: step 6, the user's hand check, the session, and the ruling (E.3's `just run`, E.6).
+Played 2026-11-22: the user's hand check, with two findings changed that day, then the children's play (E.3, E.6).
+Closed 2026-11-22 by the user's word. `docs/specs/CURRENT` names phase 9, Blocks, on branch `feat/blocks`.
 
 ## The proposal's steps
 
@@ -16,7 +17,7 @@ Open: step 6, the user's hand check, the session, and the ruling (E.3's `just ru
 | 3 | Lens's shell half (E.1, E.3) | Built and tested headless. The look was seen by Claude in screenshots of the running game. |
 | 4 | Into the bag, and the harness (E.4, E.7) | Built and measured. The measure asked for a base capability; the user ruled it in. |
 | 5 | Record (P.6, E.5, plan 8.2) | Done. |
-| 6 | Hand check, session, ruling (E.6) | The user's. Not done. |
+| 6 | Hand check, session, ruling (E.6) | Done. The ruling: keep, at the starting numbers. |
 
 ## Deviations
 
@@ -31,6 +32,10 @@ The first four were proposed before implementation and approved by the user on 2
 | spec 2.2.4, 2.9.1; ADR 0011 | The flight start says whether its return count is held, and under a held count no lens is new. See "The held count". | Spec 2.2.4, 2.9.1, 2.3.8, plan 8.1, ADR 0011, both rules files, amended 2026-11-20. |
 
 ## Rulings by the user
+
+2026-11-22, after the children played: "Playtests done. Kids like the new effect both alone and especially when combined with others. Record the close of the phase and bump `CURRENT`." Lens is kept as built, at its starting numbers; neither a retune nor a drop (E.6, spec 2.10.2). The phase is closed.
+
+2026-11-22, on the proposal for the steep ball: "Implement Option B." See "After the hand check".
 
 2026-11-20, on the proposal: "You drive the whole phase. Your other recommendations are approved. Proceed with the implementation." The proposal's rulings:
 
@@ -373,9 +378,22 @@ More stars won 8 matches to 0 in every pairing, and every rally ended. Between c
 - **Recorded:** spec 2.6.5 and 2.5.2 amended 2026-11-22; the features' README.
 - **Gate:** `just dev-check` green on 2026-11-22: 743 tests, 3 more.
 
+### The sessions and the close
+
+Reported by the user on 2026-11-22 and logged in the [playtest log](../playtest.md) that day.
+
+- **Who played:** the user alone first, then the children. Dates, lengths, pairings, and which build the children played were not reported.
+- **Reported:** the children "like the new effect both alone and especially when combined with others."
+- **No number changed:** Lens's tuning section is as step 1 set it.
+- **Ruling (E.6, spec 2.10.2):** keep.
+- **Recorded:** spec 2.10.1 amended 2026-11-22; `docs/specs/CURRENT` names phase 9.
+- **Commits, the user's:** `f68fc58` (the build), `4184656` (the point pause), `e0a3e21` (the pull toward the centre). The record of the close is uncommitted as this is written.
+
 ## Test changes
 
-522 core tests and 214 shell tests pass, 736 in all; 686 existed before this phase. 50 were added: 39 in the core (6 of the count form, 7 of the tuning, 18 of Lens, 6 of the AI, 1 of the effects base, 1 of the kernel's flight) and 11 in the shell (8 in `pong/tests/lens.rs`, 1 of the shell half, 2 of the grow-in).
+At the close 528 core tests and 215 shell tests pass, 743 in all: the 736 counted here, 4 for the point pause, and 3 for the pull toward the centre ("After the hand check").
+
+At the record step 522 core tests and 214 shell tests passed, 736 in all; 686 existed before this phase. 50 were added: 39 in the core (6 of the count form, 7 of the tuning, 18 of Lens, 6 of the AI, 1 of the effects base, 1 of the kernel's flight) and 11 in the shell (8 in `pong/tests/lens.rs`, 1 of the shell half, 2 of the grow-in).
 
 No assertion of an earlier test changed for behaviour. Changed for the roster's growth or the base:
 
@@ -410,15 +428,14 @@ Each is a departure from `CLAUDE.md` or the test rules, stated here as they ask.
 ## Gate
 
 `just dev-check` green on 2026-11-20 with steps 1 to 4 and the held count: format, layering, lint, 736 tests, doctests. The record step, after it, changed documents and rules only.
+`just dev-check` green again on 2026-11-22, twice: after the point pause's fix, 740 tests, and after the pull toward the centre, 743. The record of the close, after it, changed documents only.
 CI: not run by Claude. The user's, with the commits.
 
 ## Open at phase close
 
-- **Step 6:** the hand check in `just run` is begun (2026-11-22, two findings above); the session with the children and the ruling are open: keep, retune once, or drop (E.6, spec 2.10.1, 2.10.2).
-- **A lens still does less to a steep ball,** though more than it did. Whether the centre's pull is enough is the session's to say; a true well is the cure not taken.
-- **`max_bend_degrees` is still 15,** and a level ball is bent a little less at it than before the change.
-- **Every number of Lens's section is Claude's starting number,** untried by a hand: the arrivals at 3, 5, 7, the radius, the bend of 15 degrees, the run, the lags, the shares.
-- **Lens is gentle between computers.** Whether a person finds it so is the session's to say; `max_bend_degrees` and the shares are one line each.
+- **A lens still does less to a steep ball,** though more than it did. Nothing was reported of it after the change. A true well is the cure not taken; it wants the horizontal floor of plan phase 9.
+- **Lens's numbers are Claude's starting numbers, kept.** `max_bend_degrees` is 15, and a level ball is bent a little less at it than before the pull changed.
+- **Not reported:** which build the children played; how many sessions; anything of the lag, of the grow-in, or of the centre dot.
 - **Not shown by test:** that Lens alone shortens three-star rallies.
 - **R11 for the grow-in:** the review item at milestone close (spec 2.7.4).
 - **Rotation at full breadth** now has a bench of two. Plan 11.1 chooses the interval from play.
