@@ -9,6 +9,7 @@ use super::Flaw;
 use crate::domain::{Difficulty, EffectId};
 use crate::kernel::flight::{Contribution, Field, FlightStart};
 use crate::kernel::integrate::Motion;
+use crate::kernel::obstacle::Obstacle;
 
 /// A constant push.
 #[derive(Debug)]
@@ -67,6 +68,7 @@ impl Effect for Misjudged {
             speed_gain: 0.0,
             paddle_height_factor: 1.0,
             field: Some(Box::new(Steady(self.push))),
+            obstacles: Vec::new(),
         }
     }
 
@@ -84,7 +86,55 @@ impl Effect for Misjudged {
                 field: self
                     .believed_push
                     .map(|push| Box::new(Steady(push)) as Box<dyn Field>),
+                obstacles: Vec::new(),
             },
+        }
+    }
+}
+
+/// An effect that stands obstacles on the floor, under Speed's borrowed
+/// name: the same ones in every flight, believed by an AI of any difficulty
+/// to be the ones given.
+pub(crate) struct Standing {
+    /// The obstacles on the floor.
+    pub(crate) obstacles: Vec<Obstacle>,
+    /// The obstacles an AI believes are there.
+    pub(crate) believed: Vec<Obstacle>,
+}
+
+impl Standing {
+    /// Stands `obstacles` on the floor, seen by every AI as they are.
+    pub(crate) fn seen(obstacles: Vec<Obstacle>) -> Self {
+        Self {
+            believed: obstacles.clone(),
+            obstacles,
+        }
+    }
+
+    fn standing(obstacles: &[Obstacle]) -> Contribution {
+        Contribution {
+            speed_gain: 0.0,
+            paddle_height_factor: 1.0,
+            field: None,
+            obstacles: obstacles.to_vec(),
+        }
+    }
+}
+
+impl Effect for Standing {
+    fn id(&self) -> EffectId {
+        EffectId::Speed
+    }
+
+    fn contribute(&self, _start: &FlightStart) -> Contribution {
+        Self::standing(&self.obstacles)
+    }
+
+    fn flaw(&self, _start: &FlightStart, _difficulty: Difficulty) -> Flaw {
+        Flaw {
+            added_error: 0.0,
+            added_delay: Duration::ZERO,
+            believed: Self::standing(&self.believed),
         }
     }
 }

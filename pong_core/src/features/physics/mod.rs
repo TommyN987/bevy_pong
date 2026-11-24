@@ -1,6 +1,7 @@
 //! Physics (spec 1.4.4): thin systems over the kernel. Integrate moves the ball
-//! between the walls under its flight's forces; collide sweeps it against the
-//! paddles, and a paddle return starts the ball's next flight (M2 spec 2.2.4).
+//! between the walls under its flight's forces and off its flight's obstacles
+//! (M2 spec 2.2.6); collide sweeps it against the paddles, and a paddle return
+//! starts the ball's next flight (M2 spec 2.2.4).
 //! The AI predicts with the same kernel functions these systems call.
 
 use bevy::app::{App, FixedUpdate, Plugin};
@@ -12,7 +13,7 @@ use bevy::ecs::system::{Query, Res};
 use bevy::math::Vec2;
 use bevy::time::{Fixed, Time};
 
-use crate::domain::{BallHitPaddle, BallHitWall};
+use crate::domain::{BallHitObstacle, BallHitPaddle, BallHitWall};
 use crate::features::ball::{Ball, Position, Velocity};
 use crate::features::effects::{ActiveEffects, BallFlight};
 use crate::features::paddle::Paddle;
@@ -21,10 +22,12 @@ use crate::flow::phases::{BallInPlay, FixedStepPhase};
 use crate::kernel::collide::{Face, Impact, swept_circle_rect};
 use crate::kernel::flight::{FlightStart, Hit};
 use crate::kernel::integrate::{Motion, advance_between_walls};
+use crate::kernel::obstacle::advance_among_obstacles;
 use crate::kernel::reflect::{HitOffset, launch_speed, mirror, paddle_reflection};
 
 /// Moves every ball in the integrate phase and resolves paddle contact in the
-/// collide phase. Emits [`BallHitWall`] and [`BallHitPaddle`].
+/// collide phase. Emits [`BallHitWall`], [`BallHitObstacle`], and
+/// [`BallHitPaddle`].
 ///
 /// Makes [`StepStart`] a required component of [`Ball`], so the ball feature
 /// spawns balls without naming it. Precondition (Bevy's): no `Ball` exists
@@ -37,6 +40,7 @@ pub struct PhysicsPlugin;
 impl Plugin for PhysicsPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<BallHitWall>()
+            .add_message::<BallHitObstacle>()
             .add_message::<BallHitPaddle>()
             .register_required_components::<Ball, StepStart>()
             .add_systems(
@@ -65,10 +69,16 @@ impl StepStart {
     }
 }
 
+/// Moves each ball one fixed step under its flight: the flight's force, the
+/// walls, and the flight's obstacles, by the kernel step the AI's prediction
+/// takes too. A bounce off an obstacle is a collision inside the flight (M2
+/// spec, "Effects"): it is reported, counted against the flight's bounce
+/// budget (M2 spec 2.2.6.1), and starts no new flight.
 fn integrate_ball(
     tuning: Res<Tuning>,
     time: Res<Time<Fixed>>,
     mut walls: MessageWriter<BallHitWall>,
+    mut obstacles: MessageWriter<BallHitObstacle>,
     mut balls: Query<
         (
             &mut Position,
@@ -87,12 +97,23 @@ fn integrate_ball(
             velocity: velocity.0,
         };
         let force = flight.flight().force(motion, dt);
-        let step = advance_between_walls(tuning.arena(), tuning.ball().radius(), motion, force, dt);
+        let step = advance_among_obstacles(
+            tuning.arena(),
+            tuning.ball().radius(),
+            motion,
+            force,
+            dt,
+            flight.flight().obstacles_in_flight(),
+        );
         flight.tick();
+        flight.bounced(step.obstacle_bounces);
         position.0 = step.motion.position;
         velocity.0 = step.motion.velocity;
-        if step.bounced {
+        if step.wall_bounces > 0 {
             walls.write(BallHitWall);
+        }
+        for _ in 0..step.obstacle_bounces {
+            obstacles.write(BallHitObstacle);
         }
     }
 }
@@ -109,6 +130,13 @@ fn integrate_ball(
 /// that also bounced off a wall is swept along the folded line, which is wrong
 /// only for a ball striking a paddle end in the same step as a wall; the
 /// sanity phase catches anything that escapes.
+///
+/// Precondition (the tuning's, and of whoever places obstacles): no obstacle
+/// stands within a step's travel of a paddle's contact line. Then no step
+/// holds both an obstacle bounce and a paddle contact, the straight line
+/// swept here is the ball's path wherever it is near a paddle, and the
+/// remainder after a contact, travelled between the walls alone, meets no
+/// obstacle.
 fn collide_ball_with_paddles(
     tuning: Res<Tuning>,
     time: Res<Time<Fixed>>,
@@ -193,16 +221,19 @@ mod tests {
     use bevy::time::{Fixed, Time};
 
     use crate::domain::{
-        BallHitPaddle, BallHitWall, Controller, MatchConfig, Mode, Seat, SeatPlayers,
+        BallHitObstacle, BallHitPaddle, BallHitWall, Controller, MatchConfig, Mode, Seat,
+        SeatPlayers,
     };
     use crate::features::ball::{Ball, Position, Velocity};
-    use crate::features::effects::BallFlight;
+    use crate::features::effects::probe::Standing;
+    use crate::features::effects::{ActiveEffects, BallFlight};
     use crate::features::paddle::Paddle;
     use crate::features::sanity::SanityPlugin;
     use crate::features::tuning::Tuning;
     use crate::kernel::flight::Flight;
     use crate::kernel::geometry::Side;
     use crate::kernel::integrate::Motion;
+    use crate::kernel::obstacle::Obstacle;
     use crate::kernel::predict::crossing_y;
     use crate::kernel::test_support::assert_near;
     use crate::testing::{
@@ -481,5 +512,138 @@ mod tests {
             .iter(app.world())
             .count();
         assert_eq!(count, 1);
+    }
+
+    /// M2 spec 2.2.6 and the spec's decision that a block bounce is a
+    /// collision inside a flight: the ball is turned by an obstacle of its
+    /// flight, the bounce is reported once, and the flight goes on, its
+    /// return count and its clock with it.
+    #[test]
+    fn a_ball_bounces_off_an_obstacle_of_its_flight_and_the_flight_goes_on() {
+        let mut app = match_app();
+        record::<BallHitObstacle>(&mut app);
+        let upright = Obstacle::new(Vec2::new(0.0, 0.0), Vec2::new(1.0, 7.0), 0.0);
+        app.world_mut()
+            .resource_mut::<ActiveEffects>()
+            .add(Box::new(Standing::seen(vec![upright])));
+        // A level return off the right paddle starts a flight among the
+        // obstacle; the ball flies left at the block's right face.
+        place_ball(&mut app, Vec2::new(72.0, 0.0), Vec2::new(200.0, 0.0));
+        frame(&mut app);
+        take_recorded::<BallHitPaddle>(&mut app);
+        let (_, leaving) = ball_state(&mut app);
+        assert!(leaving.x < 0.0 && leaving.y.abs() < 1e-3, "{leaving:?}");
+
+        let mut steps_at_the_bounce = None;
+        for _ in 0..120 {
+            frame(&mut app);
+            if !take_recorded::<BallHitObstacle>(&mut app).is_empty() {
+                steps_at_the_bounce = Some(flight_of(&mut app).1);
+                break;
+            }
+        }
+        let steps = steps_at_the_bounce.expect("the ball never met the block");
+        let (position, velocity) = ball_state(&mut app);
+        assert!(
+            position.x > 2.0,
+            "the ball is through the block: {position:?}"
+        );
+        assert_near(velocity.x, -leaving.x, 1e-3);
+        assert_near(velocity.y, 0.0, 1e-3);
+        assert!(steps > 10, "the flight's clock began again: {steps}");
+        assert_eq!(flight_of(&mut app).0, 1, "a block bounce is no return");
+        assert_eq!(bounces_of_the_flight(&mut app), 1, "the flight counts it");
+        assert_eq!(
+            take_recorded::<BallHitPaddle>(&mut app),
+            Vec::<BallHitPaddle>::new()
+        );
+
+        frame(&mut app);
+        assert_eq!(
+            take_recorded::<BallHitObstacle>(&mut app),
+            Vec::<BallHitObstacle>::new(),
+            "one bounce is reported once"
+        );
+    }
+
+    fn bounces_of_the_flight(app: &mut App) -> u16 {
+        app.world_mut()
+            .query_filtered::<&BallFlight, With<Ball>>()
+            .single(app.world())
+            .expect("exactly one ball")
+            .flight()
+            .obstacle_bounces()
+    }
+
+    /// M2 spec 2.2.6.1: a flight that has spent its bounces flies through
+    /// its obstacles, and the next return starts a flight with all of them
+    /// to spend. The level return flies left through the block in the
+    /// middle, comes back off the idle left paddle in a new flight, and
+    /// bounces off that same block.
+    #[test]
+    fn a_flight_that_has_spent_its_bounces_flies_through_its_obstacles_until_the_next_return() {
+        let mut app = match_app();
+        record::<BallHitObstacle>(&mut app);
+        let budget = app
+            .world()
+            .resource::<Tuning>()
+            .ball()
+            .bounce_rule()
+            .bounces_per_flight()
+            .get();
+        let upright = Obstacle::new(Vec2::new(0.0, 0.0), Vec2::new(1.0, 7.0), 0.0);
+        app.world_mut()
+            .resource_mut::<ActiveEffects>()
+            .add(Box::new(Standing::seen(vec![upright])));
+        place_ball(&mut app, Vec2::new(72.0, 0.0), Vec2::new(200.0, 0.0));
+        frame(&mut app);
+        take_recorded::<BallHitPaddle>(&mut app);
+        for _ in 0..budget {
+            app.world_mut()
+                .query_filtered::<&mut BallFlight, With<Ball>>()
+                .single_mut(app.world_mut())
+                .expect("exactly one ball")
+                .bounced(1);
+        }
+
+        let mut returned_by_the_left = false;
+        for _ in 0..240 {
+            frame(&mut app);
+            if !take_recorded::<BallHitPaddle>(&mut app).is_empty() {
+                returned_by_the_left = true;
+                break;
+            }
+            assert_eq!(
+                take_recorded::<BallHitObstacle>(&mut app),
+                Vec::<BallHitObstacle>::new(),
+                "a spent flight bounced off the block"
+            );
+        }
+        assert!(
+            returned_by_the_left,
+            "the ball never reached the left paddle"
+        );
+        assert_eq!(
+            bounces_of_the_flight(&mut app),
+            0,
+            "a new flight, a new budget"
+        );
+
+        let mut bounced = false;
+        for _ in 0..120 {
+            frame(&mut app);
+            bounced |= !take_recorded::<BallHitObstacle>(&mut app).is_empty();
+        }
+        assert!(bounced, "the new flight flew through the block too");
+    }
+
+    /// The return count and the clock of the ball's flight.
+    fn flight_of(app: &mut App) -> (u16, u16) {
+        let flight = app
+            .world_mut()
+            .query_filtered::<&BallFlight, With<Ball>>()
+            .single(app.world())
+            .expect("exactly one ball");
+        (flight.flight().returns(), flight.flight().steps())
     }
 }

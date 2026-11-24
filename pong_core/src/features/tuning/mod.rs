@@ -5,7 +5,7 @@
 mod file;
 
 use std::collections::HashSet;
-use std::num::NonZeroU8;
+use std::num::{NonZeroU8, NonZeroU16};
 use std::time::Duration;
 
 use bevy::app::{App, Plugin, Startup, Update};
@@ -22,11 +22,13 @@ use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::schedule::common_conditions::{not, resource_exists};
 use bevy::ecs::system::{Commands, Res, ResMut};
 use bevy::input::keyboard::KeyCode;
+use bevy::math::Vec2;
 use bevy::reflect::TypePath;
 
 use crate::domain::{Difficulty, EffectId, Mode, Notice, Seat};
 use crate::flow::FIXED_HZ;
 use crate::kernel::geometry::{Arena, InvalidArena, InvalidLengthBounds, LengthBounds, Radius};
+use crate::kernel::obstacle::BounceRule;
 use crate::kernel::ramp::{FullBeforeStart, InvalidItemCount, ItemCount, Ramp};
 use crate::kernel::reflect::{InvalidSpeedRule, MaxDeflection, SpeedRule};
 use crate::kernel::{OutOfRange, Range};
@@ -239,6 +241,7 @@ pub struct EffectsTuning {
     spin: SpinTuning,
     fog: FogTuning,
     lens: LensTuning,
+    blocks: BlocksTuning,
 }
 
 /// Shrink's dial (M2 spec 2.6.1), as the factor on paddle height: one until
@@ -301,6 +304,64 @@ pub struct LensTuning {
     clear_run: f32,
     unseen_flights: PerStar<u16>,
     believed: PerStar,
+}
+
+/// Blocks' dial (M2 spec 2.6.6), as the count of blocks drawn, the shape
+/// every block has and the range its tilt is drawn from, and its AI flaw
+/// (M2 spec 2.3.12): the flights for which an AI of each star does not see
+/// a new block, and the share of a seen block's tilt it believes.
+///
+/// Invariants: a block is the default paddle's length and the paddle's
+/// thickness; its tilt from upright is above nothing and under a right
+/// angle, the least at most the most; the clear run is more than a ball at
+/// the speed cap travels in one fixed step; a block's centre has room
+/// ([`Tuning::block_room`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BlocksTuning {
+    count: ItemCount,
+    half_size: Vec2,
+    min_tilt: f32,
+    max_tilt: f32,
+    clear_run: f32,
+    unseen_flights: PerStar<u16>,
+    believed: PerStar,
+}
+
+/// Where the centre of a block may lie on the left half of the arena, so
+/// that at any tilt the block keeps clear of the ball's serve, of its
+/// mirrored copy, of the paddle, and of both walls (M2 spec 2.6.6).
+///
+/// Invariant (validated tuning's): `nearest` is at most `farthest`, and
+/// `highest` is not negative.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BlockRoom {
+    nearest: f32,
+    farthest: f32,
+    highest: f32,
+}
+
+impl BlockRoom {
+    /// The least a centre lies from midfield. A block then keeps a ball's
+    /// width off the midfield line: a ball served from it touches no block,
+    /// and a ball passes between a block and its copy.
+    #[must_use]
+    pub const fn nearest(self) -> f32 {
+        self.nearest
+    }
+
+    /// The most a centre lies from midfield. A block grown by the ball's
+    /// radius then stays the clear run short of the paddle's contact line.
+    #[must_use]
+    pub const fn farthest(self) -> f32 {
+        self.farthest
+    }
+
+    /// The most a centre lies above or below mid-height. A block then
+    /// keeps a ball's width off each wall, so a ball passes between them.
+    #[must_use]
+    pub const fn highest(self) -> f32 {
+        self.highest
+    }
 }
 
 /// One number of an effect's AI flaw for each star (M2 spec 2.3.12); what
@@ -372,6 +433,8 @@ pub struct BallTuning {
     serve_speed: f32,
     speed_cap: f32,
     flight_limit_seconds: f32,
+    contacts_per_step: NonZeroU8,
+    obstacle_bounces_per_flight: NonZeroU16,
     max_deflection: MaxDeflection,
     serve_cone: MaxDeflection,
 }
@@ -518,6 +581,55 @@ pub enum TuningError {
         radius: f32,
         /// Half of `arena.height` less the ball's diameter.
         half_playable_height: f32,
+    },
+    /// Blocks' count would be full before it starts to move, or would start
+    /// to move at the serve (M2 spec 2.3.9).
+    #[error("tuning effects.blocks: {0}")]
+    BlocksCount(#[source] InvalidItemCount),
+    /// The most a block may tilt is below the least.
+    #[error(
+        "tuning effects.blocks.max_tilt_degrees {max_tilt_degrees} is below effects.blocks.min_tilt_degrees {min_tilt_degrees}"
+    )]
+    BlocksTiltRangeReversed {
+        /// The least tilt given.
+        min_tilt_degrees: f32,
+        /// The most tilt given.
+        max_tilt_degrees: f32,
+    },
+    /// A ball could bounce off a block and reach a paddle's contact line in
+    /// one fixed step: the swept paddle contact and the prediction's last
+    /// step both take that step's path for a straight line (M2 spec 2.2.6).
+    #[error(
+        "tuning effects.blocks.clear_run {clear_run} is not above {step_travel}, what a ball at the speed cap travels in one step"
+    )]
+    BlocksClearRunWithinOneStep {
+        /// The clear run given.
+        clear_run: f32,
+        /// `ball.speed_cap` over the fixed rate.
+        step_travel: f64,
+    },
+    /// A block clear of midfield and of the clear run before the paddle
+    /// does not fit on its half of the crossing (M2 spec 2.6.6).
+    #[error(
+        "tuning effects.blocks.clear_run {clear_run} leaves a block {length} long no room on its half of the crossing, {half_crossing_width} wide"
+    )]
+    BlocksHaveNoRoomOnTheirHalf {
+        /// The clear run given.
+        clear_run: f32,
+        /// A block's length: `paddle.height_default`.
+        length: f32,
+        /// Half the distance between the two paddles' contact lines.
+        half_crossing_width: f32,
+    },
+    /// A block, at any tilt, would not leave a ball's width to each wall.
+    #[error(
+        "tuning paddle.height_default {length} makes a block too long to stand a ball's width clear of both walls in an arena {arena_height} high"
+    )]
+    BlockHasNoRoomBetweenTheWalls {
+        /// A block's length: `paddle.height_default`.
+        length: f32,
+        /// `arena.height`.
+        arena_height: f32,
     },
     /// No points-to-win choices offered.
     #[error("tuning match_flow.points_to_win_options is empty")]
@@ -700,7 +812,45 @@ impl Tuning {
                 half_playable_height: playable_height / 2.0,
             });
         }
+        let blocks = self.effects.blocks;
+        let step_travel = f64::from(cap) / FIXED_HZ;
+        if f64::from(blocks.clear_run) <= step_travel {
+            return Err(TuningError::BlocksClearRunWithinOneStep {
+                clear_run: blocks.clear_run,
+                step_travel,
+            });
+        }
+        let room = self.block_room();
+        let length = 2.0 * blocks.half_size.y;
+        if room.farthest < room.nearest {
+            return Err(TuningError::BlocksHaveNoRoomOnTheirHalf {
+                clear_run: blocks.clear_run,
+                length,
+                half_crossing_width,
+            });
+        }
+        if room.highest < 0.0 {
+            return Err(TuningError::BlockHasNoRoomBetweenTheWalls {
+                length,
+                arena_height,
+            });
+        }
         Ok(())
+    }
+
+    /// Where the centre of a block may lie on the left half (M2 spec
+    /// 2.6.6). A block reaches at most its half diagonal from its centre,
+    /// whatever its tilt, and the room is reckoned with that reach.
+    #[must_use]
+    pub fn block_room(&self) -> BlockRoom {
+        let blocks = self.effects.blocks;
+        let radius = self.ball.radius.value();
+        let reach = blocks.half_size.length();
+        BlockRoom {
+            nearest: reach + 2.0 * radius,
+            farthest: self.crossing_width() / 2.0 - blocks.clear_run - reach - radius,
+            highest: self.arena.center_limit_y(self.ball.radius) - radius - reach,
+        }
     }
 
     /// How far the ball's centre travels in one full crossing: the distance
@@ -852,6 +1002,8 @@ impl BallTuning {
                 Range::PositiveFinite,
                 file.flight_limit_seconds,
             )?,
+            contacts_per_step: file.contacts_per_step,
+            obstacle_bounces_per_flight: file.obstacle_bounces_per_flight,
             max_deflection: deflection("ball.max_deflection_degrees", file.max_deflection_degrees)?,
             serve_cone: deflection("ball.serve_cone_degrees", file.serve_cone_degrees)?,
         })
@@ -887,6 +1039,17 @@ impl BallTuning {
     #[must_use]
     pub const fn max_deflection(self) -> MaxDeflection {
         self.max_deflection
+    }
+
+    /// How the ball bounces off obstacles: the base's bounds on the
+    /// obstacle channel (M2 spec 2.2.6, 2.2.6.1). The contacts in one fixed
+    /// step and the bounces in one flight are tuned; the horizontal floor
+    /// is the paddle's, so an obstacle sends the ball no steeper than
+    /// [`max_deflection`](Self::max_deflection).
+    #[must_use]
+    pub const fn bounce_rule(self) -> BounceRule {
+        BounceRule::new(self.contacts_per_step, self.max_deflection)
+            .with_bounces_per_flight(self.obstacle_bounces_per_flight)
     }
 
     /// Largest angle from straight-across a serve can take; the serve samples within it.
@@ -1001,6 +1164,7 @@ impl EffectsTuning {
             spin: SpinTuning::validate(&file.spin)?,
             fog: FogTuning::validate(&file.fog)?,
             lens: LensTuning::validate(&file.lens)?,
+            blocks: BlocksTuning::validate(&file.blocks, paddle)?,
         })
     }
 
@@ -1032,6 +1196,12 @@ impl EffectsTuning {
     #[must_use]
     pub const fn lens(self) -> LensTuning {
         self.lens
+    }
+
+    /// Blocks' numbers.
+    #[must_use]
+    pub const fn blocks(self) -> BlocksTuning {
+        self.blocks
     }
 }
 
@@ -1284,6 +1454,102 @@ impl LensTuning {
     }
 }
 
+impl BlocksTuning {
+    fn validate(file: &file::BlocksFile, paddle: PaddleTuning) -> Result<Self, TuningError> {
+        // Above nothing: a ball can shuttle between an upright block and
+        // its copy and never leave (M2 spec, facts).
+        let min_tilt_degrees = checked(
+            "effects.blocks.min_tilt_degrees",
+            Range::PositiveFinite,
+            file.min_tilt_degrees,
+        )?;
+        let min_tilt = checked(
+            "effects.blocks.min_tilt_degrees",
+            Range::BelowRightAngle,
+            min_tilt_degrees.to_radians(),
+        )?;
+        let max_tilt = checked(
+            "effects.blocks.max_tilt_degrees",
+            Range::BelowRightAngle,
+            file.max_tilt_degrees.to_radians(),
+        )?;
+        if max_tilt < min_tilt {
+            return Err(TuningError::BlocksTiltRangeReversed {
+                min_tilt_degrees,
+                max_tilt_degrees: file.max_tilt_degrees,
+            });
+        }
+        Ok(Self {
+            count: ItemCount::new(file.starts_at_return, file.full_at_return, file.max_count)
+                .map_err(TuningError::BlocksCount)?,
+            half_size: Vec2::new(paddle.thickness, paddle.height_default) / 2.0,
+            min_tilt,
+            max_tilt,
+            clear_run: checked(
+                "effects.blocks.clear_run",
+                Range::NonNegativeFinite,
+                file.clear_run,
+            )?,
+            unseen_flights: PerStar::whole(&file.unseen_flights),
+            believed: PerStar::validate(
+                &file.believed_share,
+                [
+                    "effects.blocks.believed_share.one_star",
+                    "effects.blocks.believed_share.two_stars",
+                    "effects.blocks.believed_share.three_stars",
+                ],
+            )?,
+        })
+    }
+
+    /// The blocks drawn, over the rally's returns. Each has a mirrored copy
+    /// besides.
+    #[must_use]
+    pub const fn count(self) -> ItemCount {
+        self.count
+    }
+
+    /// How far a block reaches from its centre: half the paddle's thickness
+    /// across it and half the default paddle's length along it.
+    #[must_use]
+    pub const fn half_size(self) -> Vec2 {
+        self.half_size
+    }
+
+    /// The least a block is turned from upright, either way, in radians.
+    #[must_use]
+    pub const fn min_tilt(self) -> f32 {
+        self.min_tilt
+    }
+
+    /// The most a block is turned from upright, either way, in radians.
+    #[must_use]
+    pub const fn max_tilt(self) -> f32 {
+        self.max_tilt
+    }
+
+    /// The stretch before each paddle's contact line that no block, grown
+    /// by the ball's radius, reaches into, in arena units: a ball that
+    /// bounces off a block is at least this far from the line.
+    #[must_use]
+    pub const fn clear_run(self) -> f32 {
+        self.clear_run
+    }
+
+    /// The flights for which an AI of `difficulty` does not see a new block.
+    #[must_use]
+    pub const fn unseen_flights(self, difficulty: Difficulty) -> u16 {
+        self.unseen_flights.by(difficulty)
+    }
+
+    /// The share of a seen block's tilt an AI of `difficulty` believes: 1
+    /// is the truth, less takes the block for more upright than it is.
+    #[must_use]
+    pub const fn believed_share(self, difficulty: Difficulty) -> f32 {
+        self.believed.by(difficulty)
+    }
+}
+
 impl MatchFlowTuning {
     fn validate(file: file::MatchFlowFile) -> Result<Self, TuningError> {
         let countdown = seconds("match_flow.countdown_seconds", file.countdown_seconds)?;
@@ -1514,10 +1780,11 @@ mod tests {
     use bevy::asset::io::embedded::{EmbeddedAssetRegistry, watched_path};
 
     use super::{EMBEDDED_RON, Tuning, TuningError, TuningPlugin, embedded_tuning_path};
-    use std::num::NonZeroU8;
+    use std::num::{NonZeroU8, NonZeroU16};
 
     use crate::domain::{Difficulty, EffectId, Mode, Notice, Seat};
     use crate::kernel::geometry::InvalidLengthBounds;
+    use crate::kernel::obstacle::BounceRule;
     use crate::kernel::ramp::{FullBeforeStart, InvalidItemCount};
     use crate::kernel::test_support::assert_near;
     use crate::kernel::{OutOfRange, Range};
@@ -1531,6 +1798,8 @@ mod tests {
             serve_speed: 80.0,
             speed_cap: 250.0,
             flight_limit_seconds: 20.0,
+            contacts_per_step: 4,
+            obstacle_bounces_per_flight: 6,
             max_deflection_degrees: 60.0,
             serve_cone_degrees: 30.0,
         ),
@@ -1549,6 +1818,16 @@ mod tests {
                 max_count: 3,
                 radius: 8.0,
                 max_bend_degrees: 15.0,
+                clear_run: 24.0,
+                unseen_flights: (one_star: 3, two_stars: 2, three_stars: 1),
+                believed_share: (one_star: 0.4, two_stars: 0.7, three_stars: 0.9),
+            ),
+            blocks: (
+                starts_at_return: 2,
+                full_at_return: 8,
+                max_count: 2,
+                min_tilt_degrees: 10.0,
+                max_tilt_degrees: 35.0,
                 clear_run: 24.0,
                 unseen_flights: (one_star: 3, two_stars: 2, three_stars: 1),
                 believed_share: (one_star: 0.4, two_stars: 0.7, three_stars: 0.9),
@@ -1948,7 +2227,16 @@ mod tests {
             refusal_naming(&with("speed_cap", "5280.0"), &["ball.speed_cap"]),
             TuningError::SpeedCapCrossesArenaInOneStep { .. }
         ));
-        assert!(Tuning::from_ron(&with("speed_cap", "5279.0")).is_ok());
+        // A ball that fast crosses Blocks' clear run in a step as well (M2
+        // spec 2.2.6): an arena wide enough for a clear run of 90 shows
+        // this rule's own edge.
+        let roomy = with("speed_cap", "5279.0")
+            .replace("width: 160.0", "width: 400.0")
+            .replace(
+                "max_tilt_degrees: 35.0,\n                clear_run: 24.0",
+                "max_tilt_degrees: 35.0,\n                clear_run: 90.0",
+            );
+        assert!(Tuning::from_ron(&roomy).is_ok());
         assert!(Tuning::from_ron(&with("height_max", "90.0")).is_ok());
     }
 
@@ -2401,6 +2689,43 @@ mod tests {
         );
     }
 
+    /// M2 spec 2.2.6 and 2.2.6.1: the obstacle channel's bounds are the
+    /// ball's numbers. The contacts in a step and the bounces in a flight
+    /// are tuned; the floor is the steepest a paddle can send the ball.
+    #[test]
+    fn the_ball_bounces_off_obstacles_by_the_tuned_counts_and_no_steeper_than_a_paddle_sends_it() {
+        let ball = valid().ball();
+        assert_eq!(
+            ball.bounce_rule(),
+            BounceRule::new(
+                NonZeroU8::new(4).expect("four is not zero"),
+                ball.max_deflection()
+            )
+            .with_bounces_per_flight(NonZeroU16::new(6).expect("six is not zero"))
+        );
+        let fewer = Tuning::from_ron(&with("contacts_per_step", "2")).expect("two is valid");
+        assert_eq!(fewer.ball().bounce_rule().contacts_per_step().get(), 2);
+        let tighter =
+            Tuning::from_ron(&with("obstacle_bounces_per_flight", "4")).expect("four is valid");
+        assert_eq!(tighter.ball().bounce_rule().bounces_per_flight().get(), 4);
+    }
+
+    /// A step of no contact could bounce off nothing, and a flight of no
+    /// bounce would fly through every block: each count is a whole number
+    /// above zero, and the file's shape says so.
+    #[test]
+    fn a_ball_allowed_no_contact_in_a_step_or_no_bounce_in_a_flight_does_not_parse() {
+        for key in ["contacts_per_step", "obstacle_bounces_per_flight"] {
+            assert!(
+                matches!(
+                    Tuning::from_ron(&with(key, "0")),
+                    Err(TuningError::Parse(_))
+                ),
+                "{key}"
+            );
+        }
+    }
+
     /// `VALID` with one piece of Lens's section replaced: the first `old`
     /// after the section's name, so the like-named numbers before it stay.
     fn with_lens(old: &str, new: &str) -> String {
@@ -2612,6 +2937,237 @@ mod tests {
         assert_eq!(
             shrink.to_string(),
             "tuning effects.shrink: a dial full at return 1 cannot start to move at return 3"
+        );
+    }
+
+    /// `VALID` with one piece of Blocks' section replaced: the first `old`
+    /// after the section opens becomes `new`.
+    fn with_blocks(old: &str, new: &str) -> String {
+        let (before, section) = VALID.split_once("blocks: (").expect("a blocks section");
+        let replaced = section.replacen(old, new, 1);
+        assert_ne!(replaced, section, "{old} is not in the blocks section");
+        format!("{before}blocks: ({replaced}")
+    }
+
+    /// M2 spec 2.6.6: Blocks' dial is a count of blocks, each the default
+    /// paddle's length and the paddle's thickness, at a tilt from a tuned
+    /// range; its flaw is a lag and a share per star.
+    #[test]
+    fn blocks_section_becomes_a_count_dial_a_block_shape_and_a_flaw_per_star() {
+        let blocks = valid().effects().blocks();
+        let counts: Vec<u16> = (0..=9)
+            .map(|returns| blocks.count().after(returns))
+            .collect();
+        assert_eq!(counts, [0, 0, 0, 0, 0, 1, 1, 1, 2, 2]);
+        assert_eq!(blocks.count().full(), 2);
+        assert_near(blocks.half_size().x, 1.0, 1e-6);
+        assert_near(blocks.half_size().y, 7.0, 1e-6);
+        assert_near(blocks.min_tilt(), 10.0_f32.to_radians(), 1e-6);
+        assert_near(blocks.max_tilt(), 35.0_f32.to_radians(), 1e-6);
+        assert_near(blocks.clear_run(), 24.0, 1e-6);
+        assert_eq!(blocks.unseen_flights(Difficulty::OneStar), 3);
+        assert_eq!(blocks.unseen_flights(Difficulty::TwoStars), 2);
+        assert_eq!(blocks.unseen_flights(Difficulty::ThreeStars), 1);
+        assert_near(blocks.believed_share(Difficulty::OneStar), 0.4, 1e-6);
+        assert_near(blocks.believed_share(Difficulty::TwoStars), 0.7, 1e-6);
+        assert_near(blocks.believed_share(Difficulty::ThreeStars), 0.9, 1e-6);
+    }
+
+    /// M2 spec 2.6.6: a block is as long as the default paddle, whatever
+    /// that is tuned to.
+    #[test]
+    fn a_block_is_the_default_paddles_length_and_the_paddles_thickness() {
+        let longer = with("height_default", "20.0").replace("thickness: 2.0", "thickness: 3.0");
+        let blocks = Tuning::from_ron(&longer)
+            .expect("a longer, thicker paddle is valid")
+            .effects()
+            .blocks();
+        assert_near(blocks.half_size().x, 1.5, 1e-6);
+        assert_near(blocks.half_size().y, 10.0, 1e-6);
+    }
+
+    #[test]
+    fn a_blocks_count_full_before_it_starts_or_starting_at_the_serve_is_rejected() {
+        assert_eq!(
+            Tuning::from_ron(&with_blocks("starts_at_return: 2", "starts_at_return: 9")),
+            Err(TuningError::BlocksCount(InvalidItemCount::FullBeforeStart(
+                FullBeforeStart {
+                    starts_at: 9,
+                    full_at: 8,
+                }
+            )))
+        );
+        assert_eq!(
+            Tuning::from_ron(&with_blocks("starts_at_return: 2", "starts_at_return: 0")),
+            Err(TuningError::BlocksCount(InvalidItemCount::StartsAtTheServe))
+        );
+    }
+
+    #[test]
+    fn a_blocks_number_out_of_its_range_is_rejected_by_its_path() {
+        for (old, new, path) in [
+            // Upright is excluded: a ball can shuttle between an upright
+            // block and its copy (M2 spec, facts).
+            (
+                "min_tilt_degrees: 10.0",
+                "min_tilt_degrees: 0.0",
+                "effects.blocks.min_tilt_degrees",
+            ),
+            (
+                "max_tilt_degrees: 35.0",
+                "max_tilt_degrees: 90.0",
+                "effects.blocks.max_tilt_degrees",
+            ),
+            (
+                "clear_run: 24.0",
+                "clear_run: -1.0",
+                "effects.blocks.clear_run",
+            ),
+            (
+                "one_star: 0.4",
+                "one_star: -0.1",
+                "effects.blocks.believed_share.one_star",
+            ),
+            (
+                "two_stars: 0.7",
+                "two_stars: -0.1",
+                "effects.blocks.believed_share.two_stars",
+            ),
+            (
+                "three_stars: 0.9",
+                "three_stars: -0.1",
+                "effects.blocks.believed_share.three_stars",
+            ),
+        ] {
+            assert!(
+                matches!(
+                    Tuning::from_ron(&with_blocks(old, new)),
+                    Err(TuningError::Field { path: refused, .. }) if refused == path
+                ),
+                "{new} was not refused at {path}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_blocks_tilt_range_with_its_ends_reversed_is_rejected() {
+        assert_eq!(
+            Tuning::from_ron(&with_blocks(
+                "max_tilt_degrees: 35.0",
+                "max_tilt_degrees: 9.0"
+            )),
+            Err(TuningError::BlocksTiltRangeReversed {
+                min_tilt_degrees: 10.0,
+                max_tilt_degrees: 9.0,
+            })
+        );
+        assert!(
+            Tuning::from_ron(&with_blocks(
+                "max_tilt_degrees: 35.0",
+                "max_tilt_degrees: 10.0"
+            ))
+            .is_ok()
+        );
+    }
+
+    /// M2 spec 2.2.6: no step may hold both a block bounce and a paddle
+    /// contact, and the step that crosses a contact line bounces off no
+    /// block. A ball at the cap of 250 travels 4.17 units in a step.
+    #[test]
+    fn a_clear_run_a_ball_at_the_speed_cap_crosses_in_one_step_is_rejected() {
+        assert_eq!(
+            Tuning::from_ron(&with_blocks("clear_run: 24.0", "clear_run: 4.0")),
+            Err(TuningError::BlocksClearRunWithinOneStep {
+                clear_run: 4.0,
+                step_travel: 250.0 / 60.0,
+            })
+        );
+        assert!(Tuning::from_ron(&with_blocks("clear_run: 24.0", "clear_run: 4.2")).is_ok());
+    }
+
+    /// M2 spec 2.6.6: where a block's centre may lie, on the left half. A
+    /// block reaches 7.07 from its centre at most, corner to centre. It
+    /// keeps a ball's width off midfield, so a served ball touches no
+    /// block and passes between a block and its copy; its grown shape stays
+    /// the clear run short of the contact line, 73 from midfield; and it
+    /// keeps a ball's width off each wall.
+    #[test]
+    fn a_blocks_centre_has_room_clear_of_midfield_the_paddle_and_the_walls() {
+        let room = valid().block_room();
+        let reach = 50.0_f32.sqrt();
+        assert_near(room.nearest(), reach + 2.0, 1e-4);
+        assert_near(room.farthest(), 73.0 - 24.0 - reach - 1.0, 1e-4);
+        assert_near(room.highest(), 45.0 - 2.0 - reach, 1e-4);
+    }
+
+    #[test]
+    fn blocks_with_no_room_on_their_half_of_the_crossing_are_rejected() {
+        assert!(matches!(
+            Tuning::from_ron(&with_blocks("clear_run: 24.0", "clear_run: 56.0")),
+            Err(TuningError::BlocksHaveNoRoomOnTheirHalf {
+                clear_run: 56.0,
+                half_crossing_width: 73.0,
+                ..
+            })
+        ));
+        assert!(Tuning::from_ron(&with_blocks("clear_run: 24.0", "clear_run: 55.8")).is_ok());
+    }
+
+    /// In an arena 60 high a block may reach 28 from its centre and keep a
+    /// ball's width to each wall. A paddle 56.2 long gives a block that
+    /// reaches 28.12, and one 55.8 long a block that reaches 27.92. The
+    /// clear run is short here, so that a block that long has room on its
+    /// half and it is the walls that refuse it.
+    #[test]
+    fn a_block_too_long_to_stand_clear_of_both_walls_is_rejected() {
+        let low = with_blocks("clear_run: 24.0", "clear_run: 4.2")
+            .replace("height: 90.0", "height: 60.0")
+            .replace("height_max: 30.0", "height_max: 58.0");
+        let too_long = low.replace("height_default: 14.0", "height_default: 56.2");
+        assert_eq!(
+            Tuning::from_ron(&too_long),
+            Err(TuningError::BlockHasNoRoomBetweenTheWalls {
+                length: 56.2,
+                arena_height: 60.0,
+            })
+        );
+        let fits = low.replace("height_default: 14.0", "height_default: 55.8");
+        assert!(Tuning::from_ron(&fits).is_ok());
+    }
+
+    #[test]
+    fn blocks_refusals_read_as_one_sentence_naming_the_value() {
+        let refused = |text: String| {
+            Tuning::from_ron(&text)
+                .expect_err("each of these is refused")
+                .to_string()
+        };
+        assert_eq!(
+            refused(with_blocks("starts_at_return: 2", "starts_at_return: 0")),
+            "tuning effects.blocks: items appear at a paddle return, so their count cannot start to move at return 0"
+        );
+        assert_eq!(
+            refused(with_blocks(
+                "max_tilt_degrees: 35.0",
+                "max_tilt_degrees: 9.0"
+            )),
+            "tuning effects.blocks.max_tilt_degrees 9 is below effects.blocks.min_tilt_degrees 10"
+        );
+        assert_eq!(
+            refused(with_blocks("clear_run: 24.0", "clear_run: 4.0")),
+            "tuning effects.blocks.clear_run 4 is not above 4.166666666666667, what a ball at the speed cap travels in one step"
+        );
+        assert_eq!(
+            refused(with_blocks("clear_run: 24.0", "clear_run: 60.0")),
+            "tuning effects.blocks.clear_run 60 leaves a block 14 long no room on its half of the crossing, 73 wide"
+        );
+        assert_eq!(
+            TuningError::BlockHasNoRoomBetweenTheWalls {
+                length: 86.0,
+                arena_height: 90.0,
+            }
+            .to_string(),
+            "tuning paddle.height_default 86 makes a block too long to stand a ball's width clear of both walls in an arena 90 high"
         );
     }
 }

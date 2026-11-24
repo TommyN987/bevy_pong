@@ -11,6 +11,7 @@ pub mod collide;
 pub mod flight;
 pub mod geometry;
 pub mod integrate;
+pub mod obstacle;
 pub mod predict;
 pub mod ramp;
 pub mod random;

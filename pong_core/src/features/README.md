@@ -25,10 +25,10 @@ One embedded RON file of every number, validated once, so no system re-checks a 
 |---|---|---|
 | Raw shape | `file.rs` | Plain numbers. `#[serde(deny_unknown_fields)]`: a misspelt key is an error, not a silent default. |
 | Field checks | `Tuning::from_ron` | Each section through kernel constructors; a refusal names its path, e.g. `ball.radius`. |
-| Cross-field checks | `check_everything_fits_the_arena` | Paddle not taller than the arena; ball fits; paddles short of the centre line; speed cap under one playable height per step; Wind's `max_drift` and Spin's each under half the playable height; Fog's `max_width` under half the crossing width; a lens's `radius` twice over plus its `clear_run` within half the crossing width, and its `radius` within half the playable height. A lens's `max_bend_degrees` above 30 is refused in its own section. Bindings reject duplicates and `Escape`. |
+| Cross-field checks | `check_everything_fits_the_arena` | Paddle not taller than the arena; ball fits; paddles short of the centre line; speed cap under one playable height per step; Wind's `max_drift` and Spin's each under half the playable height; Fog's `max_width` under half the crossing width; a lens's `radius` twice over plus its `clear_run` within half the crossing width, and its `radius` within half the playable height; Blocks' `clear_run` above what a ball at the speed cap travels in one step, and room for a block's centre on its half and between the walls (`Tuning::block_room`). A lens's `max_bend_degrees` above 30 is refused in its own section, as a block's tilt range reversed or reaching upright is in its. Bindings reject duplicates and `Escape`. |
 
 `Tuning` has private fields and one constructor: holding one means it passed.
-`crossing_width()` is the distance between the two contact lines, the one formula `Paddle::contact_x`, Wind's drift, Spin's, Fog's bound, and Lens's placement all read.
+`crossing_width()` is the distance between the two contact lines, the one formula `Paddle::contact_x`, Wind's drift, Spin's, Fog's bound, Lens's placement, and Blocks' room all read.
 
 Loading goes through Bevy's asset system:
 `embedded_asset!` compiles `tuning.ron` into the binary under the `embedded://` source;
@@ -133,7 +133,8 @@ Wind's is the second form alone: the AI under-leads by the share of the drift it
 Spin's is the same form: the AI commits its aim at the turn, having read only its star's share of the spin.
 Fog's is the first form alone, and synthetic: an AI sees through fog, so the fog widens the spread of its aim by a tuned error per star, scaled with the band's width.
 Lens's is the second form in two parts: a star does not see a lens until it has lain for a tuned number of flights, and of a lens it sees it believes a tuned share of the pull.
-A held count is a steady state: a flight started under one says so (`FlightStart::returns_held`), and then no lens is too new to see, since every earlier flight had the same count.
+Blocks' is the second form in two parts as well: the same lag, and a block it sees a star takes for more upright than it is, by a tuned share of its tilt.
+A held count is a steady state: a flight started under one says so (`FlightStart::returns_held`), and then no lens or block is too new to see, since every earlier flight had the same count.
 
 A rally has one seed (`RallySeed`, kernel), drawn from `Random`'s own stream of rally seeds before the rally's countdown.
 An effect that chooses something once per rally derives it from the seed and draws nothing itself:
@@ -157,6 +158,7 @@ The seed is drawn on entering a match and on the transition from play to a point
 | `spin.rs` | Spin: the same `Drift` field, begun at a return whose paddle moved in the step of the hit, toward the paddle's motion; a still paddle's return and a serve get none. `Spin::drift(start)` is the signed drift of a flight, for the field and for the shell alike. Its flaw is the second form: each star has read its tuned share of the true spin. In Chaos's bag since M2 plan phase 6. |
 | `fog.rs` | Fog: view-only (M2 spec 2.2.5). It contributes nothing on any channel, so the ball flies as in clear air. `Fog::width(start)` is the width of the band for a flight, riding a `Ramp` from nothing to `max_width`, for the shell's view and for the flaw alike. Its flaw is the first form: each star's tuned added error, scaled by the width. In Chaos's bag since M2 plan phase 7. |
 | `lens.rs` | Lens: the first item effect. Its dial is an `ItemCount` (kernel) of lenses drawn, each with a copy mirrored across midfield, laid where the rally's seed says; `Lens::placed(start)` is the lenses of a flight, for the field and for the shell alike. Its field, `Pull`, is its own and in its own module: lateral, to the side on which the ball's course would pass each lens's centre and by the distance at which it would pass, so a ball is turned toward the centre one way from rim to rim; fading to nothing at the rim; scaled by the square of the horizontal speed so that a path bends the same at any speed, and by a focus at which one lens turns no crossing by more than `max_bend_degrees`. The focus is sized by measure, up to `LensTuning::LARGEST_BEND_DEGREES`, and the bound's test is the measure's guard. Its flaw is the second form: a lag in flights, then a believed share. In Chaos's bag since M2 plan phase 8. |
+| `blocks.rs` | Blocks: the first effect on the obstacle channel. Its dial is an `ItemCount` of blocks drawn, each with a copy mirrored across midfield, each the default paddle's size, tilted from upright either way within a tuned range and never upright, standing inside `Tuning::block_room` where the rally's seed says; its generator takes its own half of the seed, so a block does not stand on a lens. `Blocks::placed(start)` is the blocks of a flight, for the channel and for the shell alike. How the ball bounces is the base's (`BounceRule`), not Blocks'. Its flaw is the second form: a lag in flights, then a believed share of the tilt. In no bag yet: its shell half is declared empty until M2 plan phase 9's step 4. |
 
 Channels, each composing so that effects cannot see each other:
 
@@ -165,6 +167,7 @@ Channels, each composing so that effects cannot see each other:
 | Launch speed gain | Sum | `launch_speed` adds the serve speed and applies `ball.speed_cap`. |
 | Paddle height factor | Product | `Paddle::set_height` clamps to the tuned bounds. One factor for both paddles. |
 | Lateral field | Sum | The wall step cuts vertical speed to the playable height per step, what its one fold undoes (`advance_between_walls`, M2 spec 2.2.2). Wind contributes the first field, Spin the second. |
+| Obstacles | Union | `BounceRule`, from `ball` tuning and stamped on every flight by `ActiveEffects::start_flight`: at most `contacts_per_step` contacts in a step; no steeper off an obstacle than `max_deflection_degrees`, the horizontal floor; at most `obstacle_bounces_per_flight` bounces in a flight, after which the ball flies through obstacles until its next flight (M2 spec 2.2.6, 2.2.6.1). Blocks contributes the first obstacles. |
 
 Two counts that look alike and are not:
 the flight counts returns, face hits that turn the ball back and start a flight;
@@ -205,11 +208,12 @@ so it happens at plugin build, before any system spawns a ball.
 
 | System | Phase | Does |
 |---|---|---|
-| `integrate_ball` | Integrate | Saves `StepStart`, asks the flight for this step's force, calls `advance_between_walls`, ticks the flight's clock, writes `BallHitWall` on a bounce. |
+| `integrate_ball` | Integrate | Saves `StepStart`, asks the flight for this step's force, calls `advance_among_obstacles` with the flight's obstacles, ticks the flight's clock and counts its bounces off obstacles, writes `BallHitWall` on a wall bounce and `BallHitObstacle` for each bounce off an obstacle. A bounce off an obstacle starts no flight. |
 | `collide_ball_with_paddles` | Collide | Sweeps `StepStart → Position` against every paddle; takes the earliest contact; a face hit is a return: it starts the next flight, aims by offset, and leaves at the flight's launch speed; an end hit mirrors and starts no flight; the rest of the step continues along the new velocity. Writes `BallHitPaddle`. |
 
 Integration and collision are separate phases so `Effects` sits before one and `Sanity` after the other.
 The cost, documented on the system: a wall bounce and a paddle-end hit in the same step are swept along the folded line.
+The paddle sweep takes the step's path for a straight line, so no obstacle may stand within a step's travel of a contact line: tuning validation keeps Blocks' `clear_run` above it.
 
 ## rules
 

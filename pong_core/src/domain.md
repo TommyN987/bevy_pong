@@ -39,6 +39,7 @@ One emitter means one place to look when a message appears.
 | `Serve { toward }` | rules | Launch the ball toward a side. Read by ball. |
 | `BallHitPaddle { side }` | physics | The ball bounced off that side's paddle. |
 | `BallHitWall` | physics | The ball bounced off the top or bottom wall. |
+| `BallHitObstacle` | physics | The ball bounced off an obstacle of its flight (M2 spec 2.2.6); one for each bounce. |
 | `EffectStarted { effect }` | escalation | A scheduled effect joined the effects in play, between two points. Always-on effects never start. |
 | `EffectEnded { effect }` | escalation | A scheduled effect left the effects in play, between two points. Leaving a match ends nothing. |
 | `PointScored { scorer }` | rules | A goal line was crossed. |

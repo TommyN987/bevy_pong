@@ -2,7 +2,7 @@
 //! Validation into kernel types happens in [`super::Tuning::from_ron`].
 //! Angles are written in degrees because people edit this file.
 
-use std::num::NonZeroU8;
+use std::num::{NonZeroU8, NonZeroU16};
 
 use bevy::input::keyboard::KeyCode;
 use serde::Deserialize;
@@ -50,6 +50,12 @@ pub(super) struct BallFile {
     pub(super) speed_cap: f32,
     /// The longest a flight may last before the sanity phase calls it a fault.
     pub(super) flight_limit_seconds: f32,
+    /// The most contacts, with walls and obstacles together, in one fixed
+    /// step among obstacles.
+    pub(super) contacts_per_step: NonZeroU8,
+    /// The most bounces off obstacles in one flight; after them the ball
+    /// flies through obstacles until its next flight.
+    pub(super) obstacle_bounces_per_flight: NonZeroU16,
     pub(super) max_deflection_degrees: f32,
     pub(super) serve_cone_degrees: f32,
 }
@@ -85,6 +91,7 @@ pub(super) struct EffectsFile {
     pub(super) spin: SpinFile,
     pub(super) fog: FogFile,
     pub(super) lens: LensFile,
+    pub(super) blocks: BlocksFile,
 }
 
 #[derive(Debug, Deserialize)]
@@ -141,6 +148,25 @@ pub(super) struct LensFile {
     /// into, in arena units.
     pub(super) clear_run: f32,
     /// Flights for which each star does not see a new lens.
+    pub(super) unseen_flights: PerStarFile<u16>,
+    pub(super) believed_share: PerStarFile,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct BlocksFile {
+    pub(super) starts_at_return: u16,
+    pub(super) full_at_return: u16,
+    /// Blocks drawn at full dial; each has a mirrored copy besides.
+    pub(super) max_count: u16,
+    /// The least a block is turned from upright, either way.
+    pub(super) min_tilt_degrees: f32,
+    /// The most a block is turned from upright, either way.
+    pub(super) max_tilt_degrees: f32,
+    /// The stretch before each paddle's contact line that no block reaches
+    /// into, in arena units.
+    pub(super) clear_run: f32,
+    /// Flights for which each star does not see a new block.
     pub(super) unseen_flights: PerStarFile<u16>,
     pub(super) believed_share: PerStarFile,
 }

@@ -5,7 +5,7 @@
 //! because geometry needs it first. Count (ADR 0002, ADR 0008): nine capped
 //! types of twelve (`Side`, `Seat`, `Difficulty`, `Controller`, `MatchConfig`,
 //! `Random`, `Player`, `SeatPlayers`, `Mode`), two identifier types outside the
-//! cap (`ProfileId`, `EffectId`), and nine messages, each with one emitting feature,
+//! cap (`ProfileId`, `EffectId`), and ten messages, each with one emitting feature,
 //! `Notice` excepted.
 
 use std::num::NonZeroU8;
@@ -100,17 +100,22 @@ pub enum EffectId {
     /// appear as the rally grows (M2 spec 2.6.5).
     #[serde(rename = "lens")]
     Lens,
+    /// Solid blocks on the floor that the ball bounces off; more appear as
+    /// the rally grows (M2 spec 2.6.6).
+    #[serde(rename = "blocks")]
+    Blocks,
 }
 
 impl EffectId {
     /// Every effect, in declaration order.
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Speed,
         Self::Shrink,
         Self::Wind,
         Self::Spin,
         Self::Fog,
         Self::Lens,
+        Self::Blocks,
     ];
 }
 
@@ -289,6 +294,11 @@ pub struct EffectEnded {
 #[derive(Message, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BallHitWall;
 
+/// The ball bounced off an obstacle of its flight (M2 spec 2.2.6). Emitted
+/// by physics, once for each bounce.
+#[derive(Message, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BallHitObstacle;
+
 /// The ball crossed a goal line. Emitted by rules.
 #[derive(Message, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PointScored {
@@ -371,8 +381,9 @@ mod tests {
     use bevy::ecs::system::ResMut;
 
     use super::{
-        BallHitPaddle, BallHitWall, Controller, Difficulty, EffectId, MatchConfig, MatchEnded,
-        Mode, Notice, Player, PointScored, ProfileId, Random, Seat, SeatPlayers, Serve, SimFault,
+        BallHitObstacle, BallHitPaddle, BallHitWall, Controller, Difficulty, EffectId, MatchConfig,
+        MatchEnded, Mode, Notice, Player, PointScored, ProfileId, Random, Seat, SeatPlayers, Serve,
+        SimFault,
     };
     use crate::kernel::geometry::Side;
 
@@ -434,6 +445,7 @@ mod tests {
             vec![BallHitPaddle { side: Side::Right }]
         );
         assert_eq!(round_trip(BallHitWall), vec![BallHitWall]);
+        assert_eq!(round_trip(BallHitObstacle), vec![BallHitObstacle]);
         assert_eq!(
             round_trip(PointScored { scorer: Side::Left }),
             vec![PointScored { scorer: Side::Left }]
@@ -590,6 +602,10 @@ mod tests {
             ron::to_string(&EffectId::Lens).expect("an effect id serializes"),
             "lens"
         );
+        assert_eq!(
+            ron::to_string(&EffectId::Blocks).expect("an effect id serializes"),
+            "blocks"
+        );
     }
 
     /// `ALL` is written by hand; this match stops compiling when a variant is
@@ -604,6 +620,7 @@ mod tests {
                 EffectId::Spin => 3,
                 EffectId::Fog => 4,
                 EffectId::Lens => 5,
+                EffectId::Blocks => 6,
             };
             assert_eq!(index, declared);
         }

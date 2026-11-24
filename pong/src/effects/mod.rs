@@ -13,6 +13,7 @@ use pong_core::domain::EffectId;
 
 use crate::audio::sound::Sound;
 
+pub mod blocks;
 pub mod fog;
 pub mod lens;
 pub mod shrink;
@@ -55,6 +56,7 @@ pub fn shell_half(id: EffectId) -> ShellHalf {
         EffectId::Spin => spin::shell_half(),
         EffectId::Fog => fog::shell_half(),
         EffectId::Lens => lens::shell_half(),
+        EffectId::Blocks => blocks::shell_half(),
     }
 }
 
