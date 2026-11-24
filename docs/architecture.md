@@ -113,7 +113,7 @@ Alternatives considered: flat feature files with a shared prelude (rejected: pre
 - A seeded random resource is the only source of randomness. The shell seeds from entropy; tests seed deterministically.
 - Physics is hand-rolled as pure functions over plain data; systems are thin wrappers. The AI calls the same functions to predict.
 - Collision is swept circle-versus-rectangle, and ball speed is capped, because escalation makes the ball fast by design.
-- Rotating-arena effects, if built, rotate the ball's frame of reference rather than the geometry, keeping collision axis-aligned. If a later room needs arbitrary polygons, avian2d is adopted then behind the same force and collision-event vocabulary.
+- Rotating-arena effects, if built, rotate the ball's frame of reference rather than the geometry, keeping collision axis-aligned. If a later room needs arbitrary polygons, avian2d is adopted then behind the same force and collision-event vocabulary. Amended 2026-11-24 ([M2 phase 9 report](plans/m2-phase9-report.md)): Blocks' tilted rectangles are swept the same way, the ball's path turned into the block's own frame and the collision kept axis-aligned there (`kernel/obstacle.rs`); no polygon engine was needed.
 
 ## Effects
 

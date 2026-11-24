@@ -1,6 +1,6 @@
 # ADR 0011: Effect identity is a closed enum; behaviour sits behind a contract
 
-Date: 2026-11-10, amended 2026-11-11, 2026-11-13, 2026-11-20, and 2026-11-22
+Date: 2026-11-10, amended 2026-11-11, 2026-11-13, 2026-11-20, 2026-11-22, and 2026-11-24
 Status: accepted
 
 ## Context
@@ -52,6 +52,15 @@ Amended 2026-11-22 ([M2 phase 8 report](../plans/m2-phase8-report.md)), after th
 
 - A flight keeps the seed of the rally it began in. The base draws the next rally's seed at the point, so the shell can show a choice in the countdown, and the last flight of the rally just played stays on the ball until that countdown. What the shell shows of a flight, it derives from the flight's own seed.
 
+Amended 2026-11-24 ([M2 phase 9 report](../plans/m2-phase9-report.md)), with Blocks, the first effect on the obstacle channel:
+
+- A fourth channel: obstacles, solid rectangles standing on the floor for a flight. It composes by union, and every effect states its stance on it.
+- Its bounds are the base's, as the other channels' are: the contacts in a step, the horizontal floor, the speed a ball leaves an obstacle at, and the bounces in a flight. The base stamps them on every flight; no effect states one.
+- A bounce off an obstacle is a collision inside a flight and starts none. A flight counts its bounces: with its clock, the one other thing of a flight that moves.
+- The ball's step among walls and obstacles is one kernel function, taken by physics and by the AI's prediction. With no obstacle it is the wall step.
+- An item effect's generator takes its own share of the rally's seed. Two item effects seeded alike lay their items in the same places.
+- Blocks' flaw has a share after all: of a seen block's tilt. The alternative below that gives Blocks none was written before Blocks was built.
+
 ## Alternatives considered
 
 - Rule 6 unchanged, exhaustive matches at every site: rejected; dropping or adding an effect edits every spawn table, cue map, and AI branch, the system-wide friction the roster's expected churn cannot afford.
@@ -60,6 +69,8 @@ Amended 2026-11-22 ([M2 phase 8 report](../plans/m2-phase8-report.md)), after th
 - Effects as systems adding to the `Force` component: rejected; the AI cannot predict a per-step accumulator.
 - The lag built to the letter, with no word on a held count (the first build of M2 plan phase 8): rejected by the user on the measure; at a held count just past a lens's arrival a computer never saw that lens, so a lower rung of the dial read harder than a higher one.
 - No lag, a believed share alone: rejected; the specification names the lag, and Blocks, seen or not seen, has no share to fall back on.
+- Blocks solid always, with the floor alone to end a flight (the first build of M2 plan phase 9): rejected by the user on the measure; about one flight in a thousand at a full floor never ended, held between a block, its mirrored copy, and a wall.
+- A floor that folds steep angles back, to cure that trap at its cause and keep blocks solid: rejected on the measure; the traps remained.
 - Speed kept as a per-mode rule outside the contract: rejected; it has the shape of an effect (a value rising on paddle hits, reset on a point), and reading the ball's current speed at each hit would let lateral forces leak into the ramp.
 
 ## Consequences
@@ -73,4 +84,5 @@ Amended 2026-11-22 ([M2 phase 8 report](../plans/m2-phase8-report.md)), after th
 - The paddle must expose its motion in the current step, for effects that read it at a hit.
 - An effect that needs a choice per rally takes it from the rally's seed and draws nothing itself (amended 2026-11-13).
 - An effect whose flaw looks back over earlier flights reads the flight start for it and keeps no history; every place a flight start is built states whether its count is held (amended 2026-11-20).
+- Whoever places obstacles keeps them off the ball's serve, and more than a step's travel from each line the paddle sweep and the prediction take the ball's path to be straight at (amended 2026-11-24).
 - Amends `docs/architecture.md` rule 6 and its "Effects" section, and `.claude/rules/pong_core.md`.

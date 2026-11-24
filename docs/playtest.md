@@ -25,6 +25,7 @@ Proposed change (at most one):
 - Keyboard ghosting: both seats holding up, down, and action at once (six keys) all register on the kids' keyboard. Result required before C3 (spec 1.8.2). Outcome 2026-11-07: no; at most five of the six register. Every in-play hold of one direction plus action per seat registers (session below).
 - Catch-up bias (M2 spec 2.4.6): does one child win Chaos matches against the other so often that the loser stops wanting to play? M2 ships no bias; if yes, revisit one. No outcome yet.
 - Wind and Spin (M2 spec 2.6): they share one field with different causes. Do the children tell them apart in play? Outcome 2026-11-14: not observed directly. The parent reports that the children like the two best together, "the combination of Wind and Spin in the same rally", which names them as two; no child was reported telling which of the two bent a ball (session below).
+- Blocks sooner (M2 spec 2.6.6's MAY, plan 11.4): the first block arrives at return 5 and the second at 8; lenses arrive at 3, 5, and 7. After more play, do the children still want blocks as early as lenses? Decided before milestone close. No outcome yet.
 
 ## Sessions
 
@@ -164,3 +165,22 @@ Interpretation (may be empty):
 - Nothing was reported about the rotation at full breadth, which now has a bench of two, about one child beating the other too often, or about telling Wind from Spin: the interval (spec 2.10.3) and the two open hypotheses stay as they are.
 Proposed change (at most one):
 - None. The parent ruled to close the phase with Lens as it is: "Record the close of the phase". Neither a retune nor a drop (spec 2.10.2).
+
+### 2026-11-24 · M2 phase 9 (plan E.6, spec 2.10.1; Blocks) · the parent, then the children · build feat/blocks at 9c0bbef; which build the children played was not stated
+Duration: not recorded.
+Reported by the parent on 2026-11-24, after the session; no notes were taken during it. Who played whom, how many sessions, and at which cap were not reported.
+Observations (what happened, in order):
+- The parent hand-checked the build and passed it.
+- The children then played. Chaos has Shrink, Wind, Spin, Fog, Lens, and Blocks in its bag.
+- The parent reports that the children enjoyed the blocks and called Blocks the most chaotic effect.
+- The children suggested that blocks come sooner in a rally, at the time lenses arrive.
+- Every number of Blocks' tuning is as it was first set; the parent changed none.
+Quotes (verbatim, by role):
+- the parent: "Hand check passes. Playtest successful."
+- the parent, of the children: "Kids enjoyed the blocks, saying this is actually the most chaotic effect, and maybe the blocks should come sooner (the same time as lenses arrive)."
+Interpretation (may be empty):
+- The parent's reading: a successful session; the effect stays.
+- Claude's reading: nothing was reported about a ball passing through a spent block, about the new block's brief brightening, about either cue, or about returns coming back off a block to the side that hit them. Whether those read in play is not known.
+- Nothing was reported about the rotation at full breadth, which now has a bench of three, about one child beating the other too often, or about telling Wind from Spin: the interval (spec 2.10.3) and the two open hypotheses stay as they are.
+Proposed change (at most one):
+- None now. The parent ruled to keep Blocks as it is: "Effect stays." The children's suggestion is recorded as a MAY, in the parent's words "pending on more feedback on them, to be decided before the milestone close" (spec 2.6.6, plan 11.4), and as a hypothesis above.
