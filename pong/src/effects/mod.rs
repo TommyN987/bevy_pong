@@ -134,6 +134,15 @@ mod tests {
         assert!(half.icon.is_some() && half.join_cue.is_some() && half.view.is_some());
     }
 
+    /// M2 spec 2.6.6 and R1: Blocks states all three. Where a block stands
+    /// is the one thing the base views cannot show, so it has a view of its
+    /// own.
+    #[test]
+    fn blocks_states_an_icon_a_join_cue_and_a_view() {
+        let half = shell_half(EffectId::Blocks);
+        assert!(half.icon.is_some() && half.join_cue.is_some() && half.view.is_some());
+    }
+
     /// M2 spec 2.7.1 and R1: an effect the schedule can bring into play is
     /// announced, by an icon and a cue.
     #[test]

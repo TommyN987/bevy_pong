@@ -3,9 +3,9 @@
 //! names and their sounds, not how a sound is made, so a different bank
 //! changes nothing here.
 //!
-//! One cue is limited: the wall's (M2 spec 2.6.2). The core reports every
-//! bounce, since each one happened; only how often it sounds is decided
-//! here.
+//! Two cues are limited: the wall's (M2 spec 2.6.2) and the obstacle's (M2
+//! spec 2.2.6). The core reports every bounce, since each one happened;
+//! only how often it sounds is decided here.
 
 use std::time::Duration;
 
@@ -13,7 +13,9 @@ use bevy::audio::{AudioPlayer, PlaybackSettings, Volume};
 use bevy::ecs::message::MessageReader;
 use bevy::ecs::system::{Commands, Local, Res, SystemParam};
 use bevy::time::Time;
-use pong_core::domain::{BallHitPaddle, BallHitWall, EffectStarted, MatchEnded, PointScored};
+use pong_core::domain::{
+    BallHitObstacle, BallHitPaddle, BallHitWall, EffectStarted, MatchEnded, PointScored,
+};
 use pong_core::features::persistence::model::{Settings, Volume as SavedVolume};
 
 use super::{Cue, CueSounds};
@@ -23,46 +25,61 @@ use super::{Cue, CueSounds};
 pub(super) struct CoreEvents<'w, 's> {
     paddle_hits: MessageReader<'w, 's, BallHitPaddle>,
     wall_hits: MessageReader<'w, 's, BallHitWall>,
+    obstacle_hits: MessageReader<'w, 's, BallHitObstacle>,
     points: MessageReader<'w, 's, PointScored>,
     wins: MessageReader<'w, 's, MatchEnded>,
     joins: MessageReader<'w, 's, EffectStarted>,
 }
 
-/// The least time between two wall cues. Wind can pin a slow ball against a
-/// wall, where it bounces every other step: unlimited, thirty cues a second.
+/// The least time between two cues of one limited kind. Wind can pin a slow
+/// ball against a wall, where it bounces every other step, and a ball can
+/// rattle between two blocks as fast: unlimited, thirty cues a second.
 /// Under any bounce play makes: wall to wall takes the ball over a quarter
 /// of a second at its fastest.
-const WALL_CUE_GAP: Duration = Duration::from_millis(150);
+const BOUNCE_CUE_GAP: Duration = Duration::from_millis(150);
 
-/// Whether a wall hit at `now` sounds, the last wall cue having played at
-/// `last`.
-fn wall_cue_is_due(now: Duration, last: Option<Duration>) -> bool {
-    last.is_none_or(|last| now.saturating_sub(last) >= WALL_CUE_GAP)
+/// When each limited cue last played, each on its own: a wall bounce does
+/// not silence a bounce off a block.
+#[derive(Debug, Default)]
+pub(super) struct LastBounceCues {
+    wall: Option<Duration>,
+    obstacle: Option<Duration>,
+}
+
+/// Whether a limited cue sounds for the `hits` read this frame, at `now`:
+/// one at most for a frame's hits, and none if the last of its kind, played
+/// at `last`, is under [`BOUNCE_CUE_GAP`] old. Notes the time when it does.
+fn bounce_cue_is_due(hits: usize, now: Duration, last: &mut Option<Duration>) -> bool {
+    let due = hits > 0 && last.is_none_or(|last| now.saturating_sub(last) >= BOUNCE_CUE_GAP);
+    if due {
+        *last = Some(now);
+    }
+    due
 }
 
 /// Spawns one player per event read, and one at most for a frame's wall
-/// hits, none if the last wall cue is under [`WALL_CUE_GAP`] old. Each
-/// despawns once played; the volume is the settings' when it starts, so a
-/// change applies from the next cue.
+/// hits and one for its bounces off obstacles, each limited on its own
+/// ([`bounce_cue_is_due`]). Each despawns once played; the volume is the
+/// settings' when it starts, so a change applies from the next cue.
 pub(super) fn play_cues(
     mut commands: Commands,
     sounds: Res<CueSounds>,
     settings: Res<Settings>,
     time: Res<Time>,
-    mut last_wall_cue: Local<Option<Duration>>,
+    mut last: Local<LastBounceCues>,
     mut heard: CoreEvents,
 ) {
     let playback = PlaybackSettings::DESPAWN.with_volume(volume(settings.volume));
-    let wall_hit = heard.wall_hits.read().count() > 0;
-    let wall_cue = wall_hit && wall_cue_is_due(time.elapsed(), *last_wall_cue);
-    if wall_cue {
-        *last_wall_cue = Some(time.elapsed());
-    }
+    let now = time.elapsed();
+    let wall_cue = bounce_cue_is_due(heard.wall_hits.read().count(), now, &mut last.wall);
+    let obstacle_cue =
+        bounce_cue_is_due(heard.obstacle_hits.read().count(), now, &mut last.obstacle);
     let cues = heard
         .paddle_hits
         .read()
         .map(|_| Cue::PaddleHit)
         .chain(wall_cue.then_some(Cue::WallHit))
+        .chain(obstacle_cue.then_some(Cue::ObstacleHit))
         .chain(heard.points.read().map(|_| Cue::Point))
         .chain(heard.wins.read().map(|_| Cue::MatchWon));
     for cue in cues {

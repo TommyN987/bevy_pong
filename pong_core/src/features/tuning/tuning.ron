@@ -53,7 +53,7 @@
         chaos: (
             per_hit_increase: 3.0,
             always: [speed],
-            bag: [shrink, wind, spin, fog, lens],
+            bag: [shrink, wind, spin, fog, lens, blocks],
             thresholds_percent: [30, 70],
             rotate_every_points: 1,
         ),
@@ -126,7 +126,8 @@
         // Blocks appear on the floor at a paddle return and stay until the
         // point: solid, each as long as the default paddle and as thick as
         // a paddle, and the ball bounces off them (ball.contacts_per_step,
-        // ball.obstacle_bounces_per_flight, ball.max_deflection_degrees).
+        // ball.obstacle_bounces_per_flight, ball.max_deflection_degrees,
+        // ball.speed_cap).
         // The dial is the count of blocks
         // drawn, from none to max_count; each has a copy mirrored across
         // midfield besides. It may not start to move at return 0: a serve

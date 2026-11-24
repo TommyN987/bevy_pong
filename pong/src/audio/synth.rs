@@ -70,6 +70,8 @@ impl SoundBank for Synth {
         let (notes, timbre): (&[Note], _) = match cue {
             Cue::PaddleHit => (&[tone(&[660.0], 0.07)], PLAIN),
             Cue::WallHit => (&[tone(&[330.0], 0.05)], PLAIN),
+            // Between the paddle's note and the wall's, and duller: a knock.
+            Cue::ObstacleHit => (&[tone(&[440.0], 0.045)], BRASS),
             Cue::Point => (
                 &[Note {
                     hz: &[880.0],
@@ -225,9 +227,10 @@ mod tests {
         );
     }
 
-    /// Spec 1.6.4: four distinct sounds.
+    /// Spec 1.6.4: distinct sounds, the obstacle's of M2 spec 2.2.6 among
+    /// them.
     #[test]
-    fn the_four_cues_sound_different() {
+    fn the_cues_sound_different() {
         for (index, cue) in Cue::ALL.into_iter().enumerate() {
             for other in Cue::ALL.into_iter().skip(index + 1) {
                 assert_ne!(

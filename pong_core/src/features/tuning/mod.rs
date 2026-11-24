@@ -1045,11 +1045,14 @@ impl BallTuning {
     /// obstacle channel (M2 spec 2.2.6, 2.2.6.1). The contacts in one fixed
     /// step and the bounces in one flight are tuned; the horizontal floor
     /// is the paddle's, so an obstacle sends the ball no steeper than
-    /// [`max_deflection`](Self::max_deflection).
+    /// [`max_deflection`](Self::max_deflection); and the speed cap is the
+    /// launch's, so an obstacle sends it no faster than
+    /// [`speed_cap`](Self::speed_cap) (M2 spec 2.2.2).
     #[must_use]
     pub const fn bounce_rule(self) -> BounceRule {
         BounceRule::new(self.contacts_per_step, self.max_deflection)
             .with_bounces_per_flight(self.obstacle_bounces_per_flight)
+            .no_faster_than(self.speed_cap)
     }
 
     /// Largest angle from straight-across a serve can take; the serve samples within it.
@@ -2691,7 +2694,8 @@ mod tests {
 
     /// M2 spec 2.2.6 and 2.2.6.1: the obstacle channel's bounds are the
     /// ball's numbers. The contacts in a step and the bounces in a flight
-    /// are tuned; the floor is the steepest a paddle can send the ball.
+    /// are tuned; the floor is the steepest a paddle can send the ball, and
+    /// the fastest it leaves an obstacle is the speed cap.
     #[test]
     fn the_ball_bounces_off_obstacles_by_the_tuned_counts_and_no_steeper_than_a_paddle_sends_it() {
         let ball = valid().ball();
@@ -2702,6 +2706,7 @@ mod tests {
                 ball.max_deflection()
             )
             .with_bounces_per_flight(NonZeroU16::new(6).expect("six is not zero"))
+            .no_faster_than(250.0)
         );
         let fewer = Tuning::from_ron(&with("contacts_per_step", "2")).expect("two is valid");
         assert_eq!(fewer.ball().bounce_rule().contacts_per_step().get(), 2);

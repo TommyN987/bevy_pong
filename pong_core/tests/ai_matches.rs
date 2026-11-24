@@ -233,7 +233,23 @@ fn assert_rallies_shorten(what: &str, rungs: &[RallyLengths]) {
 /// few hits long, so many are needed for a steady mean and they cost little;
 /// two-star rallies at a low dial never end, and each costs its hit limit.
 fn seeds_per_rung(stars_each: Difficulty) -> std::ops::Range<u64> {
-    if stars_each == ONE { 0..8 } else { 0..2 }
+    if stars_each == ONE { 0..24 } else { 0..2 }
+}
+
+/// Further seeds for a rung of a dial test whose rallies all ended at
+/// [`seeds_per_rung`]'s. Such a rung is compared by its mean, and two
+/// seeds' fifteen two-star rallies leave a mean of three or four hits
+/// wobbling by more than [`NOISE`] whenever a new bag effect reshuffles the
+/// seeded draws (M2 phase 9 report). A rung with a rally that never ended
+/// is compared by its unended rallies and costs its hit limit a seed: it
+/// gets no more. One star has its many already.
+fn more_seeds_for_an_ended_rung(stars_each: Difficulty) -> std::ops::Range<u64> {
+    let seeds = seeds_per_rung(stars_each);
+    if stars_each == ONE {
+        seeds.end..seeds.end
+    } else {
+        seeds.end..6
+    }
 }
 
 /// Seeds for the mirror match of `stars_each` at `level` of the stack.
@@ -332,7 +348,11 @@ fn rallies_up_the_dial(effect: EffectId, stars_each: Difficulty) -> Vec<RallyLen
                 rally_hit_limit: SLOW_RALLY_HIT_LIMIT,
                 ..chaos_match(stars_each, stars_each)
             };
-            let lengths = lengths(&play_seeds(&setup, seeds_per_rung(stars_each)));
+            let mut played = play_seeds(&setup, seeds_per_rung(stars_each));
+            if lengths(&played).unended == 0 {
+                played.extend(play_seeds(&setup, more_seeds_for_an_ended_rung(stars_each)));
+            }
+            let lengths = lengths(&played);
             println!(
                 "dial, {effect:?} alone at {returns} returns, {}: {lengths}",
                 stars(&setup)
@@ -343,47 +363,51 @@ fn rallies_up_the_dial(effect: EffectId, stars_each: Difficulty) -> Vec<RallyLen
 }
 
 /// How many effects Chaos's bag can hold and still have each one measured:
-/// one test below per place in the bag.
+/// two tests below per place in the bag.
 const BAG_PLACES: usize = 7;
 
 /// M2 spec 2.5.2 and R3, per effect (plan E.4): an effect raises the miss
 /// probability, monotone in its dial; falsified if rally length does not
 /// shorten as the dial rises. The effect at `place` in Chaos's bag is
 /// measured, whichever it is, so a new effect is held to this with no edit
-/// here. One test per place keeps each inside the per-test time limit
-/// however long the bag grows; a place the bag does not fill yet has
-/// nothing to measure, and its test says so and passes.
+/// here. A place the bag does not fill yet has nothing to measure, and its
+/// tests say so and pass.
 ///
-/// Mirror matches of one and of two stars. Three stars' aim error is inside
-/// the reach of the shortest paddle, so Shrink alone ends none of their
-/// rallies at any rung (M2 phase 4 report).
-fn the_bag_effect_alone_shortens_rallies_as_its_dial_rises(place: usize) {
+/// The mirror match of `stars_each`: one star, and two. Three stars' aim
+/// error is inside the reach of the shortest paddle, so Shrink alone ends
+/// none of their rallies at any rung (M2 phase 4 report). One test per
+/// place and per star keeps each inside the per-test time limit however
+/// long the bag grows, and however many seeds a steady mean asks for.
+fn the_bag_effect_alone_shortens_rallies_as_its_dial_rises(place: usize, stars_each: Difficulty) {
     let tuning = Tuning::from_ron(EMBEDDED_RON).expect("the embedded tuning is valid");
     let Some(&effect) = tuning.mode(chaos()).bag().get(place) else {
         println!("dial: Chaos's bag has no effect at place {place}");
         return;
     };
-    for stars_each in [ONE, TWO] {
-        assert_rallies_shorten(
-            &format!("{effect:?} alone, {} stars", stars_each.stars()),
-            &rallies_up_the_dial(effect, stars_each),
-        );
-    }
+    assert_rallies_shorten(
+        &format!("{effect:?} alone, {} stars", stars_each.stars()),
+        &rallies_up_the_dial(effect, stars_each),
+    );
 }
 
-macro_rules! one_dial_test_per_bag_place {
-    ($($test:ident: $place:expr,)*) => {
+macro_rules! two_dial_tests_per_bag_place {
+    ($($one_star:ident, $two_stars:ident: $place:expr,)*) => {
         $(
             #[test]
-            fn $test() {
-                the_bag_effect_alone_shortens_rallies_as_its_dial_rises($place);
+            fn $one_star() {
+                the_bag_effect_alone_shortens_rallies_as_its_dial_rises($place, ONE);
+            }
+
+            #[test]
+            fn $two_stars() {
+                the_bag_effect_alone_shortens_rallies_as_its_dial_rises($place, TWO);
             }
         )*
 
-        /// Every effect of the bag has a place a test measures, and the bag
-        /// is not empty: no effect goes unmeasured for want of a test. The
-        /// tests' places are each place once, so none is measured twice
-        /// while another is skipped.
+        /// Every effect of the bag has a place a pair of tests measures,
+        /// and the bag is not empty: no effect goes unmeasured for want of
+        /// a test. The tests' places are each place once, so none is
+        /// measured twice while another is skipped.
         #[test]
         fn every_effect_of_chaos_bag_has_a_dial_test() {
             let places: &[usize] = &[$($place),*];
@@ -398,14 +422,21 @@ macro_rules! one_dial_test_per_bag_place {
     };
 }
 
-one_dial_test_per_bag_place! {
-    the_first_bag_effect_alone_shortens_rallies_as_its_dial_rises: 0,
-    the_second_bag_effect_alone_shortens_rallies_as_its_dial_rises: 1,
-    the_third_bag_effect_alone_shortens_rallies_as_its_dial_rises: 2,
-    the_fourth_bag_effect_alone_shortens_rallies_as_its_dial_rises: 3,
-    the_fifth_bag_effect_alone_shortens_rallies_as_its_dial_rises: 4,
-    the_sixth_bag_effect_alone_shortens_rallies_as_its_dial_rises: 5,
-    the_seventh_bag_effect_alone_shortens_rallies_as_its_dial_rises: 6,
+two_dial_tests_per_bag_place! {
+    the_first_bag_effect_alone_shortens_one_star_rallies_as_its_dial_rises,
+    the_first_bag_effect_alone_shortens_two_star_rallies_as_its_dial_rises: 0,
+    the_second_bag_effect_alone_shortens_one_star_rallies_as_its_dial_rises,
+    the_second_bag_effect_alone_shortens_two_star_rallies_as_its_dial_rises: 1,
+    the_third_bag_effect_alone_shortens_one_star_rallies_as_its_dial_rises,
+    the_third_bag_effect_alone_shortens_two_star_rallies_as_its_dial_rises: 2,
+    the_fourth_bag_effect_alone_shortens_one_star_rallies_as_its_dial_rises,
+    the_fourth_bag_effect_alone_shortens_two_star_rallies_as_its_dial_rises: 3,
+    the_fifth_bag_effect_alone_shortens_one_star_rallies_as_its_dial_rises,
+    the_fifth_bag_effect_alone_shortens_two_star_rallies_as_its_dial_rises: 4,
+    the_sixth_bag_effect_alone_shortens_one_star_rallies_as_its_dial_rises,
+    the_sixth_bag_effect_alone_shortens_two_star_rallies_as_its_dial_rises: 5,
+    the_seventh_bag_effect_alone_shortens_one_star_rallies_as_its_dial_rises,
+    the_seventh_bag_effect_alone_shortens_two_star_rallies_as_its_dial_rises: 6,
 }
 
 /// The comparisons above must be able to fail: a run pinned at the hit

@@ -157,8 +157,8 @@ fn leaves_from_the_skin(start: f32, travel: f32, reach: f32) -> bool {
 
 /// The obstacle channel's bounds (M2 spec 2.2.6), the base's and no
 /// effect's: how many contacts a ball may make in one fixed step, how steep
-/// it may leave an obstacle, and how often it may bounce off obstacles in
-/// one flight.
+/// and how fast it may leave an obstacle, and how often it may bounce off
+/// obstacles in one flight.
 ///
 /// The second is the horizontal floor. A mirror can send a ball straight up
 /// the arena, where it reaches no goal; a ball leaving an obstacle flies no
@@ -176,10 +176,11 @@ pub struct BounceRule {
     contacts_per_step: NonZeroU8,
     steepest: Option<MaxDeflection>,
     bounces_per_flight: NonZeroU16,
+    fastest: f32,
 }
 
-/// One contact a step, no floor, and no budget: the rule of a flight nobody
-/// gave one. A flight that carries obstacles is given the tuned rule by the
+/// One contact a step, no floor, no budget, and no speed cap: the rule of a
+/// flight nobody gave one. A flight that carries obstacles is given the tuned rule by the
 /// base.
 impl Default for BounceRule {
     fn default() -> Self {
@@ -187,6 +188,7 @@ impl Default for BounceRule {
             contacts_per_step: NonZeroU8::MIN,
             steepest: None,
             bounces_per_flight: NonZeroU16::MAX,
+            fastest: f32::INFINITY,
         }
     }
 }
@@ -200,6 +202,25 @@ impl BounceRule {
             contacts_per_step,
             steepest: Some(steepest),
             bounces_per_flight: NonZeroU16::MAX,
+            fastest: f32::INFINITY,
+        }
+    }
+
+    /// This rule with a speed cap: a ball leaves an obstacle no faster than
+    /// `speed`. Without it a ball leaves at the speed it came at.
+    ///
+    /// The cap is the launch's (M2 spec 2.2.2): a ball in a field may fly
+    /// faster than it, by its vertical speed only. A bounce turns vertical
+    /// speed into horizontal, which the swept paddle contact and the
+    /// sanity phase both hold to the cap.
+    ///
+    /// Precondition (the caller's): `speed` is positive, as a validated
+    /// speed cap is.
+    #[must_use]
+    pub const fn no_faster_than(self, speed: f32) -> Self {
+        Self {
+            fastest: speed,
+            ..self
         }
     }
 
@@ -236,14 +257,29 @@ impl BounceRule {
     /// back into the face. A ball mirrored straight up or down has no side:
     /// it takes the one the face looks to, and off a level face `+x`.
     ///
+    /// Then, with a speed cap, a ball faster than it is slowed to it along
+    /// the course it has.
+    ///
     /// Precondition (the caller's): `incoming` moves into the face, against
     /// `normal`, as a [`Contact`]'s sweep does.
-    /// Postcondition: the speed is `incoming`'s; the ball does not move
-    /// into the face; with a floor, its horizontal share of the speed is at
-    /// least the cosine of the floor's angle.
+    /// Postcondition: the speed is `incoming`'s, or the cap where that is
+    /// less; the ball does not move into the face; with a floor, its
+    /// horizontal share of the speed is at least the cosine of the floor's
+    /// angle.
     #[must_use]
     pub fn leaving(self, incoming: Vec2, normal: Vec2) -> Vec2 {
-        let mirrored = mirror(incoming, normal);
+        let leaving = self.floored(mirror(incoming, normal), normal);
+        let speed = leaving.length();
+        if speed > self.fastest {
+            leaving * (self.fastest / speed)
+        } else {
+            leaving
+        }
+    }
+
+    /// `mirrored`, the ball as a mirror on the face of `normal` left it,
+    /// turned to the floor's angle where it is steeper.
+    fn floored(self, mirrored: Vec2, normal: Vec2) -> Vec2 {
         let Some(steepest) = self.steepest else {
             return mirrored;
         };
@@ -338,7 +374,7 @@ pub struct ObstacleStep {
 /// Postcondition: the ball ends inside the walls, to rounding, and has
 /// passed through no obstacle while the flight had a bounce left; it made
 /// at most the rule's contacts in the step and its bounces in the flight; a
-/// bounce off an obstacle kept its speed.
+/// bounce off an obstacle kept its speed, or cut it to the rule's cap.
 #[must_use]
 pub fn advance_among_obstacles(
     arena: Arena,
@@ -797,6 +833,31 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// M2 spec 2.2.2: the speed cap is the launch's, and a ball in a field
+    /// may fly faster than it by its vertical speed only. A bounce turns
+    /// vertical speed into horizontal, so a ball leaves an obstacle no
+    /// faster than the cap; one that came slower leaves at its own speed.
+    #[test]
+    fn a_ball_leaves_an_obstacle_no_faster_than_the_speed_cap() {
+        let capped = floored().no_faster_than(250.0);
+        // 250 across and 190 down, as a field leaves a ball: 314 a second.
+        let fast = Vec2::new(250.0, -190.0);
+        for face in [Vec2::NEG_X, Vec2::Y, Vec2::from_angle(2.5)] {
+            if fast.dot(face) >= 0.0 {
+                continue;
+            }
+            let leaving = capped.leaving(fast, face);
+            assert_near(leaving.length(), 250.0, 1e-2);
+            assert!(leaving.dot(face) > 0.0, "{leaving}");
+            let uncapped = floored().leaving(fast, face);
+            assert_near(uncapped.length(), fast.length(), 1e-2);
+            // Slowed along its own course, not turned.
+            assert_vec_near(leaving, uncapped * (250.0 / fast.length()), 1e-2);
+        }
+        let slow = capped.leaving(Vec2::new(80.0, 0.0), Vec2::NEG_X);
+        assert_vec_near(slow, Vec2::new(-80.0, 0.0), 1e-4);
     }
 
     #[test]

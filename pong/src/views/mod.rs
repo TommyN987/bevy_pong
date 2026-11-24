@@ -36,6 +36,10 @@ pub(crate) mod layer {
     pub const LENS: f32 = 0.6;
     /// Wind's arrows: on the floor, under everything that plays.
     pub const WIND: f32 = 0.75;
+    /// Blocks' blocks: standing on the floor, above everything drawn on it
+    /// and the fog, which hides the ball only (M2 spec 2.2.9), and under
+    /// what plays.
+    pub const BLOCK: f32 = 0.9;
     pub const PADDLE: f32 = 1.0;
     pub const TRAIL: f32 = 1.5;
     pub const BALL: f32 = 2.0;
