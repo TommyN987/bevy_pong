@@ -332,8 +332,8 @@ mod tests {
 
     use super::{MirrorController, Sighting, intent_toward};
     use crate::domain::{
-        BallHitPaddle, Controller, Difficulty, EffectId, MatchConfig, Mode, PointScored, Random,
-        Seat, SeatPlayers,
+        BallHitObstacle, BallHitPaddle, Controller, Difficulty, EffectId, MatchConfig, Mode,
+        PointScored, Random, Seat, SeatPlayers,
     };
     use crate::features::ball::Ball;
     use crate::features::effects::lens::{Lens, PlacedLens};
@@ -353,7 +353,7 @@ mod tests {
     use crate::kernel::test_support::assert_near;
     use crate::testing::{
         ball_state, boot, enter_match, fixed_timestep, frame, headless_app, leave_match,
-        match_state, place_ball, record, recorded, start_match, take_recorded,
+        match_state, place_ball, record, recorded, run_until, start_match, take_recorded,
     };
 
     fn match_of(left: Controller, right: Controller) -> MatchConfig {
@@ -1452,24 +1452,31 @@ mod tests {
         paddle_motion: StepMotion,
     ) -> Outcome {
         launch_at_ai_in_the_flight(app, launch, |app| {
-            let returned = FlightStart {
-                returns,
-                hit: Some(Hit {
-                    side: Side::Left,
-                    paddle_motion,
-                }),
-                returns_held: false,
-            };
-            let flight = app
-                .world()
-                .resource::<ActiveEffects>()
-                .start_flight(returned);
-            app.world_mut()
-                .query_filtered::<&mut BallFlight, With<Ball>>()
-                .single_mut(app.world_mut())
-                .expect("exactly one ball")
-                .begin(flight);
+            begin_the_flight_of_a_return(app, returns, paddle_motion);
         })
+    }
+
+    /// Puts the ball in the flight the effects in play begin at the left
+    /// paddle's `returns`-th return of a rally that counts, the paddle
+    /// having moved as `paddle_motion` in the step of the hit.
+    fn begin_the_flight_of_a_return(app: &mut App, returns: u16, paddle_motion: StepMotion) {
+        let returned = FlightStart {
+            returns,
+            hit: Some(Hit {
+                side: Side::Left,
+                paddle_motion,
+            }),
+            returns_held: false,
+        };
+        let flight = app
+            .world()
+            .resource::<ActiveEffects>()
+            .start_flight(returned);
+        app.world_mut()
+            .query_filtered::<&mut BallFlight, With<Ball>>()
+            .single_mut(app.world_mut())
+            .expect("exactly one ball")
+            .begin(flight);
     }
 
     /// [`launch_at_ai_as_the_return`], the rally's first.
@@ -1984,5 +1991,260 @@ mod tests {
             Outcome::Missed,
             "through the lens at {lens:?}"
         );
+    }
+
+    // M2 spec 2.3.12 for Blocks, whose flaw is the second form in two parts
+    // (M2 spec 2.6.6, M2 phase 9 report): a star does not see a block until
+    // it has stood for some flights, and a block it sees it takes for more
+    // upright than it is, by a share of its tilt. R5: the AI predicts the
+    // bounces through the shared math, and the lag and the share are the
+    // dials of its flaw. R2: the same balls are returned or missed by
+    // where the hitter sent them.
+
+    /// The dial at its full count, whatever return the tuning puts that at:
+    /// by then every block has stood longer than any lag.
+    const EVERY_BLOCK_LONG_THERE: u16 = u16::MAX;
+
+    /// Three stars with no handicap of their own, who do not see a block
+    /// for `unseen_flights` flights and then believe `share` of its tilt.
+    fn no_handicap_reading_blocks(unseen_flights: u16, share: f32) -> Tuning {
+        let (before, blocks) = EMBEDDED_RON
+            .split_once("blocks: (")
+            .expect("the embedded tuning has a blocks section");
+        let (old_lag, old_share) = ("three_stars: 1)", "three_stars: 0.9)");
+        assert!(blocks.contains(old_lag), "three stars' lag not found");
+        assert!(blocks.contains(old_share), "three stars' share not found");
+        let blocks = blocks
+            .replacen(old_lag, &format!("three_stars: {unseen_flights})"), 1)
+            .replacen(old_share, &format!("three_stars: {share:?})"), 1)
+            .replace(
+                "three_stars: (reaction_delay_seconds: 0.24, prediction_error: 3.0)",
+                "three_stars: (reaction_delay_seconds: 0.0, prediction_error: 0.0)",
+            );
+        Tuning::from_ron(&format!("{before}blocks: ({blocks}")).expect("the crafted flaw is valid")
+    }
+
+    /// Forces Blocks beside Speed, in rallies that count their returns, and
+    /// records the ball's bounces off them.
+    fn force_blocks(app: &mut App) {
+        record::<BallHitObstacle>(app);
+        app.world_mut()
+            .resource_mut::<Sandbox>()
+            .toggle(EffectId::Blocks, &[EffectId::Speed]);
+    }
+
+    /// [`force_blocks`], every flight starting at a held count of
+    /// `returns`: a steady floor, on which no block is new.
+    fn force_blocks_at(app: &mut App, returns: u16) {
+        force_blocks(app);
+        app.world_mut()
+            .resource_mut::<Sandbox>()
+            .hold_returns(Some(returns));
+    }
+
+    /// [`ai_on_the_right_playing`] with Blocks beside Speed, every flight
+    /// starting at `returns`.
+    fn ai_on_the_right_playing_among_blocks(tuning: Tuning, returns: u16) -> App {
+        ai_on_the_right_playing_after(tuning, |app| force_blocks_at(app, returns))
+    }
+
+    /// The first return at which the dial of `tuning` holds `count` drawn
+    /// blocks.
+    fn the_return_that_stands(count: u16, tuning: &Tuning) -> u16 {
+        (0..=u16::MAX)
+            .find(|&returns| tuning.effects().blocks().count().after(returns) >= count)
+            .expect("the dial reaches that count")
+    }
+
+    /// [`launches`], each at the serve speed: slow enough that a paddle
+    /// reaches any ball a block turns its way, so that a miss is a
+    /// misjudgement and not a ball no paddle could reach.
+    fn slow_launches(count: usize, tuning: &Tuning) -> Vec<Motion> {
+        launches(count, tuning)
+            .into_iter()
+            .map(|launch| {
+                ball(
+                    launch.position,
+                    launch.velocity / launch.velocity.length() * tuning.ball().serve_speed(),
+                )
+            })
+            .collect()
+    }
+
+    /// How a launch at the AI among blocks ended.
+    #[derive(Debug, PartialEq)]
+    enum AmongBlocks {
+        /// The AI's paddle turned the ball back, after this many bounces
+        /// off blocks.
+        Returned { bounces: usize },
+        /// The ball went past the AI's paddle.
+        Missed,
+        /// A block turned the ball back to the side it came from: it never
+        /// asked the AI for a return.
+        TurnedAway,
+    }
+
+    /// [`launch_at_ai_in_the_flight`] for a floor of blocks, where a launch
+    /// may be turned back to the left and never reach the AI, and where a
+    /// ball may take as long as a flight may last.
+    fn launch_among_blocks(
+        app: &mut App,
+        launch: Motion,
+        begin_flight: impl FnOnce(&mut App),
+    ) -> AmongBlocks {
+        // A launch that was missed ended in a point: wait it out. The
+        // point's own frame still reads as play, since the state changes a
+        // frame after the message, so step past it first.
+        frame(app);
+        run_until(
+            app,
+            |app| match_state(app) == MatchState::Playing,
+            600,
+            "play never came back",
+        );
+        place_ball(app, Vec2::ZERO, Vec2::ZERO);
+        for _ in 0..30 {
+            frame(app);
+        }
+        assert_eq!(match_state(app), MatchState::Playing, "play stopped");
+        take_recorded::<BallHitPaddle>(app);
+        take_recorded::<PointScored>(app);
+        take_recorded::<BallHitObstacle>(app);
+        place_ball(app, launch.position, launch.velocity);
+        begin_flight(app);
+        for _ in 0..1_200 {
+            frame(app);
+            let touches = recorded::<BallHitPaddle>(app);
+            if touches.iter().any(|hit| hit.side == Side::Left) {
+                return AmongBlocks::TurnedAway;
+            }
+            if !touches.is_empty() && ball_state(app).1.x < 0.0 {
+                return AmongBlocks::Returned {
+                    bounces: recorded::<BallHitObstacle>(app).len(),
+                };
+            }
+            if !recorded::<PointScored>(app).is_empty() {
+                return AmongBlocks::Missed;
+            }
+            // Back where it was launched from and flying left: the launch
+            // is over before it scores at the left, or a run of launches
+            // turned away would play the match out.
+            let (position, velocity) = ball_state(app);
+            if velocity.x < 0.0 && position.x <= launch.position.x {
+                return AmongBlocks::TurnedAway;
+            }
+        }
+        panic!("launch {launch:?} was neither returned nor scored");
+    }
+
+    /// R5: among blocks an AI that sees them as they are, with no handicap
+    /// of its own, returns every ball that reaches it, and it does so
+    /// after bounces as well as on a clear run.
+    #[test]
+    fn among_blocks_an_ai_that_sees_them_as_they_are_and_has_no_handicap_returns_every_ball() {
+        let tuning = no_handicap_reading_blocks(0, 1.0);
+        let balls = slow_launches(200, &tuning);
+        let mut app = ai_on_the_right_playing_among_blocks(tuning, EVERY_BLOCK_LONG_THERE);
+        let (mut returned, mut off_a_block) = (0, 0);
+        for (i, launch) in balls.into_iter().enumerate() {
+            match launch_among_blocks(&mut app, launch, |_| {}) {
+                AmongBlocks::Returned { bounces } => {
+                    returned += 1;
+                    off_a_block += usize::from(bounces > 0);
+                }
+                AmongBlocks::TurnedAway => {}
+                AmongBlocks::Missed => panic!("launch {i} got past: {launch:?}"),
+            }
+        }
+        // At the embedded floor 90 reach the AI, 15 of them off a block;
+        // the rest are turned back to the side they came from.
+        assert!(
+            returned >= 60,
+            "only {returned} of 200 launches reached the AI"
+        );
+        assert!(off_a_block >= 10, "only {off_a_block} came off a block");
+    }
+
+    /// Taking a block tilted up to 35 degrees for a fifth as tilted puts a
+    /// bounce off it tens of degrees from where the AI expects it.
+    #[test]
+    fn among_blocks_an_ai_that_believes_too_little_of_their_tilt_misses_some_balls() {
+        let tuning = no_handicap_reading_blocks(0, 0.2);
+        let balls = slow_launches(60, &tuning);
+        let mut app = ai_on_the_right_playing_among_blocks(tuning, EVERY_BLOCK_LONG_THERE);
+        let missed = balls
+            .into_iter()
+            .any(|launch| launch_among_blocks(&mut app, launch, |_| {}) == AmongBlocks::Missed);
+        assert!(
+            missed,
+            "believing a fifth of the blocks' tilt never missed in sixty launches"
+        );
+    }
+
+    /// M2 spec 2.6.6: the belief lags. In a rally that counts, on the
+    /// flight the last block appears, an AI that would read a block it
+    /// sees truly sees none yet if its lag is long enough: it aims
+    /// straight across a full floor.
+    #[test]
+    fn among_blocks_too_new_for_it_to_see_an_ai_that_would_read_them_truly_misses_some_balls() {
+        let tuning = no_handicap_reading_blocks(50, 1.0);
+        let balls = slow_launches(60, &tuning);
+        let last_arrival =
+            the_return_that_stands(tuning.effects().blocks().count().full(), &tuning);
+        let mut app = ai_on_the_right_playing_after(tuning, force_blocks);
+        let missed = balls.into_iter().any(|launch| {
+            launch_among_blocks(&mut app, launch, |app| {
+                begin_the_flight_of_a_return(app, last_arrival, StepMotion::Still);
+            }) == AmongBlocks::Missed
+        });
+        assert!(
+            missed,
+            "a floor of unseen blocks never missed in sixty launches"
+        );
+    }
+
+    /// The lag's own dial: the same AI lets none of the same balls past
+    /// once the blocks have stood longer than its lag, in a rally that
+    /// counts; and under a held count, where no block is new (M2 spec
+    /// 2.9.1), from the return that brings the last block on.
+    #[test]
+    fn once_the_blocks_have_stood_long_enough_the_same_ai_misses_no_ball() {
+        let tuning = no_handicap_reading_blocks(50, 1.0);
+        let balls = slow_launches(60, &tuning);
+        let last_arrival =
+            the_return_that_stands(tuning.effects().blocks().count().full(), &tuning);
+        let mut counting = ai_on_the_right_playing_after(tuning.clone(), force_blocks);
+        let mut held = ai_on_the_right_playing_among_blocks(tuning, last_arrival);
+        for (i, launch) in balls.into_iter().enumerate() {
+            assert_ne!(
+                launch_among_blocks(&mut counting, launch, |app| {
+                    begin_the_flight_of_a_return(app, last_arrival + 50, StepMotion::Still);
+                }),
+                AmongBlocks::Missed,
+                "fifty returns on, launch {i}: {launch:?}"
+            );
+            assert_ne!(
+                launch_among_blocks(&mut held, launch, |_| {}),
+                AmongBlocks::Missed,
+                "under a held count, launch {i}: {launch:?}"
+            );
+        }
+    }
+
+    /// R2, and the flaw's own dial: an AI slow to see blocks and wrong
+    /// about their tilt returns every ball while the floor is empty. There
+    /// is no block to misjudge.
+    #[test]
+    fn with_no_block_on_the_floor_a_misjudging_ai_returns_every_ball() {
+        let tuning = no_handicap_reading_blocks(50, 0.2);
+        let balls = slow_launches(40, &tuning);
+        let mut app = ai_on_the_right_playing_among_blocks(tuning, 0);
+        for (i, launch) in balls.into_iter().enumerate() {
+            assert_eq!(
+                launch_among_blocks(&mut app, launch, |_| {}),
+                AmongBlocks::Returned { bounces: 0 },
+                "launch {i}: {launch:?}"
+            );
+        }
     }
 }

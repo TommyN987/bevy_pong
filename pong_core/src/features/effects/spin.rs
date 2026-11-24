@@ -62,6 +62,7 @@ impl Spin {
             speed_gain: 0.0,
             paddle_height_factor: 1.0,
             field,
+            obstacles: Vec::new(),
         }
     }
 }

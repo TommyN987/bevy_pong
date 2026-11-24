@@ -52,6 +52,13 @@ pub struct Impact {
 ///
 /// A circle that starts overlapping gets `toi` zero and the normal of the face
 /// it crossed most recently, so a paddle that moved onto the ball still deflects it.
+/// That holds by any depth and whichever way the circle moves, one that is
+/// leaving included, and a circle sliding along a face it starts on counts
+/// as inside. A mirror on the face reported turns a leaving circle back in,
+/// and it then shuttles and does not leave (M2 plan 9.1). A caller that
+/// mirrors must not start a sweep inside: obstacles are swept through
+/// [`swept_circle_obstacle`](super::obstacle::swept_circle_obstacle), which
+/// sees to it.
 ///
 /// A circle that starts touching the rectangle and moves away from it misses:
 /// it is leaving. A contact that ends a step exactly on a face starts the
@@ -131,6 +138,7 @@ mod tests {
     use bevy::math::{Rect, Vec2};
 
     use super::{Face, swept_circle_rect};
+    use crate::kernel::reflect::mirror;
     use crate::kernel::test_support::{assert_near, assert_vec_near, unit_radius};
 
     /// A right-side paddle two units thick, twelve tall, face at x = 69.
@@ -276,6 +284,87 @@ mod tests {
         };
         assert_near(impact.toi, 0.0, 1e-6);
         assert_eq!(impact.face, Face::Left);
+    }
+
+    /// M2 plan 9.1: a start inside the grown rectangle is an impact at time
+    /// zero by any depth, and whichever way the ball moves. The face is the
+    /// one behind it, so its normal turns a ball that was leaving back in.
+    #[test]
+    fn a_sweep_that_starts_a_hair_inside_and_moves_out_is_an_impact_that_turns_it_back_in() {
+        // Expanded face at x = 68: the ball's centre starts a hair past it.
+        let Some(impact) = swept_circle_rect(
+            Vec2::new(68.0 + 1e-4, 0.0),
+            unit_radius(),
+            Vec2::new(-1.0, 0.0),
+            paddle(),
+        ) else {
+            panic!("a ball a hair inside, leaving, reported no impact");
+        };
+        assert_near(impact.toi, 0.0, 1e-6);
+        assert_eq!(impact.face, Face::Right);
+        assert_vec_near(
+            mirror(Vec2::new(-1.0, 0.0), impact.face.normal()),
+            Vec2::new(1.0, 0.0),
+            1e-6,
+        );
+    }
+
+    /// M2 plan 9.1: the face named is the one on the axis the sweep, traced
+    /// back, entered last. A steep ball leaving by the near face is told it
+    /// struck the bottom, and a mirror there turns its vertical speed.
+    #[test]
+    fn a_steep_sweep_that_starts_a_hair_inside_and_moves_out_is_given_a_face_it_is_not_leaving_by()
+    {
+        let Some(impact) = swept_circle_rect(
+            Vec2::new(68.0 + 1e-4, 0.0),
+            unit_radius(),
+            Vec2::new(-0.3, 1.3),
+            paddle(),
+        ) else {
+            panic!("a ball a hair inside, leaving steeply, reported no impact");
+        };
+        assert_near(impact.toi, 0.0, 1e-6);
+        assert_eq!(impact.face, Face::Bottom);
+    }
+
+    /// M2 plan 9.1: the boundary counts as inside for a sweep along it. A
+    /// ball that starts on a face and slides along it, neither in nor out,
+    /// is an impact on the face behind it.
+    #[test]
+    fn a_sweep_along_the_face_it_starts_on_is_an_impact_on_the_face_behind_it() {
+        let Some(impact) = swept_circle_rect(
+            Vec2::new(68.0, 0.0),
+            unit_radius(),
+            Vec2::new(0.0, 1.0),
+            paddle(),
+        ) else {
+            panic!("a ball sliding along the face reported no impact");
+        };
+        assert_near(impact.toi, 0.0, 1e-6);
+        assert_eq!(impact.face, Face::Bottom);
+    }
+
+    /// M2 plan 9.1: under mirror reflection a ball that starts inside does
+    /// not leave. Each step is an impact at time zero that turns it round,
+    /// and the step's travel carries it as far back as the last carried it
+    /// forward. A paddle escapes this because a face hit launches by side
+    /// and is no mirror; a block that mirrors must never leave the ball
+    /// inside, not by a rounding.
+    #[test]
+    fn a_level_ball_a_hair_inside_shuttles_under_mirror_reflection_and_never_leaves() {
+        let mut position = Vec2::new(68.0 + 1e-4, 0.0);
+        let mut velocity = Vec2::new(-80.0, 0.0);
+        for step in 0..600 {
+            let displacement = velocity / 60.0;
+            let Some(impact) = swept_circle_rect(position, unit_radius(), displacement, paddle())
+            else {
+                panic!("the ball left on step {step}");
+            };
+            assert_near(impact.toi, 0.0, 1e-6);
+            velocity = mirror(velocity, impact.face.normal());
+            position += velocity / 60.0;
+        }
+        assert!((68.0..72.0).contains(&position.x), "{position:?}");
     }
 
     #[test]

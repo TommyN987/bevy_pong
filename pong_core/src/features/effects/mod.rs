@@ -29,8 +29,10 @@ use crate::features::tuning::Tuning;
 use crate::flow::phases::{BallInPlay, FixedStepPhase};
 use crate::flow::states::{AppState, MatchState};
 use crate::kernel::flight::{Contribution, Flight, FlightStart, Hit, StepMotion};
+use crate::kernel::obstacle::BounceRule;
 use crate::kernel::random::RallySeed;
 
+pub mod blocks;
 pub mod fog;
 pub mod lens;
 pub mod shrink;
@@ -110,6 +112,7 @@ fn build(id: EffectId, tuning: &Tuning, mode: Mode, rally: RallySeed) -> Box<dyn
         EffectId::Spin => Box::new(spin::Spin::new(tuning)),
         EffectId::Fog => Box::new(fog::Fog::new(tuning)),
         EffectId::Lens => Box::new(lens::Lens::new(tuning, rally)),
+        EffectId::Blocks => Box::new(blocks::Blocks::new(tuning, rally)),
     }
 }
 
@@ -173,7 +176,8 @@ impl Plugin for EffectsPlugin {
 /// commutatively.
 ///
 /// Invariant: `effects` holds exactly the effects `ids` names, each built
-/// from the tuning last seen, for `mode` and for the rally of `rally_seed`.
+/// from the tuning last seen, for `mode` and for the rally of `rally_seed`;
+/// `bounce_rule` is that tuning's.
 #[derive(Resource)]
 pub struct ActiveEffects {
     mode: Mode,
@@ -186,6 +190,9 @@ pub struct ActiveEffects {
     held_hit_motion: Option<StepMotion>,
     /// The seed of the rally in play, or about to be.
     rally_seed: RallySeed,
+    /// The base's bounds on the obstacle channel (M2 spec 2.2.6), stamped
+    /// on every flight: no effect states them.
+    bounce_rule: BounceRule,
 }
 
 /// No effects in play: what holds outside a match.
@@ -198,6 +205,7 @@ impl Default for ActiveEffects {
             held_returns: None,
             held_hit_motion: None,
             rally_seed: RallySeed::default(),
+            bounce_rule: BounceRule::default(),
         }
     }
 }
@@ -207,6 +215,7 @@ impl ActiveEffects {
     /// Escalation calls this; it takes hold at the next flight start.
     pub fn set(&mut self, ids: &[EffectId], tuning: &Tuning, mode: Mode) {
         self.mode = mode;
+        self.bounce_rule = tuning.ball().bounce_rule();
         self.ids = ids.to_vec();
         self.effects = ids
             .iter()
@@ -261,7 +270,9 @@ impl ActiveEffects {
     ///
     /// Postcondition: the flight is of the rally these effects are built
     /// for, and keeps that rally's seed ([`Flight::rally`]) after
-    /// [`rally_seed`](Self::rally_seed) has moved on to the next.
+    /// [`rally_seed`](Self::rally_seed) has moved on to the next. It
+    /// bounces off its obstacles by the tuned rule
+    /// ([`Flight::bounce_rule`]), whichever effects stood them there.
     #[must_use]
     pub fn start_flight(&self, start: FlightStart) -> Flight {
         let start = FlightStart {
@@ -277,6 +288,7 @@ impl ActiveEffects {
             self.effects.iter().map(|effect| effect.contribute(&start)),
         )
         .in_rally(self.rally_seed)
+        .bouncing_by(self.bounce_rule)
     }
 
     /// What an AI of `difficulty` makes of `flight`: every effect in play
@@ -425,8 +437,8 @@ impl Sandbox {
 ///
 /// Invariant: the flight is replaced only at a flight start, by
 /// [`begin`](Self::begin), and cleared only between rallies, by
-/// [`clear`](Self::clear); in between, only its clock advances. While
-/// cleared, the flight is the empty one.
+/// [`clear`](Self::clear); in between, only its clock and its count of
+/// bounces off obstacles advance. While cleared, the flight is the empty one.
 #[derive(Component, Debug, Default)]
 pub struct BallFlight {
     flight: Flight,
@@ -467,6 +479,12 @@ impl BallFlight {
     /// Advances the flight's clock by one fixed step.
     pub const fn tick(&mut self) {
         self.flight.tick();
+    }
+
+    /// Counts the bounces off obstacles of the step just taken, from which
+    /// the flight's bounce budget is spent (M2 spec 2.2.6.1).
+    pub fn bounced(&mut self, bounces: u8) {
+        self.flight.bounced(bounces);
     }
 }
 
@@ -605,13 +623,13 @@ mod tests {
     use bevy::math::Vec2;
     use bevy::state::state::NextState;
 
-    use super::probe::Misjudged;
+    use super::probe::{Misjudged, Standing};
     use super::wind::WindDirection;
-    use super::{ActiveEffects, BallFlight, Effect, Flaw, Sandbox};
+    use super::{ActiveEffects, BallFlight, Effect, Flaw, Sandbox, blocks, lens};
     use crate::app::error_policy::{ErrorPolicy, ErrorPolicyPlugin};
     use crate::domain::{
-        BallHitPaddle, Controller, Difficulty, EffectId, MatchConfig, Mode, Random, Seat,
-        SeatPlayers, SimFault,
+        BallHitObstacle, BallHitPaddle, Controller, Difficulty, EffectId, MatchConfig, Mode,
+        Random, Seat, SeatPlayers, SimFault,
     };
     use crate::features::ball::{Ball, Position, Velocity};
     use crate::features::paddle::Paddle;
@@ -622,6 +640,7 @@ mod tests {
     use crate::kernel::flight::{Contribution, Field, FlightStart, Hit, StepMotion};
     use crate::kernel::geometry::Side;
     use crate::kernel::integrate::Motion;
+    use crate::kernel::obstacle::{BounceRule, Obstacle};
     use crate::kernel::predict::crossing_y;
     use crate::kernel::random::RallySeed;
     use crate::kernel::test_support::assert_near;
@@ -1078,6 +1097,7 @@ mod tests {
                 speed_gain: 0.0,
                 paddle_height_factor: 1.0,
                 field: None,
+                obstacles: Vec::new(),
             }
         }
 
@@ -1089,6 +1109,7 @@ mod tests {
                     speed_gain: 0.0,
                     paddle_height_factor: 1.0,
                     field: None,
+                    obstacles: Vec::new(),
                 },
             }
         }
@@ -1288,6 +1309,7 @@ mod tests {
                 speed_gain: 0.0,
                 paddle_height_factor: 1.0,
                 field: Some(Box::new(Swing)),
+                obstacles: Vec::new(),
             }
         }
 
@@ -1369,6 +1391,103 @@ mod tests {
             "the field bends the course: {predicted} against {unforced}"
         );
         assert_near(flown_crossing(&mut app, target_x), predicted, 1e-2);
+    }
+
+    /// A block the size of the default paddle.
+    fn block(centre: Vec2, tilt: f32) -> Obstacle {
+        Obstacle::new(centre, Vec2::new(1.0, 7.0), tilt)
+    }
+
+    fn the_flights_bounce_rule(app: &mut App) -> BounceRule {
+        app.world_mut()
+            .query_filtered::<&BallFlight, With<Ball>>()
+            .single(app.world())
+            .expect("exactly one ball")
+            .flight()
+            .bounce_rule()
+    }
+
+    /// M2 spec 2.2.6: the obstacle channel's bounds are the base's. Every
+    /// flight, the serve's and each return's, bounces by the tuned rule.
+    #[test]
+    fn every_flight_bounces_by_the_tuned_rule() {
+        let mut app = playing();
+        let tuned = app.world().resource::<Tuning>().ball().bounce_rule();
+        assert_ne!(tuned, BounceRule::default());
+        for _ in 0..5 {
+            frame(&mut app);
+        }
+        assert_eq!(the_flights_bounce_rule(&mut app), tuned);
+        into_the_right_paddle(&mut app, Vec2::new(200.0, 0.0));
+        assert_eq!(returns(&mut app), 1);
+        assert_eq!(the_flights_bounce_rule(&mut app), tuned);
+    }
+
+    /// M2 spec 2.2.6 through the systems: the physics step bounces the ball
+    /// off its flight's obstacles as the kernel's prediction does. A level
+    /// return flies left, is turned back by a block there, turned again by
+    /// one on the right, and crosses where the kernel said at the return.
+    #[test]
+    fn among_obstacles_the_ball_crosses_where_the_kernel_predicts_from_its_flight() {
+        let mut app = playing();
+        record::<BallHitObstacle>(&mut app);
+        app.world_mut()
+            .resource_mut::<ActiveEffects>()
+            .add(Box::new(Standing::seen(vec![
+                block(Vec2::new(-30.0, 0.0), -0.1),
+                block(Vec2::new(40.0, -13.8), -0.1),
+            ])));
+        place_ball(&mut app, Vec2::new(72.0, 0.0), Vec2::new(200.0, 0.0));
+        frame(&mut app);
+        assert_eq!(returns(&mut app), 1);
+        let target_x = -60.0;
+        let predicted = predicted_crossing(&mut app, target_x);
+        let unhindered = straight_crossing(&mut app, target_x);
+        assert!(
+            (predicted - unhindered).abs() > 5.0,
+            "the blocks move the crossing: {predicted} against {unhindered}"
+        );
+        assert_near(flown_crossing(&mut app, target_x), predicted, 1e-2);
+        assert_eq!(
+            take_recorded::<BallHitObstacle>(&mut app),
+            [BallHitObstacle, BallHitObstacle]
+        );
+        assert_eq!(returns(&mut app), 1, "a block bounce starts no flight");
+    }
+
+    /// Two item effects lay their items from the one rally seed, each
+    /// through a generator of its own. Where a rally's first lens lies must
+    /// say nothing of where its first block stands: seeded alike, each
+    /// would lie the same share of the way across its room, the block on
+    /// top of the lens in every rally.
+    #[test]
+    fn a_rallys_first_block_and_first_lens_lie_independently_of_each_other() {
+        let tuning = Tuning::from_ron(EMBEDDED_RON).expect("the embedded tuning is valid");
+        let full = FlightStart {
+            returns: u16::MAX,
+            hit: None,
+            returns_held: false,
+        };
+        let lens = tuning.effects().lens();
+        let (lens_nearest, lens_farthest) = (
+            lens.radius(),
+            tuning.crossing_width() / 2.0 - lens.clear_run() - lens.radius(),
+        );
+        let room = tuning.block_room();
+        let mut apart = 0.0;
+        for rally in 0..200 {
+            let rally = RallySeed::new(rally);
+            let first_lens = lens::Lens::new(&tuning, rally).placed(&full)[0];
+            let first_block = blocks::Blocks::new(&tuning, rally).placed(&full)[0];
+            let lens_share =
+                (first_lens.centre.x.abs() - lens_nearest) / (lens_farthest - lens_nearest);
+            let block_share = (first_block.centre().x.abs() - room.nearest())
+                / (room.farthest() - room.nearest());
+            apart += (lens_share - block_share).abs();
+        }
+        // Two independent uniform shares lie a third apart on average.
+        let mean = apart / 200.0;
+        assert!(mean > 0.25, "a mean of {mean} of the room apart");
     }
 
     /// A match in play with Wind alone, every flight starting at `returns`:

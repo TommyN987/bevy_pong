@@ -12,6 +12,7 @@ use bevy::math::Vec2;
 
 use super::geometry::Side;
 use super::integrate::Motion;
+use super::obstacle::{BounceRule, Obstacle, ObstaclesInFlight};
 use super::random::RallySeed;
 
 /// What a paddle did in the current fixed step: the displacement it actually
@@ -139,20 +140,29 @@ pub struct Contribution {
     pub paddle_height_factor: f32,
     /// A lateral force acting for the whole flight, if any.
     pub field: Option<Box<dyn Field>>,
+    /// Solid obstacles standing on the floor for the whole flight, if any
+    /// (M2 spec 2.2.6). The base bounds how the ball bounces off them
+    /// ([`BounceRule`]).
+    pub obstacles: Vec<Obstacle>,
 }
 
 /// The composed state of one flight.
 ///
-/// Invariant: nothing but [`tick`](Self::tick) changes a flight once
-/// [`start`](Self::start) and [`in_rally`](Self::in_rally) have built it.
+/// Invariant: nothing but [`tick`](Self::tick) and
+/// [`bounced`](Self::bounced) changes a flight once [`start`](Self::start),
+/// [`in_rally`](Self::in_rally), and [`bouncing_by`](Self::bouncing_by)
+/// have built it: its clock and its count of bounces off obstacles move,
+/// and what the effects contributed does not.
 /// [`believed_as`](Self::believed_as) builds the one other kind: a belief
 /// about a flight, with that flight's start, rally, and clock, made to be
-/// predicted under and never to be flown.
+/// predicted under and never to be flown. A belief is about what the
+/// effects contribute; the bounce rule is the base's, and a believed flight
+/// keeps the true one.
 /// A flight is of one rally and keeps that rally's seed: the seed of the
 /// next rally is drawn while the last flight of this one is still on the
 /// ball, and whatever is derived from a flight is derived from its own.
-/// Returns and steps stop at `u16::MAX` rather than wrap; both are `u16`
-/// because every `u16` is exact in `f32`.
+/// Returns, steps, and bounces stop at `u16::MAX` rather than wrap; returns
+/// and steps are `u16` because every `u16` is exact in `f32`.
 #[derive(Debug)]
 pub struct Flight {
     began_at: FlightStart,
@@ -161,10 +171,13 @@ pub struct Flight {
     speed_gain: f32,
     paddle_height_factor: f32,
     fields: Vec<Box<dyn Field>>,
+    obstacles: Vec<Obstacle>,
+    bounce: BounceRule,
+    obstacle_bounces: u16,
 }
 
 /// The empty flight: no returns, no gain, paddles at their own height, no
-/// forces. What a ball is in between rallies.
+/// forces, no obstacles. What a ball is in between rallies.
 impl Default for Flight {
     fn default() -> Self {
         Self {
@@ -174,14 +187,18 @@ impl Default for Flight {
             speed_gain: 0.0,
             paddle_height_factor: 1.0,
             fields: Vec::new(),
+            obstacles: Vec::new(),
+            bounce: BounceRule::default(),
+            obstacle_bounces: 0,
         }
     }
 }
 
 impl Flight {
     /// The flight that begins at `start`, composed from each active effect's
-    /// contribution. Gains and fields compose by sum and height factors by
-    /// product, so the order of `contributions` does not matter.
+    /// contribution. Gains and fields compose by sum, height factors by
+    /// product, and obstacles by union, so the order of `contributions`
+    /// does not matter.
     #[must_use]
     pub fn start(
         start: FlightStart,
@@ -195,6 +212,7 @@ impl Flight {
             flight.speed_gain += contribution.speed_gain;
             flight.paddle_height_factor *= contribution.paddle_height_factor;
             flight.fields.extend(contribution.field);
+            flight.obstacles.extend(contribution.obstacles);
         }
         flight
     }
@@ -206,10 +224,22 @@ impl Flight {
         Self { rally, ..self }
     }
 
+    /// This flight bouncing off its obstacles by `rule`: the base's bounds
+    /// on the obstacle channel (M2 spec 2.2.6). Without it a flight bounces
+    /// by [`BounceRule::default`].
+    #[must_use]
+    pub fn bouncing_by(self, rule: BounceRule) -> Self {
+        Self {
+            bounce: rule,
+            ..self
+        }
+    }
+
     /// This flight as an observer believes it (M2 spec 2.3.12): the same
     /// start, rally, and clock, composed from `believed` contributions in
-    /// place of the true ones. Prediction under the result is what an AI
-    /// with that belief expects the ball to do.
+    /// place of the true ones, with the bounces off obstacles the flight
+    /// has made, which an observer has seen. Prediction under the result is
+    /// what an AI with that belief expects the ball to do.
     ///
     /// Precondition (the caller's): `believed` holds what each effect of
     /// this flight is believed to contribute. Believing every effect's true
@@ -219,6 +249,8 @@ impl Flight {
         Self {
             steps: self.steps,
             rally: self.rally,
+            bounce: self.bounce,
+            obstacle_bounces: self.obstacle_bounces,
             ..Self::start(self.began_at, believed)
         }
     }
@@ -255,6 +287,38 @@ impl Flight {
         self.paddle_height_factor
     }
 
+    /// The obstacles standing on the floor during this flight, in no
+    /// meaningful order.
+    #[must_use]
+    pub fn obstacles(&self) -> &[Obstacle] {
+        &self.obstacles
+    }
+
+    /// The rule the ball bounces off those obstacles by.
+    #[must_use]
+    pub const fn bounce_rule(&self) -> BounceRule {
+        self.bounce
+    }
+
+    /// Bounces off obstacles since this flight began.
+    #[must_use]
+    pub const fn obstacle_bounces(&self) -> u16 {
+        self.obstacle_bounces
+    }
+
+    /// This flight's obstacles as the ball meets them now: with the rule it
+    /// bounces by and the bounces made so far, which is what one step among
+    /// them asks for
+    /// ([`advance_among_obstacles`](super::obstacle::advance_among_obstacles)).
+    #[must_use]
+    pub fn obstacles_in_flight(&self) -> ObstaclesInFlight<'_> {
+        ObstaclesInFlight {
+            obstacles: &self.obstacles,
+            rule: self.bounce,
+            bounced: self.obstacle_bounces,
+        }
+    }
+
     /// Fixed steps since this flight began.
     #[must_use]
     pub const fn steps(&self) -> u16 {
@@ -287,16 +351,26 @@ impl Flight {
     pub const fn tick(&mut self) {
         self.steps = self.steps.saturating_add(1);
     }
+
+    /// Counts `bounces` more bounces off obstacles: those of the step just
+    /// taken. The bounce budget is spent from this count (M2 spec 2.2.6.1).
+    pub fn bounced(&mut self, bounces: u8) {
+        self.obstacle_bounces = self.obstacle_bounces.saturating_add(u16::from(bounces));
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use bevy::math::Vec2;
 
+    use std::num::NonZeroU8;
+
     use super::{Contribution, Drift, Field, Flight, FlightStart, Hit, StepMotion};
     use crate::kernel::geometry::Side;
     use crate::kernel::integrate::{Motion, integrate};
+    use crate::kernel::obstacle::{BounceRule, Obstacle};
     use crate::kernel::random::RallySeed;
+    use crate::kernel::reflect::MaxDeflection;
     use crate::kernel::test_support::{assert_near, assert_vec_near};
 
     const DT: f32 = 1.0 / 60.0;
@@ -333,6 +407,7 @@ mod tests {
             speed_gain,
             paddle_height_factor: 1.0,
             field: Some(Box::new(field)),
+            obstacles: Vec::new(),
         }
     }
 
@@ -405,6 +480,7 @@ mod tests {
             speed_gain: 0.0,
             paddle_height_factor: factor,
             field: None,
+            obstacles: Vec::new(),
         };
         let one = Flight::start(FlightStart::SERVE, [shrinking(0.5), shrinking(0.8)]);
         let other = Flight::start(FlightStart::SERVE, [shrinking(0.8), shrinking(0.5)]);
@@ -532,6 +608,7 @@ mod tests {
                 speed_gain: 7.0,
                 paddle_height_factor: 1.0,
                 field: None,
+                obstacles: Vec::new(),
             }],
         );
         assert_eq!(flight.force(at(5.0), DT), Vec2::ZERO);
@@ -558,5 +635,104 @@ mod tests {
             Vec2::new(0.0, limit),
             1e-3,
         );
+    }
+
+    fn standing(obstacles: Vec<Obstacle>) -> Contribution {
+        Contribution {
+            speed_gain: 0.0,
+            paddle_height_factor: 1.0,
+            field: None,
+            obstacles,
+        }
+    }
+
+    fn block_at(x: f32) -> Obstacle {
+        Obstacle::new(Vec2::new(x, 0.0), Vec2::new(1.0, 7.0), 0.2)
+    }
+
+    /// M2 spec 2.2.6: the obstacle channel composes by union.
+    #[test]
+    fn a_flight_carries_the_obstacles_of_every_contribution_in_either_order() {
+        let one = || standing(vec![block_at(-30.0), block_at(30.0)]);
+        let other = || standing(vec![block_at(10.0)]);
+        for flight in [
+            Flight::start(FlightStart::SERVE, [one(), other()]),
+            Flight::start(FlightStart::SERVE, [other(), one()]),
+        ] {
+            assert_eq!(flight.obstacles().len(), 3);
+            for x in [-30.0, 10.0, 30.0] {
+                assert!(flight.obstacles().contains(&block_at(x)), "no block at {x}");
+            }
+        }
+        assert_eq!(Flight::default().obstacles(), []);
+    }
+
+    fn four_at_sixty_degrees() -> BounceRule {
+        BounceRule::new(
+            NonZeroU8::new(4).expect("four is not zero"),
+            MaxDeflection::new(60.0_f32.to_radians()).expect("sixty degrees is valid"),
+        )
+    }
+
+    /// M2 spec 2.2.6: the bounds are the channel's. A flight bounces by
+    /// the rule the base gives it, and by one contact and no floor until then.
+    #[test]
+    fn a_flight_bounces_by_the_rule_it_is_given() {
+        let flight = Flight::start(FlightStart::SERVE, [standing(vec![block_at(0.0)])]);
+        assert_eq!(flight.bounce_rule(), BounceRule::default());
+        let ruled = flight.bouncing_by(four_at_sixty_degrees());
+        assert_eq!(ruled.bounce_rule(), four_at_sixty_degrees());
+        assert_eq!(ruled.obstacles(), [block_at(0.0)]);
+    }
+
+    /// M2 spec 2.3.12: an AI may believe in other obstacles than lie there,
+    /// and not in another rule: the rule is the base's, not an effect's.
+    #[test]
+    fn a_believed_flight_bounces_by_the_true_rule_off_the_believed_obstacles() {
+        let flight = Flight::start(FlightStart::SERVE, [standing(vec![block_at(0.0)])])
+            .bouncing_by(four_at_sixty_degrees());
+        let believed = flight.believed_as([standing(vec![block_at(5.0)])]);
+        assert_eq!(believed.obstacles(), [block_at(5.0)]);
+        assert_eq!(believed.bounce_rule(), four_at_sixty_degrees());
+    }
+
+    /// M2 spec 2.2.6.1: the budget is a flight's. A flight counts its
+    /// bounces off obstacles, hands the step its obstacles with that count,
+    /// and a new flight starts at none.
+    #[test]
+    fn a_flight_counts_its_bounces_off_obstacles_and_a_new_flight_starts_at_none() {
+        let mut flight = Flight::start(FlightStart::SERVE, [standing(vec![block_at(0.0)])])
+            .bouncing_by(four_at_sixty_degrees());
+        assert_eq!(flight.obstacle_bounces(), 0);
+        flight.bounced(2);
+        flight.bounced(0);
+        flight.bounced(1);
+        assert_eq!(flight.obstacle_bounces(), 3);
+        let in_flight = flight.obstacles_in_flight();
+        assert_eq!(in_flight.obstacles, [block_at(0.0)]);
+        assert_eq!(in_flight.rule, four_at_sixty_degrees());
+        assert_eq!(in_flight.bounced, 3);
+
+        let next = Flight::start(FlightStart::SERVE, [standing(vec![block_at(0.0)])]);
+        assert_eq!(next.obstacle_bounces(), 0);
+    }
+
+    /// An AI watching the ball has seen it bounce: a belief about a flight
+    /// keeps the flight's count, as it keeps its clock.
+    #[test]
+    fn a_believed_flight_keeps_the_bounces_made() {
+        let mut flight = Flight::start(FlightStart::SERVE, [standing(vec![block_at(0.0)])]);
+        flight.bounced(2);
+        let believed = flight.believed_as([standing(Vec::new())]);
+        assert_eq!(believed.obstacle_bounces(), 2);
+    }
+
+    #[test]
+    fn the_bounce_count_stops_at_its_limit_instead_of_wrapping() {
+        let mut flight = Flight::default();
+        for _ in 0..300 {
+            flight.bounced(u8::MAX);
+        }
+        assert_eq!(flight.obstacle_bounces(), u16::MAX);
     }
 }

@@ -21,6 +21,18 @@
         // A flight longer than this is a fault: the rally restarts (M2 spec 2.5.6).
         // Classic's slowest crossing takes under four seconds.
         flight_limit_seconds: 20.0,
+        // Among obstacles the ball makes at most this many contacts, with
+        // walls and obstacles together, in one fixed step; what is left of
+        // the step after them is forfeited (M2 spec 2.2.6). At least 1.
+        contacts_per_step: 4,
+        // A flight, from a serve or a paddle return to the next return,
+        // bounces off obstacles at most this many times; after them the
+        // ball flies through obstacles until the next return (M2 spec
+        // 2.2.6.1). Without it a ball can bounce between a block, its
+        // mirrored copy, and a wall for good. At least 1.
+        obstacle_bounces_per_flight: 6,
+        // The steepest a paddle sends the ball, from straight across. An
+        // obstacle sends it no steeper either: the horizontal floor.
         max_deflection_degrees: 60.0,
         serve_cone_degrees: 30.0,
     ),
@@ -107,6 +119,33 @@
             max_count: 3,
             radius: 8.0,
             max_bend_degrees: 15.0,
+            clear_run: 24.0,
+            unseen_flights: (one_star: 3, two_stars: 2, three_stars: 1),
+            believed_share: (one_star: 0.4, two_stars: 0.7, three_stars: 0.9),
+        ),
+        // Blocks appear on the floor at a paddle return and stay until the
+        // point: solid, each as long as the default paddle and as thick as
+        // a paddle, and the ball bounces off them (ball.contacts_per_step,
+        // ball.obstacle_bounces_per_flight, ball.max_deflection_degrees).
+        // The dial is the count of blocks
+        // drawn, from none to max_count; each has a copy mirrored across
+        // midfield besides. It may not start to move at return 0: a serve
+        // flies over an empty floor. A block is turned from upright, either
+        // way, by an angle from min_tilt_degrees to max_tilt_degrees; the
+        // least must be above 0, since a ball can shuttle for ever between
+        // an upright block and its copy. clear_run is the stretch before
+        // each paddle that no block reaches into: more than a ball at the
+        // speed cap travels in one step, and small enough to leave a block
+        // room on its half. unseen_flights and believed_share are the AI's
+        // flaw: each star does not see a block for that many flights after
+        // it appears, and from then on believes that share of its tilt,
+        // taking it for more upright than it is.
+        blocks: (
+            starts_at_return: 2,
+            full_at_return: 8,
+            max_count: 2,
+            min_tilt_degrees: 10.0,
+            max_tilt_degrees: 35.0,
             clear_run: 24.0,
             unseen_flights: (one_star: 3, two_stars: 2, three_stars: 1),
             believed_share: (one_star: 0.4, two_stars: 0.7, three_stars: 0.9),

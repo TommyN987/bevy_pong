@@ -97,7 +97,12 @@ pub fn advance_between_walls(
 /// travel cut to `playable_height`: the vertical speed is bounded to that
 /// height per `dt`, and the position follows the bounded speed. A step of no
 /// length travels nowhere and bounds nothing.
-fn within_one_fold(before: Motion, stepped: Motion, playable_height: f32, dt: f32) -> Motion {
+pub(super) fn within_one_fold(
+    before: Motion,
+    stepped: Motion,
+    playable_height: f32,
+    dt: f32,
+) -> Motion {
     let fastest = playable_height / dt;
     if stepped.velocity.y.abs() <= fastest {
         return stepped;

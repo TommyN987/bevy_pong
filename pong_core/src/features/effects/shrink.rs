@@ -41,6 +41,7 @@ impl Effect for Shrink {
             speed_gain: 0.0,
             paddle_height_factor: self.height_factor.at(start.returns),
             field: None,
+            obstacles: Vec::new(),
         }
     }
 

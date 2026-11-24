@@ -39,6 +39,7 @@ impl Effect for Speed {
             speed_gain: self.per_return * f32::from(start.returns),
             paddle_height_factor: 1.0,
             field: None,
+            obstacles: Vec::new(),
         }
     }
 

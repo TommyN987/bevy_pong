@@ -2,7 +2,8 @@
 
 use super::flight::Flight;
 use super::geometry::{Arena, Radius};
-use super::integrate::{Motion, advance_between_walls};
+use super::integrate::Motion;
+use super::obstacle::advance_among_obstacles;
 
 /// Steps the prediction will take before giving up. At sixty steps a second this
 /// is over twenty minutes of flight; a ball that slow is a simulation fault, not
@@ -12,15 +13,25 @@ const MAX_STEPS: u32 = 100_000;
 /// Y coordinate at which a ball of `radius` in `flight` first reaches
 /// `target_x`, or `None` if it never will.
 ///
-/// The ball is stepped with the same [`advance_between_walls`] the physics step
-/// uses, at the same `dt`, under the same `flight` (M2 spec 2.2.1), so the AI
-/// sees exactly what the ball will do and nothing more. Wall bounces and the
-/// flight's forces are modeled; paddles are not. The flight's clock is read
-/// ahead, not advanced. The crossing inside the final step is interpolated,
-/// so the answer does not snap to a step boundary.
+/// The ball is stepped with the same [`advance_among_obstacles`] the physics
+/// step uses, at the same `dt`, under the same `flight` (M2 spec 2.2.1,
+/// 2.2.6), so the AI sees exactly what the ball will do and nothing more.
+/// Wall bounces, the flight's forces, and bounces off its obstacles are
+/// modeled; paddles are not. The flight's clock is read ahead, not advanced,
+/// and its bounce budget is spent ahead, not from it (M2 spec 2.2.6.1).
+/// The crossing inside the final step is interpolated, so the answer does
+/// not snap to a step boundary.
 ///
-/// `None` when the ball is stationary along x, moving away from `target_x`, or
-/// still short of it after [`MAX_STEPS`]. A ball already on the line crosses now.
+/// `None` when the ball is stationary along x, moving away from `target_x`,
+/// turned back by an obstacle and out past the goal line on the far side, or
+/// still short of the target after [`MAX_STEPS`]. A ball already on the line
+/// crosses now. A ball that starts moving away has no crossing even where an
+/// obstacle would turn it round: ask again once it has turned.
+///
+/// Precondition (the caller's): `target_x` is inside the arena, and no
+/// obstacle of `flight` is within a step's travel of it, so that the step
+/// that crosses it bounces off none. Whoever places obstacles keeps them
+/// clear of the lines a crossing is asked for.
 #[must_use]
 pub fn crossing_y(
     arena: Arena,
@@ -39,10 +50,13 @@ pub fn crossing_y(
     }
 
     let limit = arena.center_limit_y(radius);
+    let far_goal_x = -distance.signum() * arena.half_extents().x;
     let mut motion = start;
+    let mut obstacles = flight.obstacles_in_flight();
     for step in 0..MAX_STEPS {
         let force = flight.force_ahead(motion, step, dt);
-        let stepped = advance_between_walls(arena, radius, motion, force, dt);
+        let stepped = advance_among_obstacles(arena, radius, motion, force, dt, obstacles);
+        obstacles = obstacles.after(stepped.obstacle_bounces);
         let next = stepped.motion;
         let remaining = target_x - motion.position.x;
         let travelled = next.position.x - motion.position.x;
@@ -52,13 +66,16 @@ pub fn crossing_y(
             // already changed and the bound had cut (semi-implicit Euler, M2
             // spec 2.2.2), so the crossing does too: that velocity is the
             // step's own, turned back if the step bounced.
-            let stepped_velocity_y = if stepped.bounced {
+            let stepped_velocity_y = if stepped.wall_bounces > 0 {
                 -next.velocity.y
             } else {
                 next.velocity.y
             };
             let unbounced_y = motion.position.y + stepped_velocity_y * dt * fraction;
             return Some(fold_once(unbounced_y, limit));
+        }
+        if (next.position.x - far_goal_x) * far_goal_x > 0.0 {
+            return None;
         }
         motion = next;
     }
@@ -78,11 +95,17 @@ fn fold_once(y: f32, limit: f32) -> f32 {
 
 #[cfg(test)]
 mod tests {
+    use std::num::{NonZeroU8, NonZeroU16};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
     use bevy::math::Vec2;
 
     use super::crossing_y;
     use crate::kernel::flight::{Contribution, Field, Flight, FlightStart};
     use crate::kernel::integrate::{Motion, advance_between_walls};
+    use crate::kernel::obstacle::{BounceRule, Obstacle, advance_among_obstacles};
+    use crate::kernel::reflect::MaxDeflection;
     use crate::kernel::test_support::{assert_near, standard_arena, unit_radius};
 
     const DT: f32 = 1.0 / 60.0;
@@ -232,27 +255,187 @@ mod tests {
                 speed_gain: 0.0,
                 paddle_height_factor: 1.0,
                 field: Some(field),
+                obstacles: Vec::new(),
             }),
         )
     }
 
     /// Steps the ball as the physics step does, ticking the flight, until it
     /// passes `target_x`; the crossing is read off the last step's straight line.
-    fn simulated_crossing(start: Motion, mut flight: Flight, target_x: f32) -> f32 {
+    fn simulated_crossing(start: Motion, flight: Flight, target_x: f32) -> f32 {
+        simulated_flight(start, flight, target_x).0
+    }
+
+    /// [`simulated_crossing`], and the bounces off obstacles on the way.
+    fn simulated_flight(start: Motion, mut flight: Flight, target_x: f32) -> (f32, u32) {
         let mut motion = start;
+        let mut bounces = 0;
         for _ in 0..10_000 {
             let force = flight.force(motion, DT);
-            let next = advance_between_walls(standard_arena(), unit_radius(), motion, force, DT);
+            let next = advance_among_obstacles(
+                standard_arena(),
+                unit_radius(),
+                motion,
+                force,
+                DT,
+                flight.obstacles_in_flight(),
+            );
             flight.tick();
+            flight.bounced(next.obstacle_bounces);
             if next.motion.position.x >= target_x {
-                assert!(!next.bounced, "the scripted course crosses clear of a wall");
+                assert_eq!(
+                    (next.wall_bounces, next.obstacle_bounces),
+                    (0, 0),
+                    "the scripted course crosses clear of walls and obstacles"
+                );
                 let fraction =
                     (target_x - motion.position.x) / (next.motion.position.x - motion.position.x);
-                return motion.position.y + fraction * (next.motion.position.y - motion.position.y);
+                let y = motion.position.y + fraction * (next.motion.position.y - motion.position.y);
+                return (y, bounces);
             }
+            bounces += u32::from(next.obstacle_bounces);
             motion = next.motion;
         }
         panic!("ball never reached x = {target_x}");
+    }
+
+    /// A flight among `obstacles`, bouncing by four contacts a step and no
+    /// steeper than sixty degrees, under `fields`.
+    fn flight_among(obstacles: Vec<Obstacle>, fields: Vec<Box<dyn Field>>) -> Flight {
+        let rule = BounceRule::new(
+            NonZeroU8::new(4).expect("four is not zero"),
+            MaxDeflection::new(60.0_f32.to_radians()).expect("sixty degrees is valid"),
+        );
+        let standing = Contribution {
+            speed_gain: 0.0,
+            paddle_height_factor: 1.0,
+            field: None,
+            obstacles,
+        };
+        let pushing = fields.into_iter().map(|field| Contribution {
+            speed_gain: 0.0,
+            paddle_height_factor: 1.0,
+            field: Some(field),
+            obstacles: Vec::new(),
+        });
+        Flight::start(FlightStart::SERVE, std::iter::once(standing).chain(pushing))
+            .bouncing_by(rule)
+    }
+
+    /// A block the size of the default paddle.
+    fn block(centre: Vec2, tilt: f32) -> Obstacle {
+        Obstacle::new(centre, Vec2::new(1.0, 7.0), tilt)
+    }
+
+    /// M2 spec 2.2.6, third done-condition: prediction equals simulation
+    /// through two bounces. The ball is turned back by a block on the right
+    /// and turned again by one on the left, with no force and under a
+    /// steady push, and then crosses the target.
+    #[test]
+    fn prediction_equals_simulation_through_two_bounces() {
+        let start = Motion {
+            position: Vec2::new(-20.0, 0.0),
+            velocity: Vec2::new(80.0, 0.0),
+        };
+        let blocks = || {
+            vec![
+                block(Vec2::new(30.0, 0.0), 0.1),
+                block(Vec2::new(-40.0, -13.8), 0.1),
+            ]
+        };
+        let pushed = || -> Vec<Box<dyn Field>> { vec![Box::new(Steady(-3.0))] };
+        let mut crossings = Vec::new();
+        for fields in [Vec::new, pushed] {
+            let Some(predicted) = crossing_y(
+                standard_arena(),
+                unit_radius(),
+                start,
+                &flight_among(blocks(), fields()),
+                73.0,
+                DT,
+            ) else {
+                panic!("the ball was predicted never to cross");
+            };
+            let (simulated, bounces) =
+                simulated_flight(start, flight_among(blocks(), fields()), 73.0);
+            assert_eq!(bounces, 2);
+            assert_near(predicted, simulated, 1e-3);
+            crossings.push(predicted);
+        }
+        // The push moves the crossing: the two courses are not one.
+        assert!((crossings[0] - crossings[1]).abs() > 1.0, "{crossings:?}");
+    }
+
+    /// M2 spec 2.2.6.1: the prediction spends the flight's budget as the
+    /// simulation does. With one bounce to a flight the ball is turned back
+    /// by the block on the right and flies through the one on the left,
+    /// out by the far goal; and once the flight has made its one bounce,
+    /// the ball flies through both and crosses on its straight line.
+    #[test]
+    fn prediction_spends_the_flights_bounce_budget_as_the_simulation_does() {
+        let start = Motion {
+            position: Vec2::new(-20.0, 0.0),
+            velocity: Vec2::new(80.0, 0.0),
+        };
+        let one_bounce = || {
+            let flight = flight_among(
+                vec![
+                    block(Vec2::new(30.0, 0.0), 0.1),
+                    block(Vec2::new(-40.0, -13.8), 0.1),
+                ],
+                Vec::new(),
+            );
+            let rule = flight
+                .bounce_rule()
+                .with_bounces_per_flight(NonZeroU16::MIN);
+            flight.bouncing_by(rule)
+        };
+        let predict =
+            |flight: &Flight| crossing_y(standard_arena(), unit_radius(), start, flight, 73.0, DT);
+        assert_eq!(predict(&one_bounce()), None);
+
+        let mut spent = one_bounce();
+        spent.bounced(1);
+        let predicted = predict(&spent).expect("a spent flight flies straight through");
+        assert_near(predicted, 0.0, 1e-4);
+        let (simulated, bounces) = simulated_flight(start, spent, 73.0);
+        assert_eq!(bounces, 0);
+        assert_near(predicted, simulated, 1e-4);
+    }
+
+    /// A field that pushes nothing and counts how often it is asked: once
+    /// a step.
+    #[derive(Debug)]
+    struct Counting(Arc<AtomicU32>);
+
+    impl Field for Counting {
+        fn lateral(&self, _motion: Motion, _seconds_in_flight: f32) -> f32 {
+            self.0.fetch_add(1, Ordering::Relaxed);
+            0.0
+        }
+    }
+
+    /// A block can turn the ball back for good. The prediction follows it
+    /// to the far goal line and gives up there, a second or two of flight
+    /// on, and not after its twenty minutes.
+    #[test]
+    fn a_ball_a_block_turns_back_for_good_has_no_crossing_and_is_given_up_at_the_far_goal() {
+        let start = Motion {
+            position: Vec2::new(-20.0, 0.0),
+            velocity: Vec2::new(80.0, 0.0),
+        };
+        let steps = Arc::new(AtomicU32::new(0));
+        let flight = flight_among(
+            vec![block(Vec2::new(30.0, 0.0), 0.1)],
+            vec![Box::new(Counting(Arc::clone(&steps)))],
+        );
+        assert_eq!(
+            crossing_y(standard_arena(), unit_radius(), start, &flight, 73.0, DT),
+            None
+        );
+        // 48 units to the block and 108 back to the goal line, at 80 a second.
+        let stepped = steps.load(Ordering::Relaxed);
+        assert!((100..200).contains(&stepped), "{stepped} steps");
     }
 
     /// M2 spec 2.2.2: the bound on vertical speed is the wall step's, so the
