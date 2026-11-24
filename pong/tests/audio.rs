@@ -12,8 +12,8 @@ use pong::audio::sound::Sound;
 use pong::audio::synth::Synth;
 use pong::audio::{Cue, CueSounds, SoundsPlugin};
 use pong_core::domain::{
-    BallHitPaddle, BallHitWall, Controller, EffectId, EffectStarted, MatchConfig, MatchEnded, Mode,
-    PointScored, Seat, SeatPlayers,
+    BallHitObstacle, BallHitPaddle, BallHitWall, Controller, EffectId, EffectStarted, MatchConfig,
+    MatchEnded, Mode, PointScored, Seat, SeatPlayers,
 };
 use pong_core::features::effects::ActiveEffects;
 use pong_core::features::persistence::model::{Settings, Volume as SavedVolume};
@@ -69,11 +69,12 @@ type Event = fn(&mut App);
 /// Spec 1.6.4: one play command per event.
 #[test]
 fn each_core_event_plays_its_cue_once() {
-    let events: [(Cue, Event); 4] = [
+    let events: [(Cue, Event); 5] = [
         (Cue::PaddleHit, |app| {
             send(app, BallHitPaddle { side: Side::Left });
         }),
         (Cue::WallHit, |app| send(app, BallHitWall)),
+        (Cue::ObstacleHit, |app| send(app, BallHitObstacle)),
         (Cue::Point, |app| {
             send(
                 app,
@@ -219,10 +220,15 @@ fn entering_a_chaos_match_plays_the_joining_effects_cue() {
 
 /// How many wall cues have been spawned so far.
 fn wall_cues(app: &mut App) -> usize {
-    let wall = sound_of(app, Cue::WallHit);
+    plays_of(app, Cue::WallHit)
+}
+
+/// How many times `cue` has been spawned so far.
+fn plays_of(app: &mut App, cue: Cue) -> usize {
+    let sound = sound_of(app, cue);
     handles(app)
         .into_iter()
-        .filter(|handle| *handle == wall)
+        .filter(|handle| *handle == sound)
         .count()
 }
 
@@ -268,4 +274,61 @@ fn wall_hits_a_quarter_of_a_second_apart_each_play() {
         }
     }
     assert_eq!(wall_cues(&mut app), 4);
+}
+
+/// The obstacle cue is limited as the wall's is (M2 spec 2.2.6, M2 phase 9
+/// report): a ball rattling between two blocks bounces every few steps,
+/// and a contact loop can bounce it several times in one. A second of a
+/// bounce every other step is a handful of cues and not a buzz.
+#[test]
+fn a_ball_rattling_between_blocks_plays_a_bounded_number_of_obstacle_cues_a_second() {
+    let mut app = audio_app();
+    for step in 0..60 {
+        if step % 2 == 0 {
+            send(&mut app, BallHitObstacle);
+        }
+        frame(&mut app);
+    }
+    let played = plays_of(&mut app, Cue::ObstacleHit);
+    assert!(
+        (2..=8).contains(&played),
+        "thirty bounces in a second played {played} cues"
+    );
+}
+
+/// Several bounces off obstacles in one frame are one sound.
+#[test]
+fn obstacle_hits_in_the_same_frame_play_one_cue() {
+    let mut app = audio_app();
+    for _ in 0..3 {
+        send(&mut app, BallHitObstacle);
+    }
+    frame(&mut app);
+    assert_eq!(plays_of(&mut app, Cue::ObstacleHit), 1);
+}
+
+/// Bounces a quarter of a second apart each sound, as a ball crossing from
+/// a block to its copy makes them.
+#[test]
+fn obstacle_hits_a_quarter_of_a_second_apart_each_play() {
+    let mut app = audio_app();
+    for _ in 0..4 {
+        send(&mut app, BallHitObstacle);
+        for _ in 0..15 {
+            frame(&mut app);
+        }
+    }
+    assert_eq!(plays_of(&mut app, Cue::ObstacleHit), 4);
+}
+
+/// Each limit is its own: a wall bounce and a bounce off a block in the
+/// same frame both sound, and neither silences the other's next.
+#[test]
+fn a_wall_cue_and_an_obstacle_cue_do_not_limit_each_other() {
+    let mut app = audio_app();
+    send(&mut app, BallHitWall);
+    send(&mut app, BallHitObstacle);
+    frame(&mut app);
+    assert_eq!(wall_cues(&mut app), 1);
+    assert_eq!(plays_of(&mut app, Cue::ObstacleHit), 1);
 }

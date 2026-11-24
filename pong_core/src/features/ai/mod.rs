@@ -2247,4 +2247,115 @@ mod tests {
             );
         }
     }
+
+    /// Where a ball launched as `launch` crosses the AI's contact line in
+    /// `flight`, if it does.
+    fn crossing_the_ais_line(tuning: &Tuning, launch: Motion, flight: &Flight) -> Option<f32> {
+        crossing_y(
+            tuning.arena(),
+            tuning.ball().radius(),
+            launch,
+            flight,
+            Paddle::new(Side::Right, tuning.paddle()).contact_x(tuning),
+            1.0 / 60.0,
+        )
+    }
+
+    /// R10 (M2 plan E.7): a block gives the hitter a use, not only the
+    /// defender a tax. In a rally that counts, on the flight its first
+    /// block appears, two stars as tuned do not see it yet. The hitter
+    /// picks, of the returns a paddle can send at the serve speed, one that
+    /// glances off the new block and on to the far side, a long way from
+    /// where it was heading. That ball scores. The same ball over an empty
+    /// floor comes back every time, and so does a ball sent at the same
+    /// angle past the block. Which ball scores is the hitter's aim to say,
+    /// and no draw's.
+    #[test]
+    fn a_ball_two_stars_return_past_a_new_block_scores_when_sent_off_it() {
+        let tuning = Tuning::from_ron(EMBEDDED_RON).expect("the embedded tuning is valid");
+        let numbers = tuning.effects().blocks();
+        let first_arrival = the_return_that_stands(1, &tuning);
+        let lag = numbers.unseen_flights(Difficulty::TwoStars);
+        assert_eq!(
+            numbers.count().after(first_arrival.saturating_sub(lag)),
+            0,
+            "two stars see the first block the flight it appears"
+        );
+        let two_stars_after = |prepare: fn(&mut App)| {
+            ai_of_on_the_right_playing_after(Difficulty::TwoStars, tuning.clone(), prepare)
+        };
+        let mut new_block = two_stars_after(force_blocks);
+        let among_the_new_block =
+            new_block
+                .world()
+                .resource::<ActiveEffects>()
+                .start_flight(FlightStart {
+                    returns: first_arrival,
+                    hit: Some(Hit {
+                        side: Side::Left,
+                        paddle_motion: StepMotion::Still,
+                    }),
+                    returns_held: false,
+                });
+        assert_eq!(
+            among_the_new_block.obstacles().len(),
+            2,
+            "one block and its copy"
+        );
+
+        // The hitter's choice: every height and angle a paddle can send, in
+        // a fixed order. A ball is turned by the block if it crosses the
+        // far line well away from where the empty floor would take it.
+        let from_x = Paddle::new(Side::Left, tuning.paddle()).contact_x(&tuning) + 1.0;
+        let steepest = tuning.ball().max_deflection().radians();
+        let aims: Vec<(Motion, f32, Option<f32>)> = (-20_i8..=20)
+            .flat_map(|height| (-10_i8..=10).map(move |angle| (height, angle)))
+            .filter_map(|(height, angle)| {
+                let heading = Vec2::from_angle(steepest * f32::from(angle) / 10.0);
+                let launch = ball(Vec2::new(from_x, 2.0 * f32::from(height)), heading * 80.0);
+                let unhindered = crossing_the_ais_line(&tuning, launch, &Flight::default())?;
+                let among = crossing_the_ais_line(&tuning, launch, &among_the_new_block);
+                Some((launch, unhindered, among))
+            })
+            .collect();
+        let (off_the_block, _, _) = *aims
+            .iter()
+            .find(|(_, unhindered, among)| {
+                among.is_some_and(|among| (among - unhindered).abs() > 30.0)
+            })
+            .expect("some return glances off the new block and on to the far side");
+        let (past_the_block, _, _) = *aims
+            .iter()
+            .find(|(launch, unhindered, among)| {
+                (launch.velocity - off_the_block.velocity).length() < 1e-3
+                    && among.is_some_and(|among| (among - unhindered).abs() < 1e-3)
+            })
+            .expect("some return at the same angle passes the block by");
+
+        let as_the_return_that_brings_the_block = |app: &mut App, launch: Motion| {
+            launch_among_blocks(app, launch, |app| {
+                begin_the_flight_of_a_return(app, first_arrival, StepMotion::Still);
+            })
+        };
+        let mut empty = two_stars_after(|app| force_blocks_at(app, 0));
+        for launch in 0..20 {
+            assert_eq!(
+                launch_among_blocks(&mut empty, off_the_block, |_| {}),
+                AmongBlocks::Returned { bounces: 0 },
+                "over an empty floor, launch {launch}"
+            );
+        }
+        for launch in 0..20 {
+            assert_eq!(
+                as_the_return_that_brings_the_block(&mut new_block, past_the_block),
+                AmongBlocks::Returned { bounces: 0 },
+                "past the block, launch {launch}"
+            );
+        }
+        assert_eq!(
+            as_the_return_that_brings_the_block(&mut new_block, off_the_block),
+            AmongBlocks::Missed,
+            "off the block: {off_the_block:?}"
+        );
+    }
 }

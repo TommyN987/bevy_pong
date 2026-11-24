@@ -24,6 +24,8 @@ pub enum Cue {
     PaddleHit,
     /// The ball bounced off a wall.
     WallHit,
+    /// The ball bounced off an obstacle on the floor (M2 spec 2.2.6).
+    ObstacleHit,
     /// A side took the point.
     Point,
     /// A side won the match.
@@ -32,7 +34,13 @@ pub enum Cue {
 
 impl Cue {
     /// Every cue, once.
-    pub const ALL: [Self; 4] = [Self::PaddleHit, Self::WallHit, Self::Point, Self::MatchWon];
+    pub const ALL: [Self; 5] = [
+        Self::PaddleHit,
+        Self::WallHit,
+        Self::ObstacleHit,
+        Self::Point,
+        Self::MatchWon,
+    ];
 }
 
 /// Makes the sound for each cue: synthesized now; read from embedded files,
@@ -47,6 +55,7 @@ pub trait SoundBank {
 pub struct CueSounds {
     paddle_hit: Handle<Sound>,
     wall_hit: Handle<Sound>,
+    obstacle_hit: Handle<Sound>,
     point: Handle<Sound>,
     match_won: Handle<Sound>,
     /// Each effect's join cue, for the effects that have one.
@@ -70,6 +79,7 @@ impl CueSounds {
         match cue {
             Cue::PaddleHit => &self.paddle_hit,
             Cue::WallHit => &self.wall_hit,
+            Cue::ObstacleHit => &self.obstacle_hit,
             Cue::Point => &self.point,
             Cue::MatchWon => &self.match_won,
         }
@@ -106,6 +116,7 @@ impl<B: SoundBank + Send + Sync + 'static> Plugin for SoundsPlugin<B> {
         let sounds = CueSounds {
             paddle_hit: add(Cue::PaddleHit),
             wall_hit: add(Cue::WallHit),
+            obstacle_hit: add(Cue::ObstacleHit),
             point: add(Cue::Point),
             match_won: add(Cue::MatchWon),
             joins,

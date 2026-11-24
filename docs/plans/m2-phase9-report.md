@@ -3,8 +3,8 @@
 Proposed 2026-11-24. Branch `feat/blocks`. Roles: Claude drives; the user reviews and commits.
 Deviations from [m2-chaos-pong.md](../specs/m2-chaos-pong.md) and [m2-plan.md](m2-plan.md) per plan rule P.6, each with where it was recorded.
 
-Built 2026-11-24: steps 1 to 3 of the proposal the user approved that day (plan 9.1, 9.2; E.2 of 9.3).
-Not built: steps 4 to 7.
+Built 2026-11-24: steps 1 to 5 of the proposal the user approved that day (plan 9.1, 9.2; E.1 to E.4 and E.7 of 9.3).
+Not done: steps 6 and 7, the record and the session.
 
 ## The proposal's steps
 
@@ -12,9 +12,9 @@ Not built: steps 4 to 7.
 |---|---|---|
 | 1 | Pin what `swept_circle_rect` does for a sweep that starts inside; record it in the spec (plan 9.1) | Done. |
 | 2 | Obstacle channel in the kernel: tilted sweep, one step with a bounded contact loop, the floor; physics and prediction both take it (plan 9.2) | Done. A third bound, the bounce budget, was added by the user's ruling. |
-| 3 | Blocks' core half: variant, tuning section, placement, mirror, flaw (E.2) | Done. Blocks is in no bag. |
-| 4 | Shell half: view, icon, join cue, bounce cue (E.1, E.3) | Not started. The shell half is declared empty. |
-| 5 | Into the bag; soaks; harness; R3 and R10 (E.4, E.7) | Not started. |
+| 3 | Blocks' core half: variant, tuning section, placement, mirror, flaw (E.2) | Done. |
+| 4 | Shell half: view, icon, join cue, bounce cue (E.1, E.3) | Built and tested headless. The look was seen by Claude in screenshots of the running game; the user has not seen it. |
+| 5 | Into the bag; soaks; harness; R3 and R10 (E.4, E.7) | Built and measured. A fourth bound on the obstacle channel was needed: the speed cap. |
 | 6 | Record: spec amendments, ADR, touch list (P.6, E.5) | Not started. |
 | 7 | Hand check, session, ruling (E.6) | Not started. |
 
@@ -33,6 +33,8 @@ Only the first is in the spec yet. The others wait for the record step (step 6),
 | spec 1.3.2, the core's messages | One more: `BallHitObstacle`, from physics, once for each bounce. | `domain.rs`, `domain.md`; spec at step 6. |
 | spec 2.2.6.1 and "Deliberately absent": "blocks stay solid always" | The bounce budget is taken. After `ball.obstacle_bounces_per_flight` bounces off obstacles in one flight the ball flies through obstacles until its next flight. See "The traps". | This report; the user's ruling below. |
 | spec 2.2.6, prediction | `crossing_y` follows a ball an obstacle turns back to the far goal line and gives it no crossing there. It would otherwise step for twenty minutes of flight. | This report. |
+| spec 2.2.2, "a ball in a field may fly faster than the cap, by its vertical speed only" | A bounce off an obstacle turns vertical speed into horizontal. A ball leaves an obstacle no faster than `ball.speed_cap`: the fourth bound on the channel. See "Step 5". | This report. |
+| `.claude/rules/tests.md`, "split into one test per bag place" | Each dial test is split again, by star: two tests per bag place. A rung whose rallies all ended is played at more seeds. See "Step 5". | This report; `testing/README.md`. |
 | `.claude/rules/pong_core.md`, "through a generator of the effect's own seeded by it" | Blocks seeds its generator with the rally's seed and a constant of its own above it. Seeded as Lens seeds its, every block stood on a lens. | This report. |
 
 ## Rulings by the user
@@ -48,6 +50,10 @@ Only the first is in the spec yet. The others wait for the record step (step 6),
 7. **Starting numbers.** Two blocks a side, at returns 5 and 8; `clear_run` 24; 4 contacts a step; `unseen_flights` 3 / 2 / 1; `believed_share` 0.4 / 0.7 / 0.9.
 
 2026-11-24, on the traps, asked with the numbers of "The traps": "Budget of 6 (Recommended)". The other choices were a budget of 4, or to stop with no budget and the termination test red.
+
+2026-11-24, on steps 4 and 5: "Implement steps 4-5."
+
+2026-11-24, asked before any window was opened: "Yes, open the window".
 
 ## Step 1: the sweep that starts inside (plan 9.1)
 
@@ -181,7 +187,152 @@ A budget of N bounces a flight, over 35,000 flights at a full floor:
 - **Why it ends every flight:** after its last bounce a ball keeps its horizontal direction and at least half its speed across, so it reaches a goal line.
 - **What a player sees when it is spent:** the ball pass through a block. Step 4's view has to show spent blocks as spent.
 
+## Step 4: Blocks' shell half (E.1, E.3)
+
+### What was built
+
+- **Icon:** `▰`, sand. The font holds the glyph (U+25B0, read from its character map); it is drawn in the HUD in the screenshots.
+- **Join cue:** two low knocks and a note that stays.
+- **Bounce cue.** `Cue::ObstacleHit`, the base's and not Blocks': the cue map plays it for `BallHitObstacle`, one at most a frame and none within 150 ms of the last, as the wall's. Each of the two limits is its own.
+- **`FloorBlocksPlugin`:** makes the floor hold exactly the blocks of the flight the ball is in, read through `Blocks::placed` with the flight's start and its rally's seed. With Blocks out of play, or no flight, the floor is empty.
+- **A block is whole from its first frame.** Its `Transform` is its centre, its size, and its tilt, and nothing of them changes afterwards. The proposal said so: it is solid from its first step.
+- **It shows new, once.** `FloorBlock::freshness` falls from one to nothing over a quarter second and never rises.
+- **It shows spent.** While the flight has spent its bounces every block is marked spent; the next return shows them solid again.
+- **The look:** a plain rectangle in stone, under 1.0 in linear light. A new block is the same stone lit; a spent one is barely off the floor. Each block has a material of its own, written only when the block changes.
+- **Where and look are apart,** as for the other four views: the plugin touches only the blocks it spawns and is tested headless.
+
+### Decisions taken
+
+- **A new draw layer, `layer::BLOCK`,** above Wind's arrows and under the paddles: a block stands on the floor, over everything drawn on it.
+- **A spent block changes at once,** with no fade. It changes once when the budget is spent and once at the next return, and a flight that spends six bounces lasts seconds.
+- **No test of a block inside the fog.** The fog writes the visibility of balls and trail ghosts only, which Lens's test of spec 2.2.9 shows; a block is seen over the band in the screenshots.
+
+### Done-conditions
+
+| Condition | Evidence |
+|---|---|
+| E.1: API check before code | See "Bevy API". |
+| Spec 2.6.6 and R1: the blocks of the flight, as the core has them | `the_floor_shows_every_block_of_the_flight_as_the_core_has_it`: centre, size, and tilt. |
+| R1: the cause on screen before the consequence | `a_block_comes_whole_with_the_return_that_brings_it_before_the_ball_reaches_it`. |
+| R1 for the budget (spec 2.2.6.1) | `while_the_flights_bounces_are_spent_every_block_shows_it_until_the_next_return`; `a_new_block_is_brighter_than_a_settled_one_and_a_spent_one_far_dimmer`. |
+| R9 on screen | `the_floor_is_empty_in_the_countdown_and_under_a_flight_with_no_block`. |
+| R11: nothing flashes | `a_new_block_settles_once_and_keeps_its_size_its_place_and_its_tilt`; `a_block_shows_new_then_settles_and_never_freshens`. The review item at milestone close stays. |
+| Stays until the point | `the_blocks_hold_through_the_rally_and_go_at_the_countdown`; `through_the_point_pause_the_blocks_stay_where_the_rally_stood_them`. |
+| Spec 2.3.3, 2.7.1: icon and cue | `blocks_states_an_icon_a_join_cue_and_a_view`; the generic cue and glyph tests now cover Blocks. |
+| The bounce cue | `each_core_event_plays_its_cue_once`; `a_ball_rattling_between_blocks_plays_a_bounded_number_of_obstacle_cues_a_second`; `obstacle_hits_in_the_same_frame_play_one_cue`; `obstacle_hits_a_quarter_of_a_second_apart_each_play`; `a_wall_cue_and_an_obstacle_cue_do_not_limit_each_other`. |
+| The blocks live with their match | `leaving_the_match_takes_the_blocks_with_it`; `without_blocks_in_play_the_floor_stays_empty`. |
+| E.3: visible in `just run` | Not seen by the user yet (step 7). Claude saw it in a throwaway binary's screenshots (below). |
+
+### Red first, and where it was not
+
+- **The cue's tests** were red by compile failure, then green.
+- **The view's tests** were red by assertion against a plugin that did nothing: four of the six a first, filtered run reached. The rest ask for blocks too and were not run against it.
+- **One test was wrong, not the code.** The spent test counted five bounces onto a served ball that had already made one; it now counts up to a total.
+- **Not red first:** the three unit tests of the settle and the colours, written with them.
+- **Checked against a deliberate break, since removed:** with the tilt left out of the `Transform`, two tests fail.
+- **The mesh and the colours have no test.** They are judged by eye.
+
+### What Claude saw
+
+A throwaway example binary booted the shell as `main.rs` does, without sound, saves, the keyboard and focus ports, or the overlay. It forced effects between two three-star computers at thirty returns, saved six screenshots of its window through Bevy, and quit. It is deleted; nothing of it is in the diff.
+
+- **Seen, Blocks beside Speed:** two blocks on the left and their copies on the right, mirrored across the centre line, each a tilted stone bar the length of a paddle; `▰` in the HUD; the ball and its trail drawn over the floor.
+- **Seen, new against settled:** a block in its first frame is a little lighter than the same block 0.8 s on. The difference is slight on screen.
+- **Seen, spent:** with the flight's bounces spent by hand, all four blocks dim to a shade just off the floor, still plain to find.
+- **Seen, with Lens, Wind, and Fog:** the blocks over the fog's band and beside the lenses; one of Wind's arrows half hidden behind a block.
+- **In that rally the two blocks of a half overlapped** into one bent shape. Blocks may overlap (the proposal's fifth ruling).
+- **Not seen:** a ball bouncing off a block, or passing through a spent one. The cues were not heard. Motion: screenshots are stills.
+- **The window opened on the user's desktop twice,** for about eight seconds each, after the user said yes.
+
+## Step 5: into the bag, and the harness (E.4, E.7)
+
+`tuning.ron`: Chaos's bag is `[shrink, wind, spin, fog, lens, blocks]`.
+
+### The speed cap
+
+**The soak faulted when Blocks joined the bag.** In the test of three effects at full dial a ball was found at x = 85.7, outside the arena.
+
+- **Cause.** Wind and Spin add vertical speed in flight, and a ball may fly faster than the cap by that much (spec 2.2.2). A bounce off a block turns vertical speed into horizontal. The ball then crossed the goal line faster than the cap, which the sanity phase holds it to. The soaks show top speeds over 300 where the cap is 250.
+- **Fix, in the bounce rule, where the speed is turned.** `BounceRule::no_faster_than`: a ball leaves an obstacle no faster than the cap, slowed along the course it has. `BallTuning::bounce_rule` gives the rule `ball.speed_cap`.
+- **Tests, red first:** `a_ball_leaves_an_obstacle_no_faster_than_the_speed_cap` (kernel, by compile failure); the tuning's test of the rule, by assertion.
+- **All five soaks pass since.** With six effects in the bag the subset tests divide their steps among six single effects, fifteen pairs, and twenty triples.
+
+### What the bag of six moved
+
+- **Every seeded Chaos number,** since a bigger bag is shuffled differently.
+- **Classic's did not:** its six harness lines and its win counts are phase 8's, figure for figure.
+- **The stack's ladder did not trip.**
+- **Three dial tests tripped at one star:** Wind's, Spin's, and Blocks'. One-star rallies are two hits long, and at eight seeds the bottom rung read 2.0 where it had read 2.7; a top rung of 1.6 was then no shorter by more than the allowance. One star now plays 24 seeds a rung.
+- **Wind's then tripped at two stars:** 3.3 hits at one rung and 4.3 at the next, fifteen rallies each. A rung whose rallies all ended at its two seeds now plays four more. A rung with an unended rally costs its hit limit a seed and gets none.
+- **The allowance and the assertions are as they were.**
+- **The dial tests are split by star,** two to a bag place. With 24 one-star seeds a test took 18 to 22 s of its 30 inside the full run; split, the slowest takes 17.
+
+### Measured (`just ai-report`, matches to five points, hits per rally; no rally unended)
+
+| Pairing | Classic | Chaos, cap 3 |
+|---|---|---|
+| 1 v 1 | 28 rallies, mean 2.4, longest 11 | 25 rallies, mean 2.4, longest 10 |
+| 1 v 2 | 20 rallies, mean 5.7, longest 44 | 21 rallies, mean 4.0, longest 10 |
+| 1 v 3 | 20 rallies, mean 6.4, longest 26 | 25 rallies, mean 4.0, longest 13 |
+| 2 v 2 | 32 rallies, mean 33.5, longest 65 | 27 rallies, mean 10.0, longest 36 |
+| 2 v 3 | 22 rallies, mean 30.1, longest 46 | 23 rallies, mean 11.2, longest 28 |
+| 3 v 3 | 30 rallies, mean 41.7, longest 143 | 32 rallies, mean 41.9, longest 131 |
+
+More stars won 8 matches to 0 in each of the three pairings, in each mode (spec 2.5.5).
+Spec 2.5.1 holds: every rally ended in every pairing.
+
+### Blocks' R3 measure (E.4)
+
+Blocks alone, no speed ramp beside it, matches to five points, hit limit 200:
+
+| Held count | Blocks drawn | 1 v 1, 24 seeds | 2 v 2, 2 or 6 seeds |
+|---|---|---|---|
+| 0 | 0 | 171 rallies, mean 2.6 | none ended (2 of 2) |
+| 5 | 1 | 175 rallies, mean 1.9 | 45 rallies, mean 8.0 |
+| 10 and up | 2 | 170 rallies, mean 1.6 | 46 rallies, mean 6.5 |
+
+- **R3 holds for Blocks against one and two stars,** by the test's own measure.
+- **Blocks does not lengthen rallies between computers.** The spec called shielding uncertain; here two-star rallies end where none ended, and shorten again with the second block.
+- **These rungs measure the share alone.** Under a held count no block is new.
+- **Against three stars it is not measured.**
+
+### R3 for the stack (spec 2.5.2)
+
+The ladder runs to the cap, so it is the first three of the bag and Spin; Fog, Lens, and Blocks are not on it.
+
+| Level | 1 v 1 | 2 v 2 | 3 v 3 |
+|---|---|---|---|
+| Speed at 0 returns | 171 rallies, mean 2.6 | none ended | none ended |
+| Speed, Shrink at 15 | 174 rallies, mean 0.9 | 89 rallies, mean 3.4 | none ended |
+| Speed, Shrink, Wind at 30 | 168 rallies, mean 0.8 | 91 rallies, mean 1.9 | 12 rallies, mean 17.0, longest 36 |
+| Speed, Shrink, Wind, Spin at 45 | 165 rallies, mean 0.7 | 79 rallies, mean 1.9 | 18 rallies, mean 12.9, longest 38 |
+
+### R10 (E.7)
+
+`a_ball_two_stars_return_past_a_new_block_scores_when_sent_off_it`: in a rally that counts, on the flight its first block appears, two stars as tuned do not see it yet. The test picks, of the returns a paddle can send at the serve speed, the first that glances off the new block and reaches the far line more than thirty units from where the empty floor would take it. That ball scores. The same ball over an empty floor comes back twenty times of twenty, and so does a ball at the same angle sent past the block.
+
+- **This is R10 in spirit as well as letter.** Which ball scores is the hitter's aim to say, and no draw's.
+- **A level ball does not do it.** Off a block's face it comes back to the hitter; the ball that scores is a steep one that glances on.
+- Not red first: it pins what Blocks gave. Its halves past the block and over the empty floor are its controls, and with the flaw made to believe the truth the test fails.
+
+### Running times
+
+Development machine, inside the full parallel run of `just dev-check`: the heavy tests take 6.3 to 17.0 s each, against the 30 s limit.
+
+- The slowest: the fifth bag effect's one-star dial test, 17.0 s; the stack's test, 16.0 s.
+- The dial tests: 12.3 to 17.0 s for one star, 6.9 to 11.0 s for two.
+- The five soaks: 6.3 to 7.5 s.
+
 ## Test changes
+
+At the end of step 5: 614 core tests and 232 shell tests, 846 in all. Steps 4 and 5 added 9 to the core (the speed cap's, R10's, and seven from the dial tests' split) and 17 to the shell (9 in `pong/tests/blocks.rs`, 4 in `pong/tests/audio.rs`, 1 of the shell half, 3 of the settle and colours).
+
+Changed in steps 4 and 5, no assertion for behaviour:
+
+- `each_core_event_plays_its_cue_once` (audio): a fifth event and its cue.
+- `the_four_cues_sound_different` (synth) is `the_cues_sound_different`: there are five.
+- The tuning's test of the bounce rule expects the speed cap in it.
+- The dial tests (harness): 24 one-star seeds where there were 8; four more seeds for a two-star rung whose rallies all ended; seven tests became fourteen, named by star.
 
 At the end of step 3: 605 core tests and 215 shell tests, 820 in all; 743 existed before this phase. 77 were added, all in the core.
 
@@ -199,8 +350,17 @@ No assertion of an earlier test changed for behaviour. Changed for the roster's 
 
 ## Bevy API
 
-No API new to the repository was written. `bevy-api-check` did not run.
+Steps 1, 2, 3, and 5 wrote no API new to the repository.
 The kernel uses `bevy::math` only, in calls the repository already made: `Vec2::new`, `splat`, `dot`, `length`, `abs`, `from_angle`, `Rect::from_center_half_size`. Physics writes one more message through `MessageWriter`, as it writes two already.
+
+Step 4's view wrote four. `bevy-api-check` ran once against the pinned 0.20.1 source and glam 0.33.12, before the code. Claude read no Bevy source directly.
+
+- **`Quat::from_rotation_z`** (`bevy::math::Quat`): a positive angle turns +X toward +Y, counter-clockwise, as a block's tilt is reckoned.
+- **`Transform::with_rotation`:** a `Transform` scales, then rotates, then translates. A unit square scaled to a block's size and turned by its tilt has its long axis turned that far from +Y.
+- **`ColorMaterial::color`,** written through `Assets::get_mut`, which returns a guard and not a plain reference. A write in `Update` is extracted the same frame. The material's alpha mode is chosen when it is made and not again: a block's colours all have full alpha, so it stays opaque.
+- **`Changed<T>`** (`bevy::ecs::query::Changed`): matches a component added or mutably dereferenced since the system last ran. The view writes a `FloorBlock` only when something of it changes.
+- **In tests:** `Quat::angle_between`, which takes `q` and `-q` for the same turn.
+- **Already in use here:** `Mesh2d`, `MeshMaterial2d`, `Rectangle`, `Added`, `DespawnOnExit`, `Time`, `Color::linear_rgb`, the screenshot API of the throwaway binary.
 
 ## Process
 
@@ -209,18 +369,23 @@ Each is a departure from `CLAUDE.md` or the test rules, stated here as they ask.
 - **Filtered test runs went through `cargo nextest run` directly,** with a package and a filter, during the red and green cycles, and `cargo clippy` once for the core alone. The recipes take no filter. The gate below is the recipe.
 - **Before the proposal, the sweep was tried in a throwaway Python port outside the repository.** It showed the shuttle that step 1 then pinned by test.
 - **The traps and the budgets were measured in throwaway tests inside `blocks.rs` and `obstacle.rs`,** and one throwaway change to the floor. All are deleted; nothing of them is in the diff.
+- **The throwaway binary was built and run with `cargo build` and `cargo run --example`,** with the `dev` feature and the recipe's asset root. No recipe runs an example.
 
 ## Gate
 
-`just dev-check` green on 2026-11-24 with steps 1 to 3 and the budget: format, layering, lint, 820 tests, doctests. This report, after it, is a document only.
+`just dev-check` green on 2026-11-24 with steps 1 to 3 and the budget: format, layering, lint, 820 tests, doctests.
+`just dev-check` green again that day with steps 4 and 5: 846 tests.
 CI: not run by Claude. The user's, with the commits.
 
-## Open after step 3
+## Open after step 5
 
-- **Blocks is in no bag.** Nothing of it plays until steps 4 and 5.
-- **Not recorded yet:** every deviation above but the first. Spec 2.2.6, 2.2.6.1, 2.6.6, 2.3.8, 2.3.12, "Deliberately absent", ADR 0011, and both rules files wait for step 6.
-- **Half of all returns at a full floor come back to the hitter's side.** Whether that shortens rallies (R3) or shields goals is step 5's measure and the session's to judge. The spec calls it uncertain.
-- **A spent block is passed through.** Step 4 has to show it, and the session to say whether it reads.
-- **Not shown by test:** the zero-flaw AI at speeds above the serve speed among blocks.
+- **Not recorded yet:** every deviation above but the first. Spec 2.2.2, 2.2.6, 2.2.6.1, 2.6.6, 2.3.8, 2.3.12, 2.5.2, "Deliberately absent", ADR 0011, and both rules files wait for step 6, with the touch list (E.5).
+- **Not seen by the user:** the blocks, new, settled, and spent. Not heard by anyone: the join cue and the bounce cue.
+- **A new block is only a little lighter than a settled one on screen.** If it does not read in play, `NEW` in `pong/src/effects/blocks.rs` is the number.
+- **Half of all returns at a full floor come back to the hitter's side.** Between computers that shortens rallies; what it does to two children is the session's to show.
+- **A spent block is passed through.** It shows dim; whether that reads is the session's to say.
+- **Blocks on one half may overlap,** and did in the one rally Claude saw.
+- **Not shown by test:** the zero-flaw AI at speeds above the serve speed among blocks; that Blocks alone shortens three-star rallies.
 - **Blocks' numbers are Claude's starting numbers.**
+- **Rotation at full breadth** now has a bench of three. Plan 11.1 chooses the interval from play.
 - **Carried:** the true well for Lens, to be put to the user after this phase; Ice (plan 10.1).
