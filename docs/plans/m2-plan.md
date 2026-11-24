@@ -104,9 +104,9 @@ Realizes spec 2.6.5, 2.3.8. Depends on 5. Effect protocol.
 ### 9. Blocks
 Realizes spec 2.2.6, 2.6.6. Depends on 4. Effect protocol.
 
-- **9.1 SHOULD** Read `swept_circle_rect` for a sweep that starts inside the rectangle. Done: the fact is in the spec.
-- **9.2 SHOULD** Obstacle channel: tilted sweep, bounded contact loop, horizontal floor. Done: spec 2.2.6.
-- **9.3 SHOULD** Blocks per E.1 through E.7. Done: spec 2.6.6.
+- **9.1 SHOULD** Read `swept_circle_rect` for a sweep that starts inside the rectangle. Done: the fact is in the spec. Amended 2026-11-24 ([phase 9 report](m2-phase9-report.md)): read, and pinned by four tests; the fact is in the spec.
+- **9.2 SHOULD** Obstacle channel: tilted sweep, bounded contact loop, horizontal floor. Done: spec 2.2.6. Amended 2026-11-24 ([phase 9 report](m2-phase9-report.md)): built with two bounds the spec had not named. The bounce budget of spec 2.2.6.1 was taken by the user's ruling, on a trap found in a seeded test. The speed cap reaches the channel too (spec 2.2.2, amended), on a fault the soak found.
+- **9.3 SHOULD** Blocks per E.1 through E.7. Done: spec 2.6.6. Amended 2026-11-24 ([phase 9 report](m2-phase9-report.md)): built. The flaw is the belief lag and, added on the proposal, a believed share of a block's tilt (spec 2.6.6, amended). E.6: kept, at its starting numbers.
 
 ### 10. Ice
 Realizes spec 2.2.7, 2.6.7.
@@ -119,6 +119,7 @@ Realizes spec 2.10.3, 2.11. Depends on every shipped phase.
 - **11.1 MUST** Rotation interval chosen from play. Done: spec 2.10.3.
 - **11.2 MUST** The `milestone-close` skill against spec 2.11. Done: checklist marked.
 - **11.3 MAY** The computer spins on purpose (spec 2.6.4's sub-item), decided by the user's ruling before 11.2, with every effect built and playtested. Done: taken with its own items, or recorded as not taken. Added 2026-11-13 ([phase 6 report](m2-phase6-report.md)).
+- **11.4 MAY** Blocks come sooner, as early as lenses do (spec 2.6.6's sub-item), decided by the user's ruling before 11.2, on more play. Done: taken as a retune of Blocks' count, or recorded as not taken. Added 2026-11-24 ([phase 9 report](m2-phase9-report.md)).
 
 ## User actions outside the plan
 

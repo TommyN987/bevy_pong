@@ -4,7 +4,9 @@ Proposed 2026-11-24. Branch `feat/blocks`. Roles: Claude drives; the user review
 Deviations from [m2-chaos-pong.md](../specs/m2-chaos-pong.md) and [m2-plan.md](m2-plan.md) per plan rule P.6, each with where it was recorded.
 
 Built 2026-11-24: steps 1 to 5 of the proposal the user approved that day (plan 9.1, 9.2; E.1 to E.4 and E.7 of 9.3).
-Not done: steps 6 and 7, the record and the session.
+Recorded 2026-11-24: step 6 (P.6, E.5).
+Played 2026-11-24: the user's hand check and the children's session, with the user's ruling: keep (E.6).
+The phase is not marked closed: `docs/specs/CURRENT` still names it, and the user has not said to move it.
 
 ## The proposal's steps
 
@@ -13,31 +15,33 @@ Not done: steps 6 and 7, the record and the session.
 | 1 | Pin what `swept_circle_rect` does for a sweep that starts inside; record it in the spec (plan 9.1) | Done. |
 | 2 | Obstacle channel in the kernel: tilted sweep, one step with a bounded contact loop, the floor; physics and prediction both take it (plan 9.2) | Done. A third bound, the bounce budget, was added by the user's ruling. |
 | 3 | Blocks' core half: variant, tuning section, placement, mirror, flaw (E.2) | Done. |
-| 4 | Shell half: view, icon, join cue, bounce cue (E.1, E.3) | Built and tested headless. The look was seen by Claude in screenshots of the running game; the user has not seen it. |
+| 4 | Shell half: view, icon, join cue, bounce cue (E.1, E.3) | Built and tested headless. Seen by Claude in screenshots, then by the user in the hand check. |
 | 5 | Into the bag; soaks; harness; R3 and R10 (E.4, E.7) | Built and measured. A fourth bound on the obstacle channel was needed: the speed cap. |
-| 6 | Record: spec amendments, ADR, touch list (P.6, E.5) | Not started. |
-| 7 | Hand check, session, ruling (E.6) | Not started. |
+| 6 | Record: spec amendments, ADR, touch list (P.6, E.5) | Done. |
+| 7 | Hand check, session, ruling (E.6) | Done. The ruling: keep, at the starting numbers; blocks coming sooner is a MAY. |
 
 ## Deviations
 
 The first six were proposed before implementation and approved by the user on 2026-11-24. The rest arose in the build.
-Only the first is in the spec yet. The others wait for the record step (step 6), by the approved order of steps.
+All were recorded on 2026-11-24, the first in step 1 and the rest in step 6.
 
 | Item | Deviation | Recorded |
 |---|---|---|
 | spec, facts: what `swept_circle_rect` returns for a start inside | Answered. See "Step 1". | Spec, "Facts relied on", amended 2026-11-24. |
-| spec 2.6.6, "AI flaw: its belief lags, as Lens" | The flaw has a second part: a block it sees a star takes for more upright than it is, by a tuned share of its tilt. With the lag alone a computer reads every aged block perfectly. | This report. |
-| spec 2.2.6, the horizontal floor | The floor has no number of its own: it is `ball.max_deflection_degrees`, the steepest a paddle sends the ball. | This report. |
-| spec 2.6.6, "the angle range is tuning" | The range excludes upright: a tilt is drawn from `min_tilt_degrees` to `max_tilt_degrees`, either way, and validation refuses a least tilt of zero. | This report. |
-| spec 2.6.6, "blocks stay clear of both paddles' contact zones" | Clear of more: of midfield and of both walls by a ball's width, and of the contact line by a tuned run that validation keeps above one step's travel at the speed cap. | This report. |
-| spec 1.3.2, the core's messages | One more: `BallHitObstacle`, from physics, once for each bounce. | `domain.rs`, `domain.md`; spec at step 6. |
-| spec 2.2.6.1 and "Deliberately absent": "blocks stay solid always" | The bounce budget is taken. After `ball.obstacle_bounces_per_flight` bounces off obstacles in one flight the ball flies through obstacles until its next flight. See "The traps". | This report; the user's ruling below. |
-| spec 2.2.6, prediction | `crossing_y` follows a ball an obstacle turns back to the far goal line and gives it no crossing there. It would otherwise step for twenty minutes of flight. | This report. |
-| spec 2.2.2, "a ball in a field may fly faster than the cap, by its vertical speed only" | A bounce off an obstacle turns vertical speed into horizontal. A ball leaves an obstacle no faster than `ball.speed_cap`: the fourth bound on the channel. See "Step 5". | This report. |
-| `.claude/rules/tests.md`, "split into one test per bag place" | Each dial test is split again, by star: two tests per bag place. A rung whose rallies all ended is played at more seeds. See "Step 5". | This report; `testing/README.md`. |
-| `.claude/rules/pong_core.md`, "through a generator of the effect's own seeded by it" | Blocks seeds its generator with the rally's seed and a constant of its own above it. Seeded as Lens seeds its, every block stood on a lens. | This report. |
+| spec 2.6.6, "AI flaw: its belief lags, as Lens" | The flaw has a second part: a block it sees a star takes for more upright than it is, by a tuned share of its tilt. With the lag alone a computer reads every aged block perfectly. | Spec 2.6.6, 2.3.12; ADR 0011. |
+| spec 2.2.6, the horizontal floor | The floor has no number of its own: it is `ball.max_deflection_degrees`, the steepest a paddle sends the ball. | Spec 2.2.6. |
+| spec 2.6.6, "the angle range is tuning" | The range excludes upright: a tilt is drawn from `min_tilt_degrees` to `max_tilt_degrees`, either way, and validation refuses a least tilt of zero. | Spec 2.6.6. |
+| spec 2.6.6, "blocks stay clear of both paddles' contact zones" | Clear of more: of midfield and of both walls by a ball's width, and of the contact line by a tuned run that validation keeps above one step's travel at the speed cap. | Spec 2.6.6. |
+| spec 1.3.2, the core's messages | One more: `BallHitObstacle`, from physics, once for each bounce. | Spec 2.2.6; `domain.rs`, `domain.md`. |
+| spec 2.2.6.1 and "Deliberately absent": "blocks stay solid always" | The bounce budget is taken. After `ball.obstacle_bounces_per_flight` bounces off obstacles in one flight the ball flies through obstacles until its next flight. See "The traps". | Spec 2.2.6.1, the facts, "Deliberately absent"; ADR 0011; `.claude/rules/pong_core.md`. |
+| spec 2.2.6, prediction | `crossing_y` follows a ball an obstacle turns back to the far goal line and gives it no crossing there. It would otherwise step for twenty minutes of flight. | Spec 2.2.6. |
+| spec 2.2.2, "a ball in a field may fly faster than the cap, by its vertical speed only" | A bounce off an obstacle turns vertical speed into horizontal. A ball leaves an obstacle no faster than `ball.speed_cap`: the fourth bound on the channel. See "Step 5". | Spec 2.2.2, 2.2.6; ADR 0011; `.claude/rules/pong_core.md`. |
+| `.claude/rules/tests.md`, "split into one test per bag place" | Each dial test is split again, by star: two tests per bag place. A rung whose rallies all ended is played at more seeds. See "Step 5". | Spec 2.5.2; `.claude/rules/tests.md`; `testing/README.md`. |
+| `.claude/rules/pong_core.md`, "through a generator of the effect's own seeded by it" | Blocks seeds its generator with the rally's seed and a constant of its own above it. Seeded as Lens seeds its, every block stood on a lens. | Spec 2.6.6; ADR 0011; `.claude/rules/pong_core.md`. |
 
 ## Rulings by the user
+
+2026-11-24, after the hand check and the children's session: "Changes committed. Hand check passes. Playtest successful. Kids enjoyed the blocks, saying this is actually the most chaotic effect, and maybe the blocks should come sooner (the same time as lenses arrive). Let's add that as a MAY, pending on more feedback on them, to be decided before the milestone close. Effect stays. Make the records of Step 6 and 7." Blocks is kept as built, at its starting numbers; neither a retune nor a drop (E.6, spec 2.10.2). Blocks coming sooner is a MAY, decided before milestone close.
 
 2026-11-24, on the proposal: "Proposal approved as per your recommendations. Implement steps 1-3." The proposal's rulings:
 
@@ -323,6 +327,49 @@ Development machine, inside the full parallel run of `just dev-check`: the heavy
 - The dial tests: 12.3 to 17.0 s for one star, 6.9 to 11.0 s for two.
 - The five soaks: 6.3 to 7.5 s.
 
+## Step 6: the record step (P.6, E.5)
+
+### Recorded
+
+- **Spec:** the two facts about blocks (one refuted, one answered); 2.2.2 (the cap reaches the obstacle channel); 2.2.6 (the channel as built); 2.2.6.1 (taken); 2.2.6.2 (not taken); 2.3.8 (the measure below); 2.3.12 (Blocks' numbers); 2.5.2 (Blocks' measure, the seeds, the split); 2.5.3 (the subsets of six); 2.6.6 (Blocks as built, and the MAY); 2.10.1 (the session); "Deliberately absent" (the budget). Each amended 2026-11-24.
+- **Plan:** 9.1, 9.2, and 9.3 amended; 11.4 added, the MAY.
+- **ADR 0011:** amended 2026-11-24: the obstacle channel and its bounds; a bounce inside a flight; one step for physics and prediction; an item effect's own share of the seed; Blocks' share. Two alternatives added: blocks solid always, and a folding floor.
+- **`.claude/rules/pong_core.md`** and **`.claude/rules/tests.md`:** the same, as rules; the dial tests' split and seeds; the launcher for tests among blocks.
+- **`docs/architecture.md`:** tilted rectangles are swept axis-aligned in their own frame; no polygon engine.
+- **READMEs,** written with the code in steps 3 to 5: `kernel/README.md` (`obstacle.rs`, the flight, the prediction), `features/README.md` (Blocks' module, its flaw, the channel's row, the tuning checks, the integrate system), `testing/README.md` (the dial tests, the soaks' times), `domain.md` (the message).
+- **Playtest log:** the session of step 7, and a hypothesis for the MAY.
+
+### The diff against the touch list (E.5, spec 2.3.8)
+
+The phase's diff against `main`, at `9c0bbef`: 33 code files, 4 of them new, beside documents.
+
+| Where | Files | Why |
+|---|---|---|
+| Inside the list | `effects/blocks.rs` in each crate; `domain.rs` (the variant, `ALL`, its guard tests); one line in each crate's registration match; the tuning section (`tuning.ron`, `file.rs`, `tuning/mod.rs`) | Blocks itself. |
+| Outside, paid once for the channel: kernel | `kernel/obstacle.rs`, new; `flight.rs`; `predict.rs`; `integrate.rs`; `collide.rs`; `kernel/mod.rs` | The sweep, the rule, the step; the flight's obstacles and count; the prediction's step; one function made visible; plan 9.1's tests. |
+| Outside, paid once for the channel: features | `physics/mod.rs`; `effects/mod.rs`; `effects/probe.rs`; one line each in `speed.rs`, `shrink.rs`, `wind.rs`, `spin.rs`, `fog.rs`, `lens.rs`; `domain.rs`; the `ball` numbers in the tuning's three files | The integrate system; the rule's stamp and the count on the ball's flight; every effect's stance; the message; the contacts and the budget. |
+| Outside, paid once for the channel: shell | `audio/cues.rs`, `audio/mod.rs`, `audio/synth.rs`; `views/mod.rs` | The obstacle cue and its limit; the draw layer `layer::BLOCK`. |
+| Outside, tests and fixtures | The AI's test module; `pong_core/tests/ai_matches.rs`; the paddle's cramped-arena fixture; the tuning's test of the speed cap's edge; the overlay's key line in two tests; `pong/tests/audio.rs`; `pong/tests/blocks.rs`, new | Blocks' done-conditions in the AI and R10; the seeds and the split; a block as long as the default paddle; the view's and the cue's own tests. |
+| Documents | Three READMEs, `domain.md`, the spec, this report; in step 6 the plan, ADR 0011, the architecture, two rules files, the playtest log | |
+
+- **The list's negative half broke in physics, as it had to.** `integrate_ball` takes the obstacle step, counts bounces on the flight, and writes the message. Blocks is the first effect on a channel that is physics'.
+- **It held for the rest:** the AI's file changed in its test module only; rules, escalation, sanity, and `pong/src/ui` not at all. `crossing_y` kept its signature.
+- **The kernel changed for the base and not for Blocks:** nothing in it names a block.
+- **What the next effect will also touch outside the list:** the two tests that spell out the overlay's key line; its own draw layer if it has a view on the floor; the cramped-arena fixture if it has a size.
+- **What a second obstacle effect will not pay again:** the channel, its bounds, the step, the message, the cue.
+
+## Step 7: the hand check, the session, the ruling (E.3, E.6)
+
+Reported by the user on 2026-11-24 and logged in the [playtest log](../playtest.md) that day.
+
+- **The hand check passed** (E.3). Nothing was reported from it to change.
+- **The children played** Chaos with Blocks in its bag. They enjoyed the blocks and called Blocks the most chaotic effect.
+- **They suggested blocks come sooner,** at the time lenses arrive. The first block arrives at return 5 and the second at 8; lenses arrive at 3, 5, and 7.
+- **Ruling (E.6, spec 2.10.2):** keep. No number changed: Blocks' tuning section is as step 3 set it.
+- **The suggestion is a MAY,** by the user's word, pending more play, decided before milestone close: spec 2.6.6's sub-item, plan 11.4, and a hypothesis in the playtest log.
+- **Not reported:** who played whom, how many sessions, at which cap, which build the children played; anything of a spent block, of the cues, or of balls coming back off a block.
+- **Commits, the user's:** `64c69f0` (steps 1 to 3), `9c0bbef` (steps 4 and 5). The records of steps 6 and 7 are uncommitted as this is written.
+
 ## Test changes
 
 At the end of step 5: 614 core tests and 232 shell tests, 846 in all. Steps 4 and 5 added 9 to the core (the speed cap's, R10's, and seven from the dial tests' split) and 17 to the shell (9 in `pong/tests/blocks.rs`, 4 in `pong/tests/audio.rs`, 1 of the shell half, 3 of the settle and colours).
@@ -377,15 +424,14 @@ Each is a departure from `CLAUDE.md` or the test rules, stated here as they ask.
 `just dev-check` green again that day with steps 4 and 5: 846 tests.
 CI: not run by Claude. The user's, with the commits.
 
-## Open after step 5
+## Open after step 7
 
-- **Not recorded yet:** every deviation above but the first. Spec 2.2.2, 2.2.6, 2.2.6.1, 2.6.6, 2.3.8, 2.3.12, 2.5.2, "Deliberately absent", ADR 0011, and both rules files wait for step 6, with the touch list (E.5).
-- **Not seen by the user:** the blocks, new, settled, and spent. Not heard by anyone: the join cue and the bounce cue.
-- **A new block is only a little lighter than a settled one on screen.** If it does not read in play, `NEW` in `pong/src/effects/blocks.rs` is the number.
-- **Half of all returns at a full floor come back to the hitter's side.** Between computers that shortens rallies; what it does to two children is the session's to show.
-- **A spent block is passed through.** It shows dim; whether that reads is the session's to say.
+- **The phase is not marked closed.** `docs/specs/CURRENT` names phase 9; the user's to move.
+- **Blocks sooner (MAY, plan 11.4):** decided before milestone close, on more play.
+- **Not reported from play:** whether a spent block, passed through, reads; whether a new block's brightening shows; the two cues; what returns coming back off a block do between two children.
 - **Blocks on one half may overlap,** and did in the one rally Claude saw.
 - **Not shown by test:** the zero-flaw AI at speeds above the serve speed among blocks; that Blocks alone shortens three-star rallies.
-- **Blocks' numbers are Claude's starting numbers.**
+- **Blocks' numbers are Claude's starting numbers, kept.**
 - **Rotation at full breadth** now has a bench of three. Plan 11.1 chooses the interval from play.
-- **Carried:** the true well for Lens, to be put to the user after this phase; Ice (plan 10.1).
+- **R11 for the settle and the spent change:** the review item at milestone close (spec 2.7.4).
+- **Carried:** the true well for Lens, to be put to the user now that the horizontal floor exists; Ice (plan 10.1), decided after this phase by the user's ruling; the computer as a deliberate spinner (plan 11.3); Wind against Spin told apart; the catch-up hypothesis in the playtest log.
